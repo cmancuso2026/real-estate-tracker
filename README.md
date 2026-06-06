@@ -25,7 +25,7 @@ components:
 | Cash-on-cash return       | 35%    | computed from price, rent comps, interest rate    |
 | Monthly cash flow         | 25%    | computed (rent − mortgage − tax − insurance)      |
 | Price/sqft vs zip median  | 20%    | median of stored listings (same beds/baths)       |
-| Crime rate                | 10%    | SpotCrime index vs Miami-Dade median              |
+| Crime rate                | 10%    | FBI city crime rate vs median of tracked cities    |
 | Rental prevalence         | 10%    | Census ACS % renter-occupied                      |
 
 - **Interest rate**: pulls the Freddie Mac PMMS 30-yr fixed rate from the
@@ -37,20 +37,28 @@ components:
   weights above, then mapped to a letter (A ≥ 3.5, B ≥ 2.5, C ≥ 1.5, D ≥ 0.5,
   F < 0.5). The exact thresholds for every component are in the spec and encoded
   in `src/scoring/`.
+- **Crime (city-level)**: the FBI publishes crime by police agency, not by zip,
+  so each target zip is mapped to its Miami-Dade municipality
+  (`src/scoring/zip-cities.ts`). We resolve that city's police agency from the
+  FBI Crime Data Explorer, use its combined (violent + property) rate per 100k,
+  and compare it against the **median of all tracked cities' rates** — computed
+  automatically, no hand-set baseline. A zip with no own municipal agency (e.g.
+  county-policed Miami Lakes) simply skips the crime component. Verify the
+  mapping, resolved agencies, rates, and median with `npm run crime:check`.
 - **Graceful degradation**: cash-on-cash and cash flow require a rent estimate —
   listings without comparable rents are skipped. Price/sqft, crime, and rental
-  prevalence are optional; if their data is unavailable (e.g. no SpotCrime key),
-  that component is dropped and its weight is **redistributed** across the rest.
+  prevalence are optional; if their data is unavailable (e.g. the FBI API is
+  rate-limited), that component is dropped and its weight is **redistributed**
+  across the rest.
 - **Reasoning**: every grade is saved with a plain-English explanation, e.g.
   *"Overall grade C for an SFH: poor cash-on-cash return of 1.8%, with solid
   monthly cash flow of $340/mo and price/sqft 13.0% below the zip median."*
 
-> **Data-source notes.** The Miami-Dade county crime median is configured via
-> `MIAMI_DADE_CRIME_MEDIAN` (computing the true county median live is
-> impractical); the SpotCrime index is a recent-incident count near the
-> property's coordinates. Rent estimates use whole-property comps matched by
-> bedroom count — for multi-family this assumes comps represent total property
-> rent, not per-unit.
+> **Data-source notes.** The Miami-Dade crime baseline is the live median of the
+> tracked cities' FBI agency rates (no manual configuration). FBI estimate data
+> lags ~1-2 years, so the latest reported year is used. Rent estimates use
+> whole-property comps matched by bedroom count — for multi-family this assumes
+> comps represent total property rent, not per-unit.
 
 Later phases (scaffolded in the directory layout, not yet implemented): Realtor.com
 integration, Gmail email parsing, Slack/email notifications, a daily scheduler,
@@ -105,8 +113,7 @@ Phase 2 (scoring) variables — all optional, with sensible defaults / fallbacks
 | `INVESTMENT_RATE_PREMIUM`  | Premium added to the PMMS base rate (default `0.75`)         |
 | `FREDDIE_MAC_PMMS_CSV_URL` | PMMS history CSV source (default points at freddiemac.com)   |
 | `MANUAL_PMMS_RATE`         | Override the base 30-yr rate (skips the network fetch)       |
-| `SPOTCRIME_API_KEY`        | Enables the crime component (skipped if unset)               |
-| `MIAMI_DADE_CRIME_MEDIAN`  | County crime baseline (required for the crime component)     |
+| `FBI_API_KEY`              | FBI Crime Data Explorer key (defaults to rate-limited DEMO_KEY) |
 | `CENSUS_API_KEY`           | Census ACS key (ACS allows limited keyless use)              |
 
 To get keys:
@@ -115,7 +122,8 @@ To get keys:
 - **Zillow** — subscribe to a Zillow data API on [RapidAPI](https://rapidapi.com/)
   (e.g. "Zillow.com" by ApiMaker → host `zillow-com1.p.rapidapi.com`), then copy
   the RapidAPI key shown on the endpoint page.
-- **SpotCrime** — request an API key from <https://www.spotcrime.com/api>.
+- **FBI** — optional; grab a free key at <https://api.data.gov/signup/> (the
+  default `DEMO_KEY` works but is heavily rate-limited).
 - **Census** — request a free key at <https://api.census.gov/data/key_signup.html>.
 
 ## Usage
@@ -137,6 +145,9 @@ npm run refresh:rate
 # Grade stored listings A-F (all, or filtered to zips)
 npm run grade
 npm run grade 78704
+
+# Inspect the city-level crime data (zip→city, FBI agency, rate, median)
+npm run crime:check
 
 # Type-check without emitting
 npm run typecheck

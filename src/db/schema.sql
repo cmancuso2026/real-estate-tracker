@@ -109,13 +109,15 @@ CREATE INDEX IF NOT EXISTS idx_grades_property ON grades (property_id);
 CREATE INDEX IF NOT EXISTS idx_grades_graded_at ON grades (graded_at);
 
 -- ---------------------------------------------------------------------------
--- crime_cache / census_cache: memoize slow external lookups by zip code so
--- grading a batch of listings doesn't re-hit the APIs per property.
+-- crime_cache / census_cache: memoize slow external lookups so grading a batch
+-- of listings doesn't re-hit the APIs per property. Crime is cached per city
+-- (the FBI publishes by police agency, not by zip — zips are mapped to cities
+-- in src/scoring/zip-cities.ts); census stays per zip.
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS crime_cache (
-  zip_code      TEXT PRIMARY KEY,
-  crime_index   REAL,                          -- index for this zip
-  county_median REAL,                          -- Miami-Dade median used
+  city          TEXT PRIMARY KEY,
+  ori           TEXT,                          -- FBI agency ORI for the city
+  crime_index   REAL,                          -- city combined crime rate /100k
   fetched_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

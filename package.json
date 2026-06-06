@@ -12,6 +12,7 @@
     "fetch:all": "tsx src/scripts/fetch-all.ts",
     "refresh:rate": "tsx src/scripts/refresh-rate.ts",
     "grade": "tsx src/scripts/grade-listings.ts",
+    "crime:check": "tsx src/scripts/check-crime.ts",
     "seed:demo": "tsx src/scripts/seed-demo.ts",
     "dashboard:install": "npm --prefix src/dashboard install",
     "dashboard:dev": "npm --prefix src/dashboard run dev",

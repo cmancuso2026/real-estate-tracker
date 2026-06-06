@@ -214,7 +214,7 @@ export default async function PropertyPage({
         <Section title="Neighborhood signals">
           <div className="space-y-1 text-sm">
             <div className="flex justify-between">
-              <span className="text-gray-500 dark:text-gray-400">Crime index (state rate /100k)</span>
+              <span className="text-gray-500 dark:text-gray-400">Crime index (city rate /100k)</span>
               <span className="tabular font-medium">{fmtNum(p.crime_index)}</span>
             </div>
             <div className="flex justify-between">

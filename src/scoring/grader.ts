@@ -77,7 +77,7 @@ export async function gradeListing(
 
   // --- Crime (10%) ----------------------------------------------------------
   let crimeIndex: number | null = null;
-  const crime = await getCrimeIndex(listing.zip_code, listing.state).catch(
+  const crime = await getCrimeIndex(listing.zip_code).catch(
     () => null,
   ); // external failure -> skip, don't abort the grade
   if (crime) {
@@ -88,7 +88,7 @@ export async function gradeListing(
       key: 'crime',
       letter: gradeCrime(crime.crimeIndex, crime.baseline, multi),
       value: round2(pctAbove),
-      detail: `state rate ${crime.crimeIndex}/100k vs ${crime.baseline} national`,
+      detail: `${crime.city} ${crime.crimeIndex}/100k vs ${crime.baseline} Miami-Dade median`,
     };
   } else {
     skipped.push('crime');

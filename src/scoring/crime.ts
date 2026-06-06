@@ -1,5 +1,6 @@
 import { config } from '../config.js';
 import { getDb } from '../db/index.js';
+import { cityForZip, TARGET_CITIES } from './zip-cities.js';
 import type { Letter } from './types.js';
 
 /**
@@ -8,116 +9,293 @@ import type { Letter } from './types.js';
  * "DEMO_KEY" works out of the box (configurable via FBI_API_KEY for a higher
  * rate limit).
  *
- * The FBI publishes crime by law-enforcement agency and by state/nation, not by
- * zip or coordinate, so we grade at the granularity the data actually supports:
- * a property's STATE combined (violent + property) crime rate per 100k people,
- * compared against the NATIONAL rate as the baseline. A state safely below the
- * national rate grades well; one above it grades poorly. Both numbers come from
- * the same source so they're directly comparable.
+ * The FBI publishes crime by law-enforcement agency (a city police department),
+ * not by zip code. So rather than grade every property against the whole
+ * state's rate, we map each target zip to its Miami-Dade municipality
+ * (see zip-cities.ts), resolve that city's police agency (ORI) from the CDE
+ * agency list, and use the agency's combined (violent + property) crime rate
+ * per 100k people.
  *
- * Results are cached per zip (30-day TTL) in crime_cache and memoized per state
- * within a process run so batch grading hits the API at most once per state.
+ * The comparison baseline is the **median** of those same Miami-Dade cities'
+ * rates, recomputed automatically from whatever city data we can fetch — no
+ * hand-configured county median. A city below the local median grades well; one
+ * above it grades poorly. All numbers come from the same source and the same
+ * year basis, so they're directly comparable.
+ *
+ * Results are cached per city (30-day TTL) in crime_cache and memoized within a
+ * process run, so batch grading hits the FBI API at most once per city.
  */
 
 const CACHE_TTL_DAYS = 30;
 const CDE_BASE = 'https://api.usa.gov/crime/fbi/cde';
+const STATE_ABBR = 'FL';
 
-/** FBI estimate data lags ~1-2 years; request a window and use the latest year. */
-const YEARS_BACK = 4;
+/** FBI agency data lags ~1-2 years; request a window and use the latest year. */
+const YEARS_BACK = 5;
+
+/** Series names in CDE payloads that are aggregates, not the agency itself. */
+const AGGREGATE_SERIES = /united states|nationwide|national|florida|state/i;
 
 export interface CrimeResult {
-  /** State combined crime rate per 100k (violent + property). */
+  /** The municipality this property's zip maps to. */
+  city: string;
+  /** City combined crime rate per 100k (violent + property). */
   crimeIndex: number;
-  /** National combined crime rate per 100k — the comparison baseline. */
+  /** Median of the tracked Miami-Dade cities' rates — the comparison baseline. */
   baseline: number;
 }
 
-// Per-run memo so grading a batch of listings doesn't refetch per state/nation.
-const stateRateMemo = new Map<string, number | null>();
-let nationalRateMemo: number | null | undefined;
+interface CityRate {
+  ori: string;
+  rate: number;
+}
 
+// Per-run memos so grading a batch doesn't refetch the agency list, a city's
+// rate, or the derived county median.
+let agencyListMemo: Promise<AgencyRecord[]> | null = null;
+const cityRateMemo = new Map<string, Promise<CityRate | null>>();
+let countyMedianMemo: Promise<number | null> | null = null;
+
+/**
+ * Crime result for a zip: the zip's city rate vs the Miami-Dade median. Returns
+ * null (so the grader redistributes the crime weight) when the zip isn't in our
+ * coverage area, the city has no resolvable agency, or the API is unavailable.
+ */
 export async function getCrimeIndex(
   zipCode: string,
-  state: string | null,
 ): Promise<CrimeResult | null> {
-  const cached = readCache(zipCode);
-  if (cached) return cached;
+  const city = cityForZip(zipCode);
+  if (!city) return null; // zip outside our Miami-Dade coverage map
 
-  if (!state) return null; // no state -> can't locate the property in FBI data
-
-  const [stateRate, national] = await Promise.all([
-    getStateRate(state.toUpperCase()),
-    getNationalRate(),
+  const [cityRate, baseline] = await Promise.all([
+    getCityRate(city),
+    getCountyMedian(),
   ]);
-  if (stateRate == null || national == null) return null;
+  if (cityRate == null || baseline == null) return null;
 
-  writeCache(zipCode, stateRate, national);
-  return { crimeIndex: stateRate, baseline: national };
-}
-
-async function getStateRate(state: string): Promise<number | null> {
-  if (stateRateMemo.has(state)) return stateRateMemo.get(state) ?? null;
-  const url = `${CDE_BASE}/summarized/estimates/state/${state}/${fromYear()}/${toYear()}`;
-  const rate = await fetchCombinedRate(url);
-  stateRateMemo.set(state, rate);
-  return rate;
-}
-
-async function getNationalRate(): Promise<number | null> {
-  if (nationalRateMemo !== undefined) return nationalRateMemo;
-  const url = `${CDE_BASE}/summarized/estimates/national/${fromYear()}/${toYear()}`;
-  nationalRateMemo = await fetchCombinedRate(url);
-  return nationalRateMemo;
+  return { city, crimeIndex: cityRate.rate, baseline };
 }
 
 /**
- * Fetch a CDE estimates payload and return the latest-year combined (violent +
- * property) crime rate per 100k. Returns null on any network/parse failure so
- * the grader simply redistributes the crime weight.
+ * Diagnostic view of the crime data: every tracked city with its resolved FBI
+ * agency (ORI) and rate, plus the derived Miami-Dade median. Used by the
+ * `crime:check` script to verify city-level fetching end to end.
  */
-async function fetchCombinedRate(baseUrl: string): Promise<number | null> {
-  const url = new URL(baseUrl);
-  url.searchParams.set('API_KEY', config.fbiApiKey);
+export async function inspectCrimeCoverage(): Promise<{
+  cities: Array<{ city: string; ori: string | null; rate: number | null }>;
+  median: number | null;
+}> {
+  const cities = await Promise.all(
+    TARGET_CITIES.map(async (city) => {
+      const r = await getCityRate(city);
+      return { city, ori: r?.ori ?? null, rate: r?.rate ?? null };
+    }),
+  );
+  const med = await getCountyMedian();
+  return { cities, median: med };
+}
 
-  let data: unknown;
-  try {
-    const res = await fetch(url, {
-      headers: { accept: 'application/json' },
-      signal: AbortSignal.timeout(20_000),
-    });
-    if (!res.ok) return null;
-    data = await res.json();
-  } catch {
-    return null;
+/** The median crime rate across all tracked cities that returned data. */
+async function getCountyMedian(): Promise<number | null> {
+  if (countyMedianMemo) return countyMedianMemo;
+  countyMedianMemo = (async () => {
+    const rates = await Promise.all(TARGET_CITIES.map((c) => getCityRate(c)));
+    const values = rates
+      .filter((r): r is CityRate => r != null)
+      .map((r) => r.rate)
+      .sort((a, b) => a - b);
+    if (values.length === 0) return null;
+    return median(values);
+  })();
+  return countyMedianMemo;
+}
+
+/** A city's combined crime rate per 100k, from cache or the FBI API. */
+async function getCityRate(city: string): Promise<CityRate | null> {
+  const memoized = cityRateMemo.get(city);
+  if (memoized) return memoized;
+
+  const promise = (async (): Promise<CityRate | null> => {
+    const cached = readCache(city);
+    if (cached) return cached;
+
+    const ori = await resolveOri(city);
+    if (!ori) return null; // no municipal police agency (e.g. unincorporated)
+
+    const rate = await fetchAgencyCrimeRate(ori);
+    if (rate == null) return null;
+
+    const result = { ori, rate };
+    writeCache(city, result);
+    return result;
+  })();
+
+  cityRateMemo.set(city, promise);
+  return promise;
+}
+
+// --- FBI agency resolution --------------------------------------------------
+
+interface AgencyRecord {
+  ori: string;
+  agency_name: string;
+  agency_type_name?: string;
+}
+
+/** Map a city to its police-agency ORI via the CDE state agency list. */
+async function resolveOri(city: string): Promise<string | null> {
+  const agencies = await getAgencies();
+  const target = city.toLowerCase().trim();
+
+  // Prefer an exact municipal match: strip a trailing "Police Department" /
+  // "Department" / "Police" and compare the remainder to the city name. This
+  // keeps "Miami" from matching "Miami Gardens", "Miami Beach", "North Miami",
+  // etc. — each of which is its own agency.
+  for (const a of agencies) {
+    const base = (a.agency_name ?? '')
+      .toLowerCase()
+      .replace(/\s+(police department|department|police)\s*$/, '')
+      .trim();
+    if (base === target) return a.ori;
   }
+  return null;
+}
 
-  const violent = latestYearRate(data, 'Violent Crime');
-  const property = latestYearRate(data, 'Property Crime');
+/** Fetch (once per run) the list of Florida law-enforcement agencies. */
+async function getAgencies(): Promise<AgencyRecord[]> {
+  if (agencyListMemo) return agencyListMemo;
+  agencyListMemo = (async () => {
+    const url = new URL(`${CDE_BASE}/agency/byStateAbbr/${STATE_ABBR}`);
+    url.searchParams.set('API_KEY', config.fbiApiKey);
+    const data = await fetchJson(url);
+    return collectAgencies(data);
+  })();
+  return agencyListMemo;
+}
+
+/**
+ * Pull every agency record out of the payload regardless of envelope. The CDE
+ * has returned this list as a bare array, wrapped under `results`/`data`, and
+ * grouped into an object keyed by county — so we recurse and collect any object
+ * carrying a string `ori`.
+ */
+function collectAgencies(node: unknown, out: AgencyRecord[] = []): AgencyRecord[] {
+  if (!node || typeof node !== 'object') return out;
+  if (Array.isArray(node)) {
+    for (const item of node) collectAgencies(item, out);
+    return out;
+  }
+  const o = node as Record<string, unknown>;
+  if (typeof o.ori === 'string') {
+    out.push({
+      ori: o.ori,
+      agency_name: String(o.agency_name ?? ''),
+      agency_type_name:
+        typeof o.agency_type_name === 'string' ? o.agency_type_name : undefined,
+    });
+    return out;
+  }
+  for (const value of Object.values(o)) collectAgencies(value, out);
+  return out;
+}
+
+// --- FBI agency crime rate --------------------------------------------------
+
+/**
+ * Combined (violent + property) crime rate per 100k for an agency, using the
+ * latest year the FBI reports. We sum the two offense categories' per-100k
+ * rates, computing each from reported counts and population when the payload
+ * doesn't already expose a rate. Returns null on any network/parse failure.
+ */
+async function fetchAgencyCrimeRate(ori: string): Promise<number | null> {
+  const [violent, property] = await Promise.all([
+    fetchOffenseRate(ori, 'violent-crime'),
+    fetchOffenseRate(ori, 'property-crime'),
+  ]);
   if (violent == null && property == null) return null;
   return round2((violent ?? 0) + (property ?? 0));
 }
 
-/**
- * Pull the most-recent-year rate for an offense from a CDE estimates payload.
- * The documented shape is `offenses.rates[offense] = { "<year>": rate, ... }`;
- * we try that first, then fall back to a recursive search for a year->number
- * map living under a key that matches the offense name. Tolerant by design —
- * the FBI's response shape varies between endpoints/versions.
- */
-function latestYearRate(data: unknown, offense: string): number | null {
-  const direct = (data as any)?.offenses?.rates?.[offense];
-  const map = isYearMap(direct) ? direct : findYearMap(data, offense);
-  if (!map) return null;
+/** Per-100k rate for one offense category for an agency (latest year). */
+async function fetchOffenseRate(
+  ori: string,
+  offense: string,
+): Promise<number | null> {
+  const url = new URL(
+    `${CDE_BASE}/summarized/agency/${ori}/${offense}/${fromYear()}/${toYear()}`,
+  );
+  url.searchParams.set('API_KEY', config.fbiApiKey);
+  const data = await fetchJson(url);
+  if (!data) return null;
 
-  const years = Object.keys(map)
+  // Prefer a precomputed rate series if the payload exposes one.
+  const rateMap = pickSeries((data as any)?.offenses?.rates);
+  const directRate = latestValue(rateMap);
+  if (directRate != null) return directRate;
+
+  // Otherwise derive rate = reported count / population * 100k for the latest
+  // year both series share.
+  const countMap = pickSeries(
+    (data as any)?.offenses?.actuals ?? (data as any)?.actuals,
+  );
+  const popMap = pickSeries(
+    (data as any)?.populations?.population ??
+      (data as any)?.populations ??
+      (data as any)?.population,
+  );
+  if (!countMap || !popMap) return null;
+
+  const year = latestCommonYear(countMap, popMap);
+  if (!year) return null;
+  const count = Number(countMap[year]);
+  const pop = Number(popMap[year]);
+  if (!Number.isFinite(count) || !Number.isFinite(pop) || pop <= 0) return null;
+  return round2((count / pop) * 100_000);
+}
+
+/**
+ * Given a CDE `{ seriesName: { year: value } }` object, return the year-map for
+ * the agency itself — i.e. skip aggregate series like "United States" or the
+ * state. When several non-aggregate series exist we take the first; in practice
+ * an agency payload carries one agency series.
+ */
+function pickSeries(obj: unknown): Record<string, number> | null {
+  if (!obj || typeof obj !== 'object') return null;
+  const entries = Object.entries(obj as Record<string, unknown>);
+  const named = entries.filter(
+    ([name, v]) => !AGGREGATE_SERIES.test(name) && isYearMap(v),
+  );
+  const pick = named[0] ?? entries.find(([, v]) => isYearMap(v));
+  return pick ? (pick[1] as Record<string, number>) : null;
+}
+
+/** Latest-year value from a `{ year: number }` map, or null. */
+function latestValue(map: Record<string, number> | null): number | null {
+  if (!map) return null;
+  for (const year of yearsDesc(map)) {
+    const v = Number(map[year]);
+    if (Number.isFinite(v) && v > 0) return round2(v);
+  }
+  return null;
+}
+
+/** The most recent year present in both maps, or null. */
+function latestCommonYear(
+  a: Record<string, number>,
+  b: Record<string, number>,
+): string | null {
+  const inB = new Set(yearsDesc(b));
+  for (const year of yearsDesc(a)) {
+    if (inB.has(year)) return year;
+  }
+  return null;
+}
+
+function yearsDesc(map: Record<string, unknown>): string[] {
+  return Object.keys(map)
     .filter((k) => /^\d{4}$/.test(k))
     .sort()
     .reverse();
-  for (const year of years) {
-    const v = Number(map[year]);
-    if (Number.isFinite(v) && v > 0) return v;
-  }
-  return null;
 }
 
 /** True if an object looks like { "2021": 123.4, ... } (year -> number). */
@@ -131,20 +309,20 @@ function isYearMap(obj: unknown): obj is Record<string, number> {
   );
 }
 
-/** Depth-first search for a year-map stored under a key matching `offense`. */
-function findYearMap(
-  node: unknown,
-  offense: string,
-): Record<string, number> | null {
-  if (!node || typeof node !== 'object') return null;
-  const wanted = offense.toLowerCase();
-  for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
-    if (key.toLowerCase() === wanted && isYearMap(value)) return value;
-    const nested = findYearMap(value, offense);
-    if (nested) return nested;
+async function fetchJson(url: URL): Promise<unknown> {
+  try {
+    const res = await fetch(url, {
+      headers: { accept: 'application/json' },
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
   }
-  return null;
 }
+
+// --- Grading ----------------------------------------------------------------
 
 /**
  * Crime grade. `crimeIndex` vs `baseline` as a percentage above the baseline
@@ -184,6 +362,8 @@ export function isMultiFamily(propertyType: string | null): boolean {
   );
 }
 
+// --- helpers ----------------------------------------------------------------
+
 function fromYear(): number {
   return new Date().getFullYear() - YEARS_BACK;
 }
@@ -192,32 +372,40 @@ function toYear(): number {
   return new Date().getFullYear() - 1;
 }
 
-function readCache(zipCode: string): CrimeResult | null {
+function median(sortedAsc: number[]): number {
+  const n = sortedAsc.length;
+  const mid = Math.floor(n / 2);
+  const hi = sortedAsc[mid] ?? 0;
+  const m = n % 2 === 0 ? ((sortedAsc[mid - 1] ?? hi) + hi) / 2 : hi;
+  return round2(m);
+}
+
+function readCache(city: string): CityRate | null {
   const row = getDb()
     .prepare(
-      `SELECT crime_index, county_median FROM crime_cache
-       WHERE zip_code = ? AND fetched_at > datetime('now', ?)`,
+      `SELECT ori, crime_index FROM crime_cache
+       WHERE city = ? AND fetched_at > datetime('now', ?)`,
     )
-    .get(zipCode, `-${CACHE_TTL_DAYS} days`) as
-    | { crime_index: number | null; county_median: number | null }
+    .get(city, `-${CACHE_TTL_DAYS} days`) as
+    | { ori: string | null; crime_index: number | null }
     | undefined;
-  if (row && row.crime_index != null && row.county_median != null) {
-    return { crimeIndex: row.crime_index, baseline: row.county_median };
+  if (row && row.crime_index != null && row.ori) {
+    return { ori: row.ori, rate: row.crime_index };
   }
   return null;
 }
 
-function writeCache(zipCode: string, stateRate: number, national: number): void {
+function writeCache(city: string, result: CityRate): void {
   getDb()
     .prepare(
-      `INSERT INTO crime_cache (zip_code, crime_index, county_median, fetched_at)
+      `INSERT INTO crime_cache (city, ori, crime_index, fetched_at)
        VALUES (?, ?, ?, datetime('now'))
-       ON CONFLICT (zip_code) DO UPDATE SET
+       ON CONFLICT (city) DO UPDATE SET
+         ori = excluded.ori,
          crime_index = excluded.crime_index,
-         county_median = excluded.county_median,
          fetched_at = datetime('now')`,
     )
-    .run(zipCode, stateRate, national);
+    .run(city, result.ori, result.rate);
 }
 
 function round2(n: number): number {

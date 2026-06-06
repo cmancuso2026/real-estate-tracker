@@ -74,8 +74,9 @@ export const config = {
    * FBI Crime Data API key (api.data.gov). No registration is required — the
    * shared "DEMO_KEY" works out of the box but is heavily rate-limited, so a
    * free personal key from https://api.data.gov/signup/ is recommended for
-   * batch grading. The crime component grades a state's crime rate against the
-   * national rate; both come from the FBI, so no manual baseline is needed.
+   * batch grading. The crime component maps each zip to its Miami-Dade city,
+   * grades that city's police-agency crime rate against the median of the
+   * tracked cities, and computes that median automatically — no manual baseline.
    */
   get fbiApiKey(): string {
     return optional('FBI_API_KEY', 'DEMO_KEY');

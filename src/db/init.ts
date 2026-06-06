@@ -9,6 +9,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 export function initDb(): void {
   const db = getDb();
   migrateLegacyGrades(db);
+  migrateLegacyCrimeCache(db);
   const schema = readFileSync(join(here, 'schema.sql'), 'utf8');
   db.exec(schema);
 }
@@ -24,6 +25,21 @@ function migrateLegacyGrades(db: ReturnType<typeof getDb>): void {
     .all() as Array<{ name: string }>;
   if (cols.length > 0 && !cols.some((c) => c.name === 'overall_grade')) {
     db.exec('DROP TABLE grades;');
+  }
+}
+
+/**
+ * The crime cache was originally keyed per zip (state-vs-national rates); it's
+ * now keyed per city (FBI agency rate vs the Miami-Dade median). The columns
+ * differ, so drop the legacy table when it still has the old `zip_code` key.
+ * It's a pure cache, so dropping just forces a refetch.
+ */
+function migrateLegacyCrimeCache(db: ReturnType<typeof getDb>): void {
+  const cols = db
+    .prepare(`PRAGMA table_info(crime_cache)`)
+    .all() as Array<{ name: string }>;
+  if (cols.length > 0 && !cols.some((c) => c.name === 'city')) {
+    db.exec('DROP TABLE crime_cache;');
   }
 }
 
