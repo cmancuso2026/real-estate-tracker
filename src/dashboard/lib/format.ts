@@ -1,12 +1,16 @@
 export type Letter = 'A' | 'B' | 'C' | 'D' | 'F';
 
-/** Tailwind classes per grade for badges (solid) — light + dark friendly. */
+/**
+ * Tailwind classes per grade for badges. Bright, saturated fills with a subtle
+ * ring so they pop on both the light (gray-50/white) and dark (gray-950)
+ * backgrounds. White text on A/B/D/F, dark text on the yellow C for contrast.
+ */
 export const GRADE_BADGE: Record<Letter, string> = {
-  A: 'bg-green-600 text-white',
-  B: 'bg-blue-600 text-white',
-  C: 'bg-yellow-500 text-black',
-  D: 'bg-orange-600 text-white',
-  F: 'bg-red-600 text-white',
+  A: 'bg-green-500 text-white ring-1 ring-green-600/40',
+  B: 'bg-blue-500 text-white ring-1 ring-blue-600/40',
+  C: 'bg-yellow-400 text-gray-900 ring-1 ring-yellow-500/50',
+  D: 'bg-orange-500 text-white ring-1 ring-orange-600/40',
+  F: 'bg-red-500 text-white ring-1 ring-red-600/40',
 };
 
 /** Hex per grade, for inline SVG / chart strokes. */

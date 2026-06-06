@@ -30,6 +30,12 @@ export default function RootLayout({
             </Link>
             <div className="flex items-center gap-4">
               <Link
+                href="/grade"
+                className="text-sm font-medium text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
+              >
+                Grade a Property
+              </Link>
+              <Link
                 href="/settings"
                 className="text-sm font-medium text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
               >

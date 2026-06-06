@@ -119,6 +119,19 @@ export interface Summary {
   rate: RateInfo | null;
 }
 
+/**
+ * SQL predicate excluding apartments and condominiums (case-insensitive). The
+ * tracker no longer grades these types, but legacy grade rows may still exist,
+ * so the dashboard also filters them out at query time — they never show in
+ * results, comps, or summary counts. Mirrors db/listings.ts:excludeApartmentsCondos.
+ */
+function excludeApartmentsCondos(col: string): string {
+  return (
+    `LOWER(COALESCE(${col}, '')) NOT LIKE '%apartment%' ` +
+    `AND LOWER(COALESCE(${col}, '')) NOT LIKE '%condo%'`
+  );
+}
+
 // --- component weights (mirror src/scoring/grades.ts) ----------------------
 
 const COMPONENTS: Array<{ key: string; gradeCol: string; label: string; weight: number }> = [
@@ -144,6 +157,7 @@ const LATEST_GRADE_JOIN = `
   FROM grades g
   JOIN listings l ON l.id = g.property_id
   WHERE g.id = (SELECT MAX(g2.id) FROM grades g2 WHERE g2.property_id = g.property_id)
+    AND ${excludeApartmentsCondos('l.property_type')}
 `;
 
 // --- helpers ---------------------------------------------------------------
@@ -269,7 +283,11 @@ export function getSummary(profile?: InvestorProfile): Summary {
   if (!db) return empty;
 
   const totalProperties = (
-    db.prepare('SELECT COUNT(*) AS n FROM listings').get() as { n: number }
+    db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM listings WHERE ${excludeApartmentsCondos('property_type')}`,
+      )
+      .get() as { n: number }
   ).n;
 
   const graded = getGradedProperties(profile);
@@ -394,7 +412,8 @@ function priceSqftVsZipMedian(r: any): PriceSqftComparison | null {
       WHERE zip_code = ? AND bedrooms = ?
         ${requireBaths ? 'AND bathrooms = ?' : ''}
         AND price IS NOT NULL AND price > 0
-        AND living_area IS NOT NULL AND living_area > 0`;
+        AND living_area IS NOT NULL AND living_area > 0
+        AND ${excludeApartmentsCondos('property_type')}`;
     const rows = (
       requireBaths
         ? db.prepare(sql).all(r.zip_code, beds, baths)

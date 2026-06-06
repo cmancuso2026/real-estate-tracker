@@ -63,6 +63,20 @@ export function upsertListings(records: ListingRecord[]): UpsertResult {
   return run(records);
 }
 
+/**
+ * SQL predicate that excludes apartments and condominiums (case-insensitive,
+ * matching CONDO/Condo/condominium and APARTMENT/Apartment). We only invest in
+ * SFH / Duplex / Triplex / Quad, so this is applied wherever for-sale inventory
+ * is read — grading and price/sqft comps — so those types never reach a grade
+ * or skew a comp median. `col` is the (optionally table-qualified) column.
+ */
+export function excludeApartmentsCondos(col = 'property_type'): string {
+  return (
+    `LOWER(COALESCE(${col}, '')) NOT LIKE '%apartment%' ` +
+    `AND LOWER(COALESCE(${col}, '')) NOT LIKE '%condo%'`
+  );
+}
+
 export function countListings(): number {
   const row = getDb().prepare('SELECT COUNT(*) AS n FROM listings').get() as {
     n: number;
@@ -100,15 +114,23 @@ export function getListingById(id: number): ListingRow | null {
   return row ?? null;
 }
 
-/** All listings (optionally filtered to a zip) — used for batch grading. */
+/** All listings (optionally filtered to a zip) — used for batch grading.
+ * Apartments and condominiums are excluded so they're never graded. */
 export function getListings(zipCode?: string): ListingRow[] {
   const db = getDb();
   if (zipCode) {
     return db
-      .prepare(`SELECT ${LISTING_COLUMNS} FROM listings WHERE zip_code = ?`)
+      .prepare(
+        `SELECT ${LISTING_COLUMNS} FROM listings
+         WHERE zip_code = ? AND ${excludeApartmentsCondos()}`,
+      )
       .all(zipCode) as ListingRow[];
   }
-  return db.prepare(`SELECT ${LISTING_COLUMNS} FROM listings`).all() as ListingRow[];
+  return db
+    .prepare(
+      `SELECT ${LISTING_COLUMNS} FROM listings WHERE ${excludeApartmentsCondos()}`,
+    )
+    .all() as ListingRow[];
 }
 
 /**
@@ -129,6 +151,7 @@ export function comparablePricePerSqft(
       ${requireBaths ? 'AND bathrooms = ?' : ''}
       AND price IS NOT NULL AND price > 0
       AND living_area IS NOT NULL AND living_area > 0
+      AND ${excludeApartmentsCondos()}
   `;
   const rows = (
     requireBaths

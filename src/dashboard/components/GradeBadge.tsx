@@ -18,7 +18,7 @@ export function GradeBadge({
   const color = GRADE_BADGE[letter] ?? 'bg-gray-400 text-white';
   return (
     <span
-      className={`inline-flex items-center justify-center rounded-full font-bold ${color} ${SIZES[size]}`}
+      className={`inline-flex items-center justify-center rounded-full font-bold shadow-sm ${color} ${SIZES[size]}`}
       title={`Grade ${letter}`}
     >
       {letter}

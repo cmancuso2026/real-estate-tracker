@@ -36,7 +36,7 @@ export const config = {
   },
 
   get rapidApiZillowHost(): string {
-    return optional('RAPIDAPI_ZILLOW_HOST', 'zillow-com1.p.rapidapi.com');
+    return optional('RAPIDAPI_ZILLOW_HOST', 'us-property-market1.p.rapidapi.com');
   },
 
   /** Parsed list of zip codes to track, from TARGET_ZIP_CODES. */
