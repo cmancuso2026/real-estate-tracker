@@ -11,7 +11,11 @@
     "fetch:listings": "tsx src/scripts/fetch-listings.ts",
     "fetch:all": "tsx src/scripts/fetch-all.ts",
     "refresh:rate": "tsx src/scripts/refresh-rate.ts",
-    "grade": "tsx src/scripts/grade-listings.ts"
+    "grade": "tsx src/scripts/grade-listings.ts",
+    "notify:slack": "tsx src/scripts/notify-slack.ts",
+    "notify:email": "tsx src/scripts/notify-email.ts",
+    "test:slack": "tsx src/scripts/test-slack.ts",
+    "test:email": "tsx src/scripts/test-email.ts"
   },
   "engines": {
     "node": ">=20"

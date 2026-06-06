@@ -77,20 +77,18 @@ export async function gradeListing(
 
   // --- Crime (10%) ----------------------------------------------------------
   let crimeIndex: number | null = null;
-  const crime = await getCrimeIndex(
-    listing.zip_code,
-    listing.latitude,
-    listing.longitude,
-  ).catch(() => null); // external failure -> skip, don't abort the grade
+  const crime = await getCrimeIndex(listing.zip_code, listing.state).catch(
+    () => null,
+  ); // external failure -> skip, don't abort the grade
   if (crime) {
     crimeIndex = crime.crimeIndex;
     const pctAbove =
-      ((crime.crimeIndex - crime.countyMedian) / crime.countyMedian) * 100;
+      ((crime.crimeIndex - crime.baseline) / crime.baseline) * 100;
     components.crime = {
       key: 'crime',
-      letter: gradeCrime(crime.crimeIndex, crime.countyMedian, multi),
+      letter: gradeCrime(crime.crimeIndex, crime.baseline, multi),
       value: round2(pctAbove),
-      detail: `index ${crime.crimeIndex} vs ${crime.countyMedian} county median`,
+      detail: `state rate ${crime.crimeIndex}/100k vs ${crime.baseline} national`,
     };
   } else {
     skipped.push('crime');

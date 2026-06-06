@@ -48,3 +48,78 @@ export function countGrades(): number {
   };
   return row.n;
 }
+
+/**
+ * A property's current grade joined with the listing fields the notification
+ * layer needs (address, links, beds/baths, etc.). One row per property — the
+ * most recent grade — so re-grading doesn't produce duplicates.
+ */
+export interface GradedProperty {
+  listing_id: number;
+  source: string;
+  source_id: string;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  zip_code: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  price: number | null;
+  bedrooms: number | null;
+  bathrooms: number | null;
+  living_area: number | null;
+  property_type: string | null;
+  listing_url: string | null;
+  overall_grade: string;
+  overall_score: number;
+  coc_return: number | null;
+  monthly_cashflow: number | null;
+  price_per_sqft: number | null;
+  crime_index: number | null;
+  rental_prevalence: number | null;
+  graded_at: string;
+}
+
+// Latest grade per property (highest grades.id), joined to its listing. The
+// correlated subquery picks the most recent grading run for each property.
+const LATEST_GRADE_JOIN = `
+  SELECT
+    l.id AS listing_id, l.source, l.source_id, l.address, l.city, l.state,
+    l.zip_code, l.latitude, l.longitude, l.price, l.bedrooms, l.bathrooms,
+    l.living_area, l.property_type, l.listing_url,
+    g.overall_grade, g.overall_score, g.coc_return, g.monthly_cashflow,
+    g.price_per_sqft, g.crime_index, g.rental_prevalence, g.graded_at
+  FROM grades g
+  JOIN listings l ON l.id = g.property_id
+  WHERE g.id = (SELECT MAX(g2.id) FROM grades g2 WHERE g2.property_id = g.property_id)
+`;
+
+/**
+ * Properties graded within the last `sinceHours` (default 24), ordered best
+ * grade first. Powers the daily email digest. Filtered on graded_at so only
+ * fresh grading runs are included.
+ */
+export function getRecentGradedProperties(sinceHours = 24): GradedProperty[] {
+  return getDb()
+    .prepare(
+      `${LATEST_GRADE_JOIN}
+         AND g.graded_at > datetime('now', ?)
+       ORDER BY g.overall_score DESC, g.coc_return DESC`,
+    )
+    .all(`-${sinceHours} hours`) as GradedProperty[];
+}
+
+/**
+ * Every property whose current grade is "A", regardless of when it was graded.
+ * Powers Slack alerts — dedup against alerts_sent prevents re-notifying, so we
+ * don't need a time window here.
+ */
+export function getAGradeProperties(): GradedProperty[] {
+  return getDb()
+    .prepare(
+      `${LATEST_GRADE_JOIN}
+         AND g.overall_grade = 'A'
+       ORDER BY g.overall_score DESC, g.coc_return DESC`,
+    )
+    .all() as GradedProperty[];
+}

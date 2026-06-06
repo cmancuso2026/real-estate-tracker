@@ -70,9 +70,15 @@ export const config = {
     return Number.isFinite(n) ? n : null;
   },
 
-  /** SpotCrime API key (optional — crime component is skipped without it). */
-  get spotcrimeApiKey(): string {
-    return optional('SPOTCRIME_API_KEY');
+  /**
+   * FBI Crime Data API key (api.data.gov). No registration is required — the
+   * shared "DEMO_KEY" works out of the box but is heavily rate-limited, so a
+   * free personal key from https://api.data.gov/signup/ is recommended for
+   * batch grading. The crime component grades a state's crime rate against the
+   * national rate; both come from the FBI, so no manual baseline is needed.
+   */
+  get fbiApiKey(): string {
+    return optional('FBI_API_KEY', 'DEMO_KEY');
   },
 
   /** Census API key (optional — ACS allows limited keyless use). */
@@ -80,15 +86,35 @@ export const config = {
     return optional('CENSUS_API_KEY');
   },
 
+  // --- Phase 4: notifications ----------------------------------------------
+
+  /** Incoming Slack webhook URL for A-grade alerts. */
+  get slackWebhookUrl(): string {
+    return required('SLACK_WEBHOOK_URL');
+  },
+
   /**
-   * Miami-Dade county median crime index used as the crime baseline. Computing
-   * the true county median live is impractical, so it's configurable.
+   * SendGrid API key. Keys always start with "SG."; we defensively trim any
+   * leading junk (a stray "- " prefix has shown up from copy/paste) so a
+   * lightly-malformed .env still authenticates.
    */
-  get miamiDadeCrimeMedian(): number | null {
-    const raw = optional('MIAMI_DADE_CRIME_MEDIAN');
-    if (!raw) return null;
-    const n = Number(raw);
-    return Number.isFinite(n) && n > 0 ? n : null;
+  get sendgridApiKey(): string {
+    const raw = required('SENDGRID_API_KEY');
+    const at = raw.indexOf('SG.');
+    return at > 0 ? raw.slice(at) : raw;
+  },
+
+  /** Verified SendGrid sender address (the "from" of the digest). */
+  get sendgridFromEmail(): string {
+    return required('SENDGRID_FROM_EMAIL');
+  },
+
+  /** Digest recipient(s); comma-separated addresses are supported. */
+  get sendgridToEmails(): string[] {
+    return required('SENDGRID_TO_EMAIL')
+      .split(',')
+      .map((e) => e.trim())
+      .filter(Boolean);
   },
 };
 
