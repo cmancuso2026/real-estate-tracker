@@ -1,6 +1,7 @@
 'use client';
 
-import { useFormState, useFormStatus } from 'react-dom';
+import { useActionState } from 'react';
+import { useFormStatus } from 'react-dom';
 import {
   gradeManualAction,
   INITIAL_GRADE_STATE,
@@ -61,7 +62,7 @@ function SubmitButton() {
 }
 
 export function GradeMeForm() {
-  const [state, formAction] = useFormState<GradeFormState, FormData>(
+  const [state, formAction] = useActionState<GradeFormState, FormData>(
     gradeManualAction,
     INITIAL_GRADE_STATE,
   );
