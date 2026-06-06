@@ -10,19 +10,21 @@
  * start tracking it.
  */
 export const ZIP_TO_CITY: Record<string, string> = {
-  '33012': 'Hialeah',
-  '33010': 'Hialeah',
-  '33016': 'Hialeah',
-  '33018': 'Miami Lakes',
-  '33126': 'Miami',
-  '33125': 'Miami',
-  '33135': 'Miami',
-  '33127': 'Miami',
-  '33128': 'Miami',
-  '33142': 'Miami',
-  '33147': 'Miami Gardens',
-  '33150': 'Miami',
+  '33168': 'Miami Gardens',
+  '33161': 'North Miami',
+  '33147': 'Miami',
+  '33154': 'Bal Harbour',
+  '33167': 'Miami Gardens',
 };
+
+/**
+ * Cities to grade against the Miami-Dade median when the FBI has no resolvable
+ * agency (or no data) for them. Small municipalities like Bal Harbour Village
+ * often aren't reported individually in the CDE; rather than skip the crime
+ * component for their zips, we treat them as average (the county median) so the
+ * property still gets a neutral crime grade instead of redistributing weight.
+ */
+export const MEDIAN_FALLBACK_CITIES: Set<string> = new Set(['Bal Harbour']);
 
 /** The municipality for a zip, or null if the zip isn't in our coverage area. */
 export function cityForZip(zipCode: string | null): string | null {

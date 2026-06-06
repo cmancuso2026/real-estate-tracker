@@ -1,6 +1,6 @@
 import { config } from '../config.js';
 import { getDb } from '../db/index.js';
-import { cityForZip, TARGET_CITIES } from './zip-cities.js';
+import { cityForZip, TARGET_CITIES, MEDIAN_FALLBACK_CITIES } from './zip-cities.js';
 import type { Letter } from './types.js';
 
 /**
@@ -71,7 +71,17 @@ export async function getCrimeIndex(
     getCityRate(city),
     getCountyMedian(),
   ]);
-  if (cityRate == null || baseline == null) return null;
+  if (baseline == null) return null; // no comparison baseline -> can't grade crime
+
+  if (cityRate == null) {
+    // Small municipalities (e.g. Bal Harbour Village) often aren't reported
+    // individually by the FBI. For those we grade against the county median
+    // itself — a neutral crime grade — rather than skipping the component.
+    if (MEDIAN_FALLBACK_CITIES.has(city)) {
+      return { city, crimeIndex: baseline, baseline };
+    }
+    return null;
+  }
 
   return { city, crimeIndex: cityRate.rate, baseline };
 }
