@@ -1,0 +1,100 @@
+import 'dotenv/config';
+
+/**
+ * Centralized, validated access to environment configuration.
+ *
+ * Phase 1 only strictly needs RENTCAST_API_KEY and the RapidAPI credentials,
+ * and only when the corresponding integration is actually invoked — so we
+ * read lazily and throw a clear error at the call site rather than crashing
+ * the whole process on import.
+ */
+
+function required(name: string): string {
+  const value = process.env[name];
+  if (!value || value.trim() === '') {
+    throw new Error(
+      `Missing required environment variable "${name}". ` +
+        `Copy .env.example to .env and fill it in.`,
+    );
+  }
+  return value.trim();
+}
+
+function optional(name: string, fallback = ''): string {
+  return (process.env[name] ?? fallback).trim();
+}
+
+export const config = {
+  databasePath: optional('DATABASE_PATH', './data/tracker.db'),
+
+  get rentcastApiKey(): string {
+    return required('RENTCAST_API_KEY');
+  },
+
+  get rapidApiKey(): string {
+    return required('RAPIDAPI_KEY');
+  },
+
+  get rapidApiZillowHost(): string {
+    return optional('RAPIDAPI_ZILLOW_HOST', 'zillow-com1.p.rapidapi.com');
+  },
+
+  /** Parsed list of zip codes to track, from TARGET_ZIP_CODES. */
+  get targetZipCodes(): string[] {
+    return optional('TARGET_ZIP_CODES')
+      .split(',')
+      .map((z) => z.trim())
+      .filter((z) => /^\d{5}$/.test(z));
+  },
+
+  // --- Phase 2: scoring engine ---------------------------------------------
+
+  /** Investment-property rate premium added to the PMMS base rate (annual %). */
+  get investmentRatePremium(): number {
+    return numberFromEnv('INVESTMENT_RATE_PREMIUM', 0.75);
+  },
+
+  /** URL of the Freddie Mac PMMS historical CSV (30-yr FRM source). */
+  get pmmsCsvUrl(): string {
+    return optional(
+      'FREDDIE_MAC_PMMS_CSV_URL',
+      'https://www.freddiemac.com/pmms/docs/PMMS_history.csv',
+    );
+  },
+
+  /** Manual override of the PMMS base rate (annual %), e.g. when offline. */
+  get manualPmmsRate(): number | null {
+    const raw = optional('MANUAL_PMMS_RATE');
+    if (!raw) return null;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  },
+
+  /** SpotCrime API key (optional — crime component is skipped without it). */
+  get spotcrimeApiKey(): string {
+    return optional('SPOTCRIME_API_KEY');
+  },
+
+  /** Census API key (optional — ACS allows limited keyless use). */
+  get censusApiKey(): string {
+    return optional('CENSUS_API_KEY');
+  },
+
+  /**
+   * Miami-Dade county median crime index used as the crime baseline. Computing
+   * the true county median live is impractical, so it's configurable.
+   */
+  get miamiDadeCrimeMedian(): number | null {
+    const raw = optional('MIAMI_DADE_CRIME_MEDIAN');
+    if (!raw) return null;
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  },
+};
+
+function numberFromEnv(name: string, fallback: number): number {
+  const raw = optional(name);
+  if (!raw) return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : fallback;
+}

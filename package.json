@@ -1,0 +1,30 @@
+{
+  "name": "real-estate-tracker",
+  "version": "0.1.0",
+  "description": "Real estate investment tracker — fetches for-sale listings and rental comps, grades properties A-F, and sends alerts.",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "db:init": "tsx src/db/init.ts",
+    "fetch:rentals": "tsx src/scripts/fetch-rentals.ts",
+    "fetch:listings": "tsx src/scripts/fetch-listings.ts",
+    "fetch:all": "tsx src/scripts/fetch-all.ts",
+    "refresh:rate": "tsx src/scripts/refresh-rate.ts",
+    "grade": "tsx src/scripts/grade-listings.ts"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.8.1",
+    "dotenv": "^16.4.7",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.10.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}
