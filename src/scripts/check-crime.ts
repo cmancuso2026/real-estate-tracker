@@ -1,56 +1,44 @@
-import { inspectCrimeCoverage } from '../scoring/crime.js';
-import { ZIP_TO_CITY } from '../scoring/zip-cities.js';
-import { gradeCrime } from '../scoring/crime.js';
+import { inspectCrimeCoverage, gradeCrime } from '../scoring/crime.js';
 import { closeDb } from '../db/index.js';
 
 /**
- * Diagnostic for the city-level FBI crime component. Prints the zip→city map,
- * each tracked city's resolved FBI agency (ORI) and combined crime rate /100k,
- * the auto-computed Miami-Dade median baseline, and how each city would grade
- * (SFH) against that median.
+ * Diagnostic for the Miami-Dade Open Data crime component. For each target zip
+ * it prints the crime index (average Esri crime index of nearby neighborhoods),
+ * how many neighborhoods backed it (0 = fell back to the county median), the
+ * Miami-Dade median baseline, and how the zip would grade (SFH) against it.
  *
  *   npm run crime:check
  *
- * A city showing "(no agency)" has no own police department in the FBI data
- * (e.g. an area policed by the county) — properties there skip the crime
- * component and the city is excluded from the median.
+ * A zip showing "median (no data)" had no neighborhood data within range (e.g.
+ * Bal Harbour, beyond the layer's coverage) — it grades at the county median.
  */
 async function main(): Promise<void> {
-  console.log('Zip → city map:');
-  for (const [zip, city] of Object.entries(ZIP_TO_CITY)) {
-    console.log(`  ${zip}  →  ${city}`);
-  }
-  console.log('');
+  console.log('Fetching Miami-Dade Open Data crime index by neighborhood…\n');
+  const { zips, median } = await inspectCrimeCoverage();
 
-  console.log('Fetching FBI city-level crime data…');
-  const { cities, median } = await inspectCrimeCoverage();
-
-  console.log('');
-  console.log('City             ORI            Rate/100k   vs median   SFH grade');
-  console.log('───────────────────────────────────────────────────────────────');
-  for (const c of cities) {
-    if (c.rate == null || median == null) {
-      console.log(
-        `${pad(c.city, 16)} ${pad(c.ori ?? '(no agency)', 14)} ${pad('—', 11)} ${pad('—', 11)} —`,
-      );
+  console.log('Zip      Crime index   Backed by         vs median    SFH grade');
+  console.log('─────────────────────────────────────────────────────────────────');
+  for (const z of zips) {
+    if (z.crimeIndex == null || median == null) {
+      console.log(`${pad(z.zip, 8)} ${pad('—', 13)} ${pad('—', 17)} ${pad('—', 12)} —`);
       continue;
     }
-    const pctAbove = ((c.rate - median) / median) * 100;
-    const grade = gradeCrime(c.rate, median, false);
+    const pctAbove = ((z.crimeIndex - median) / median) * 100;
+    const grade = gradeCrime(z.crimeIndex, median, false);
+    const backed = z.neighborhoods > 0 ? `${z.neighborhoods} hoods` : 'median (no data)';
     console.log(
-      `${pad(c.city, 16)} ${pad(c.ori ?? '?', 14)} ${pad(c.rate.toFixed(1), 11)} ` +
-        `${pad((pctAbove >= 0 ? '+' : '') + pctAbove.toFixed(1) + '%', 11)} ${grade}`,
+      `${pad(z.zip, 8)} ${pad(z.crimeIndex.toFixed(1), 13)} ${pad(backed, 17)} ` +
+        `${pad((pctAbove >= 0 ? '+' : '') + pctAbove.toFixed(1) + '%', 12)} ${grade}`,
     );
   }
-  console.log('───────────────────────────────────────────────────────────────');
+  console.log('─────────────────────────────────────────────────────────────────');
   console.log(
-    `Miami-Dade median baseline: ${median == null ? 'unavailable' : median.toFixed(1) + ' /100k'}`,
+    `Miami-Dade median baseline: ${median == null ? 'unavailable' : median.toFixed(1)}`,
   );
 
   if (median == null) {
     console.log(
-      '\nNo city data available. The FBI DEMO_KEY is heavily rate-limited — set a\n' +
-        'free FBI_API_KEY (https://api.data.gov/signup/) in .env and retry.',
+      '\nNo crime data available — the Miami-Dade Open Data service was unreachable.',
     );
   }
 }

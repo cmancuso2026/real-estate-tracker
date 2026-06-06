@@ -109,15 +109,28 @@ CREATE INDEX IF NOT EXISTS idx_grades_property ON grades (property_id);
 CREATE INDEX IF NOT EXISTS idx_grades_graded_at ON grades (graded_at);
 
 -- ---------------------------------------------------------------------------
--- crime_cache / census_cache: memoize slow external lookups so grading a batch
--- of listings doesn't re-hit the APIs per property. Crime is cached per city
--- (the FBI publishes by police agency, not by zip — zips are mapped to cities
--- in src/scoring/zip-cities.ts); census stays per zip.
+-- census_cache: memoize slow external lookups so grading a batch of listings
+-- doesn't re-hit the API per property. Crime is now cached per zip in
+-- crime_zip_cache above (Miami-Dade Open Data); census stays per zip.
+-- crime_cache (below) is a legacy table from the prior FBI-agency approach,
+-- kept only so existing databases don't error; it's no longer written.
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS crime_cache (
   city          TEXT PRIMARY KEY,
-  ori           TEXT,                          -- FBI agency ORI for the city
-  crime_index   REAL,                          -- city combined crime rate /100k
+  ori           TEXT,
+  crime_index   REAL,
+  fetched_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Per-zip crime index from Miami-Dade Open Data (opendata.miamidade.gov), the
+-- Esri crime-index-by-neighborhood layer averaged within a radius of each zip's
+-- centroid. baseline = Miami-Dade median index. Refreshed weekly.
+CREATE TABLE IF NOT EXISTS crime_zip_cache (
+  zip_code      TEXT PRIMARY KEY,
+  crime_index   REAL,                          -- avg neighborhood crime index near the zip
+  baseline      REAL,                          -- Miami-Dade median crime index
+  neighborhoods INTEGER,                        -- count backing the index (0 = fell back to median)
+  source        TEXT NOT NULL DEFAULT 'miami_dade_open_data',
   fetched_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

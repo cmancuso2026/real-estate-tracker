@@ -1,332 +1,191 @@
-import { config } from '../config.js';
 import { getDb } from '../db/index.js';
-import { cityForZip, TARGET_CITIES, MEDIAN_FALLBACK_CITIES } from './zip-cities.js';
 import type { Letter } from './types.js';
 
 /**
- * Crime component, sourced from the FBI Crime Data Explorer (CDE) API
- * (https://api.usa.gov/crime/fbi/cde). No key is strictly required — the shared
- * "DEMO_KEY" works out of the box (configurable via FBI_API_KEY for a higher
- * rate limit).
+ * Crime component, sourced from the Miami-Dade Open Data portal
+ * (opendata.miamidade.gov). The portal hosts an Esri crime-index layer by
+ * neighborhood — `crime_by_neighborhood` — where CRMCYTOTC is a total crime
+ * index (100 = US national average; higher = more crime).
  *
- * The FBI publishes crime by law-enforcement agency (a city police department),
- * not by zip code. So rather than grade every property against the whole
- * state's rate, we map each target zip to its Miami-Dade municipality
- * (see zip-cities.ts), resolve that city's police agency (ORI) from the CDE
- * agency list, and use the agency's combined (violent + property) crime rate
- * per 100k people.
+ * The layer is keyed by neighborhood, not zip, so we map it to our target zips
+ * geographically: for each zip we spatially query the neighborhoods within
+ * RADIUS_MILES of the zip's centroid and average their crime index. The
+ * comparison baseline is the Miami-Dade median — the median crime index across
+ * every neighborhood in the layer. A zip with no neighborhoods in range (e.g.
+ * Bal Harbour, out on the barrier island, beyond the layer's coverage) falls
+ * back to the county median, i.e. a neutral crime grade.
  *
- * The comparison baseline is the **median** of those same Miami-Dade cities'
- * rates, recomputed automatically from whatever city data we can fetch — no
- * hand-configured county median. A city below the local median grades well; one
- * above it grades poorly. All numbers come from the same source and the same
- * year basis, so they're directly comparable.
- *
- * Results are cached per city (30-day TTL) in crime_cache and memoized within a
- * process run, so batch grading hits the FBI API at most once per city.
+ * Per-zip results are cached in crime_zip_cache and refreshed weekly
+ * (REFRESH_DAYS) so re-grading doesn't re-hit the service for every property.
  */
 
-const CACHE_TTL_DAYS = 30;
-const CDE_BASE = 'https://api.usa.gov/crime/fbi/cde';
-const STATE_ABBR = 'FL';
+// Miami-Dade Open Data — Esri "crime index by neighborhood" feature layer.
+const CRIME_LAYER_QUERY =
+  'https://services.arcgis.com/aScBVpZOvioggfOZ/arcgis/rest/services/crime_by_neighborhood/FeatureServer/0/query';
+const CRIME_FIELD = 'CRMCYTOTC';
+const REFRESH_DAYS = 7; // weekly refresh
+const RADIUS_MILES = 3; // neighborhoods within this distance of a zip's centroid
 
-/** FBI agency data lags ~1-2 years; request a window and use the latest year. */
-const YEARS_BACK = 5;
-
-/** Series names in CDE payloads that are aggregates, not the agency itself. */
-const AGGREGATE_SERIES = /united states|nationwide|national|florida|state/i;
+/**
+ * Centroids (WGS84 lat/lon) for the target zips. The crime layer covers
+ * central/NE Miami-Dade; zips outside that footprint resolve to no neighbors
+ * and fall back to the county median.
+ */
+const ZIP_CENTROIDS: Record<string, { lat: number; lon: number }> = {
+  '33147': { lat: 25.846, lon: -80.224 }, // West Little River / Brownsville
+  '33161': { lat: 25.893, lon: -80.183 }, // North Miami
+  '33168': { lat: 25.888, lon: -80.207 }, // North Miami / Miami Gardens edge
+  '33154': { lat: 25.888, lon: -80.123 }, // Bal Harbour / Surfside (island)
+  '33167': { lat: 25.88, lon: -80.235 }, // NW Miami-Dade / Miami Gardens edge
+};
 
 export interface CrimeResult {
-  /** The municipality this property's zip maps to. */
+  /** Label for the area graded (the zip code). */
   city: string;
-  /** City combined crime rate per 100k (violent + property). */
+  /** Combined crime index for the zip (avg of nearby neighborhoods, or median). */
   crimeIndex: number;
-  /** Median of the tracked Miami-Dade cities' rates — the comparison baseline. */
+  /** Miami-Dade median crime index — the comparison baseline. */
   baseline: number;
 }
 
-interface CityRate {
-  ori: string;
-  rate: number;
-}
-
-// Per-run memos so grading a batch doesn't refetch the agency list, a city's
-// rate, or the derived county median.
-let agencyListMemo: Promise<AgencyRecord[]> | null = null;
-const cityRateMemo = new Map<string, Promise<CityRate | null>>();
+// Per-run memo so grading a batch computes the county median only once.
 let countyMedianMemo: Promise<number | null> | null = null;
 
 /**
- * Crime result for a zip: the zip's city rate vs the Miami-Dade median. Returns
- * null (so the grader redistributes the crime weight) when the zip isn't in our
- * coverage area, the city has no resolvable agency, or the API is unavailable.
+ * Crime result for a zip: the zip's crime index vs the Miami-Dade median.
+ * Returns null (so the grader redistributes the crime weight) only when the zip
+ * isn't in our coverage map or the service and baseline are both unavailable.
  */
 export async function getCrimeIndex(
   zipCode: string,
 ): Promise<CrimeResult | null> {
-  const city = cityForZip(zipCode);
-  if (!city) return null; // zip outside our Miami-Dade coverage map
+  const zip = (zipCode ?? '').trim();
 
-  const [cityRate, baseline] = await Promise.all([
-    getCityRate(city),
-    getCountyMedian(),
-  ]);
-  if (baseline == null) return null; // no comparison baseline -> can't grade crime
+  const cached = readCache(zip);
+  if (cached) return cached;
 
-  if (cityRate == null) {
-    // Small municipalities (e.g. Bal Harbour Village) often aren't reported
-    // individually by the FBI. For those we grade against the county median
-    // itself — a neutral crime grade — rather than skipping the component.
-    if (MEDIAN_FALLBACK_CITIES.has(city)) {
-      return { city, crimeIndex: baseline, baseline };
-    }
-    return null;
-  }
+  const centroid = ZIP_CENTROIDS[zip];
+  if (!centroid) return null; // outside our coverage map
 
-  return { city, crimeIndex: cityRate.rate, baseline };
+  const baseline = await getCountyMedian();
+  if (baseline == null) return null; // no baseline -> can't grade crime
+
+  const local = await fetchZipIndex(centroid.lat, centroid.lon);
+  // Fall back to the county median when no neighborhood data is in range.
+  const crimeIndex = local?.index ?? baseline;
+
+  const result: CrimeResult = {
+    city: zip,
+    crimeIndex: round2(crimeIndex),
+    baseline: round2(baseline),
+  };
+  writeCache(zip, result, local?.count ?? 0);
+  return result;
 }
 
 /**
- * Diagnostic view of the crime data: every tracked city with its resolved FBI
- * agency (ORI) and rate, plus the derived Miami-Dade median. Used by the
- * `crime:check` script to verify city-level fetching end to end.
+ * Diagnostic view: every target zip with its crime index, the neighborhood
+ * count backing it (0 = fell back to the median), and the county median.
+ * Powers `npm run crime:check`.
  */
 export async function inspectCrimeCoverage(): Promise<{
-  cities: Array<{ city: string; ori: string | null; rate: number | null }>;
+  zips: Array<{
+    zip: string;
+    crimeIndex: number | null;
+    neighborhoods: number;
+    fellBack: boolean;
+  }>;
   median: number | null;
 }> {
-  const cities = await Promise.all(
-    TARGET_CITIES.map(async (city) => {
-      const r = await getCityRate(city);
-      return { city, ori: r?.ori ?? null, rate: r?.rate ?? null };
+  const median = await getCountyMedian();
+  const zips = await Promise.all(
+    Object.entries(ZIP_CENTROIDS).map(async ([zip, c]) => {
+      if (median == null) {
+        return { zip, crimeIndex: null, neighborhoods: 0, fellBack: false };
+      }
+      const local = await fetchZipIndex(c.lat, c.lon);
+      return {
+        zip,
+        crimeIndex: round2(local?.index ?? median),
+        neighborhoods: local?.count ?? 0,
+        fellBack: local == null,
+      };
     }),
   );
-  const med = await getCountyMedian();
-  return { cities, median: med };
+  return { zips, median: median == null ? null : round2(median) };
 }
 
-/** The median crime rate across all tracked cities that returned data. */
+// --- Miami-Dade Open Data fetching -----------------------------------------
+
+/** The Miami-Dade median crime index across every neighborhood in the layer. */
 async function getCountyMedian(): Promise<number | null> {
   if (countyMedianMemo) return countyMedianMemo;
   countyMedianMemo = (async () => {
-    const rates = await Promise.all(TARGET_CITIES.map((c) => getCityRate(c)));
-    const values = rates
-      .filter((r): r is CityRate => r != null)
-      .map((r) => r.rate)
-      .sort((a, b) => a - b);
-    if (values.length === 0) return null;
-    return median(values);
+    const data = await fetchJson({
+      where: `${CRIME_FIELD} > 0`,
+      outFields: CRIME_FIELD,
+      returnGeometry: 'false',
+      f: 'json',
+    });
+    const values = featureValues(data);
+    return values.length ? median(values) : null;
   })();
   return countyMedianMemo;
 }
 
-/** A city's combined crime rate per 100k, from cache or the FBI API. */
-async function getCityRate(city: string): Promise<CityRate | null> {
-  const memoized = cityRateMemo.get(city);
-  if (memoized) return memoized;
-
-  const promise = (async (): Promise<CityRate | null> => {
-    const cached = readCache(city);
-    if (cached) return cached;
-
-    const ori = await resolveOri(city);
-    if (!ori) return null; // no municipal police agency (e.g. unincorporated)
-
-    const rate = await fetchAgencyCrimeRate(ori);
-    if (rate == null) return null;
-
-    const result = { ori, rate };
-    writeCache(city, result);
-    return result;
-  })();
-
-  cityRateMemo.set(city, promise);
-  return promise;
-}
-
-// --- FBI agency resolution --------------------------------------------------
-
-interface AgencyRecord {
-  ori: string;
-  agency_name: string;
-  agency_type_name?: string;
-}
-
-/** Map a city to its police-agency ORI via the CDE state agency list. */
-async function resolveOri(city: string): Promise<string | null> {
-  const agencies = await getAgencies();
-  const target = city.toLowerCase().trim();
-
-  // Prefer an exact municipal match: strip a trailing "Police Department" /
-  // "Department" / "Police" and compare the remainder to the city name. This
-  // keeps "Miami" from matching "Miami Gardens", "Miami Beach", "North Miami",
-  // etc. — each of which is its own agency.
-  for (const a of agencies) {
-    const base = (a.agency_name ?? '')
-      .toLowerCase()
-      .replace(/\s+(police department|department|police)\s*$/, '')
-      .trim();
-    if (base === target) return a.ori;
-  }
-  return null;
-}
-
-/** Fetch (once per run) the list of Florida law-enforcement agencies. */
-async function getAgencies(): Promise<AgencyRecord[]> {
-  if (agencyListMemo) return agencyListMemo;
-  agencyListMemo = (async () => {
-    const url = new URL(`${CDE_BASE}/agency/byStateAbbr/${STATE_ABBR}`);
-    url.searchParams.set('API_KEY', config.fbiApiKey);
-    const data = await fetchJson(url);
-    return collectAgencies(data);
-  })();
-  return agencyListMemo;
-}
-
 /**
- * Pull every agency record out of the payload regardless of envelope. The CDE
- * has returned this list as a bare array, wrapped under `results`/`data`, and
- * grouped into an object keyed by county — so we recurse and collect any object
- * carrying a string `ori`.
+ * Average crime index of the neighborhoods within RADIUS_MILES of a point, plus
+ * the count backing it. Returns null when no neighborhoods are in range.
  */
-function collectAgencies(node: unknown, out: AgencyRecord[] = []): AgencyRecord[] {
-  if (!node || typeof node !== 'object') return out;
-  if (Array.isArray(node)) {
-    for (const item of node) collectAgencies(item, out);
-    return out;
-  }
-  const o = node as Record<string, unknown>;
-  if (typeof o.ori === 'string') {
-    out.push({
-      ori: o.ori,
-      agency_name: String(o.agency_name ?? ''),
-      agency_type_name:
-        typeof o.agency_type_name === 'string' ? o.agency_type_name : undefined,
-    });
-    return out;
-  }
-  for (const value of Object.values(o)) collectAgencies(value, out);
-  return out;
+async function fetchZipIndex(
+  lat: number,
+  lon: number,
+): Promise<{ index: number; count: number } | null> {
+  const data = await fetchJson({
+    where: '1=1',
+    geometry: JSON.stringify({
+      x: lon,
+      y: lat,
+      spatialReference: { wkid: 4326 },
+    }),
+    geometryType: 'esriGeometryPoint',
+    inSR: '4326',
+    distance: String(RADIUS_MILES),
+    units: 'esriSRUnit_StatuteMile',
+    spatialRel: 'esriSpatialRelIntersects',
+    outFields: CRIME_FIELD,
+    returnGeometry: 'false',
+    f: 'json',
+  });
+  const values = featureValues(data);
+  if (values.length === 0) return null;
+  const avg = values.reduce((s, v) => s + v, 0) / values.length;
+  return { index: avg, count: values.length };
 }
 
-// --- FBI agency crime rate --------------------------------------------------
-
-/**
- * Combined (violent + property) crime rate per 100k for an agency, using the
- * latest year the FBI reports. We sum the two offense categories' per-100k
- * rates, computing each from reported counts and population when the payload
- * doesn't already expose a rate. Returns null on any network/parse failure.
- */
-async function fetchAgencyCrimeRate(ori: string): Promise<number | null> {
-  const [violent, property] = await Promise.all([
-    fetchOffenseRate(ori, 'violent-crime'),
-    fetchOffenseRate(ori, 'property-crime'),
-  ]);
-  if (violent == null && property == null) return null;
-  return round2((violent ?? 0) + (property ?? 0));
+/** Pull the CRMCYTOTC values out of an ArcGIS query response. */
+function featureValues(data: unknown): number[] {
+  const features = (data as { features?: Array<{ attributes?: Record<string, unknown> }> })
+    ?.features;
+  if (!Array.isArray(features)) return [];
+  return features
+    .map((f) => Number(f.attributes?.[CRIME_FIELD]))
+    .filter((v) => Number.isFinite(v) && v > 0);
 }
 
-/** Per-100k rate for one offense category for an agency (latest year). */
-async function fetchOffenseRate(
-  ori: string,
-  offense: string,
-): Promise<number | null> {
-  const url = new URL(
-    `${CDE_BASE}/summarized/agency/${ori}/${offense}/${fromYear()}/${toYear()}`,
-  );
-  url.searchParams.set('API_KEY', config.fbiApiKey);
-  const data = await fetchJson(url);
-  if (!data) return null;
-
-  // Prefer a precomputed rate series if the payload exposes one.
-  const rateMap = pickSeries((data as any)?.offenses?.rates);
-  const directRate = latestValue(rateMap);
-  if (directRate != null) return directRate;
-
-  // Otherwise derive rate = reported count / population * 100k for the latest
-  // year both series share.
-  const countMap = pickSeries(
-    (data as any)?.offenses?.actuals ?? (data as any)?.actuals,
-  );
-  const popMap = pickSeries(
-    (data as any)?.populations?.population ??
-      (data as any)?.populations ??
-      (data as any)?.population,
-  );
-  if (!countMap || !popMap) return null;
-
-  const year = latestCommonYear(countMap, popMap);
-  if (!year) return null;
-  const count = Number(countMap[year]);
-  const pop = Number(popMap[year]);
-  if (!Number.isFinite(count) || !Number.isFinite(pop) || pop <= 0) return null;
-  return round2((count / pop) * 100_000);
-}
-
-/**
- * Given a CDE `{ seriesName: { year: value } }` object, return the year-map for
- * the agency itself — i.e. skip aggregate series like "United States" or the
- * state. When several non-aggregate series exist we take the first; in practice
- * an agency payload carries one agency series.
- */
-function pickSeries(obj: unknown): Record<string, number> | null {
-  if (!obj || typeof obj !== 'object') return null;
-  const entries = Object.entries(obj as Record<string, unknown>);
-  const named = entries.filter(
-    ([name, v]) => !AGGREGATE_SERIES.test(name) && isYearMap(v),
-  );
-  const pick = named[0] ?? entries.find(([, v]) => isYearMap(v));
-  return pick ? (pick[1] as Record<string, number>) : null;
-}
-
-/** Latest-year value from a `{ year: number }` map, or null. */
-function latestValue(map: Record<string, number> | null): number | null {
-  if (!map) return null;
-  for (const year of yearsDesc(map)) {
-    const v = Number(map[year]);
-    if (Number.isFinite(v) && v > 0) return round2(v);
-  }
-  return null;
-}
-
-/** The most recent year present in both maps, or null. */
-function latestCommonYear(
-  a: Record<string, number>,
-  b: Record<string, number>,
-): string | null {
-  const inB = new Set(yearsDesc(b));
-  for (const year of yearsDesc(a)) {
-    if (inB.has(year)) return year;
-  }
-  return null;
-}
-
-function yearsDesc(map: Record<string, unknown>): string[] {
-  return Object.keys(map)
-    .filter((k) => /^\d{4}$/.test(k))
-    .sort()
-    .reverse();
-}
-
-/** True if an object looks like { "2021": 123.4, ... } (year -> number). */
-function isYearMap(obj: unknown): obj is Record<string, number> {
-  if (!obj || typeof obj !== 'object') return false;
-  const keys = Object.keys(obj as object);
-  return (
-    keys.length > 0 &&
-    keys.some((k) => /^\d{4}$/.test(k)) &&
-    keys.every((k) => /^\d{4}$/.test(k))
-  );
-}
-
-async function fetchJson(url: URL): Promise<unknown> {
+async function fetchJson(
+  params: Record<string, string>,
+): Promise<unknown | null> {
   try {
+    const url = `${CRIME_LAYER_QUERY}?${new URLSearchParams(params).toString()}`;
     const res = await fetch(url, {
       headers: { accept: 'application/json' },
       signal: AbortSignal.timeout(20_000),
     });
     if (!res.ok) return null;
-    return await res.json();
+    const data = await res.json();
+    if (data && typeof data === 'object' && 'error' in data) return null;
+    return data;
   } catch {
     return null;
   }
@@ -372,50 +231,44 @@ export function isMultiFamily(propertyType: string | null): boolean {
   );
 }
 
-// --- helpers ----------------------------------------------------------------
+// --- cache (crime_zip_cache, weekly TTL) ------------------------------------
 
-function fromYear(): number {
-  return new Date().getFullYear() - YEARS_BACK;
-}
-
-function toYear(): number {
-  return new Date().getFullYear() - 1;
-}
-
-function median(sortedAsc: number[]): number {
-  const n = sortedAsc.length;
-  const mid = Math.floor(n / 2);
-  const hi = sortedAsc[mid] ?? 0;
-  const m = n % 2 === 0 ? ((sortedAsc[mid - 1] ?? hi) + hi) / 2 : hi;
-  return round2(m);
-}
-
-function readCache(city: string): CityRate | null {
+function readCache(zip: string): CrimeResult | null {
   const row = getDb()
     .prepare(
-      `SELECT ori, crime_index FROM crime_cache
-       WHERE city = ? AND fetched_at > datetime('now', ?)`,
+      `SELECT crime_index, baseline FROM crime_zip_cache
+       WHERE zip_code = ? AND fetched_at > datetime('now', ?)`,
     )
-    .get(city, `-${CACHE_TTL_DAYS} days`) as
-    | { ori: string | null; crime_index: number | null }
+    .get(zip, `-${REFRESH_DAYS} days`) as
+    | { crime_index: number | null; baseline: number | null }
     | undefined;
-  if (row && row.crime_index != null && row.ori) {
-    return { ori: row.ori, rate: row.crime_index };
+  if (row && row.crime_index != null && row.baseline != null) {
+    return { city: zip, crimeIndex: row.crime_index, baseline: row.baseline };
   }
   return null;
 }
 
-function writeCache(city: string, result: CityRate): void {
+function writeCache(zip: string, result: CrimeResult, neighborhoods: number): void {
   getDb()
     .prepare(
-      `INSERT INTO crime_cache (city, ori, crime_index, fetched_at)
-       VALUES (?, ?, ?, datetime('now'))
-       ON CONFLICT (city) DO UPDATE SET
-         ori = excluded.ori,
-         crime_index = excluded.crime_index,
-         fetched_at = datetime('now')`,
+      `INSERT INTO crime_zip_cache (zip_code, crime_index, baseline, neighborhoods, source, fetched_at)
+       VALUES (?, ?, ?, ?, 'miami_dade_open_data', datetime('now'))
+       ON CONFLICT (zip_code) DO UPDATE SET
+         crime_index   = excluded.crime_index,
+         baseline      = excluded.baseline,
+         neighborhoods = excluded.neighborhoods,
+         source        = excluded.source,
+         fetched_at    = datetime('now')`,
     )
-    .run(city, result.ori, result.rate);
+    .run(zip, result.crimeIndex, result.baseline, neighborhoods);
+}
+
+// --- helpers ----------------------------------------------------------------
+
+function median(values: number[]): number {
+  const s = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 ? (s[mid] ?? 0) : ((s[mid - 1] ?? 0) + (s[mid] ?? 0)) / 2;
 }
 
 function round2(n: number): number {

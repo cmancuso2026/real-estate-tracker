@@ -44,7 +44,7 @@ export async function gradeListing(
   const components: Partial<Record<ComponentKey, ComponentGrade>> = {};
   const skipped: ComponentKey[] = [];
 
-  // --- Cash-on-cash (35%) and cash flow (25%) — always present here. --------
+  // --- Cash-on-cash (30%) and cash flow (20%) — always present here. --------
   components.coc = {
     key: 'coc',
     letter: gradeCashOnCash(fin.cocReturnPct),
@@ -58,7 +58,7 @@ export async function gradeListing(
     detail: `$${fin.monthlyCashflow}/mo`,
   };
 
-  // --- Price/sqft vs zip median (20%) --------------------------------------
+  // --- Price/sqft vs zip median (15%) --------------------------------------
   const sqftCmp = pricePerSqftVsZipMedian(listing);
   let pricePerSqft: number | null = null;
   if (sqftCmp) {
@@ -75,7 +75,7 @@ export async function gradeListing(
 
   const multi = isMultiFamily(listing.property_type);
 
-  // --- Crime (10%) ----------------------------------------------------------
+  // --- Crime (25%) ----------------------------------------------------------
   let crimeIndex: number | null = null;
   const crime = await getCrimeIndex(listing.zip_code).catch(
     () => null,
@@ -88,7 +88,7 @@ export async function gradeListing(
       key: 'crime',
       letter: gradeCrime(crime.crimeIndex, crime.baseline, multi),
       value: round2(pctAbove),
-      detail: `${crime.city} ${crime.crimeIndex}/100k vs ${crime.baseline} Miami-Dade median`,
+      detail: `zip ${crime.city} crime index ${crime.crimeIndex} vs ${crime.baseline} Miami-Dade median`,
     };
   } else {
     skipped.push('crime');

@@ -1,16 +1,18 @@
 import type { ComponentKey, Letter } from './types.js';
 
 /**
- * Letter <-> point conversions and component weights, per the Phase 2 spec.
+ * Letter <-> point conversions and component weights.
  * Weights sum to 1.0; if a component is missing for a given property, the
  * grader renormalizes over the components that are present.
+ *
+ *   Cash-on-cash 30% · Crime 25% · Cash flow 20% · Price/sqft 15% · Rental 10%
  */
 
 export const WEIGHTS: Record<ComponentKey, number> = {
-  coc: 0.35,
-  cashflow: 0.25,
-  sqft: 0.2,
-  crime: 0.1,
+  coc: 0.3,
+  crime: 0.25,
+  cashflow: 0.2,
+  sqft: 0.15,
   rental: 0.1,
 };
 

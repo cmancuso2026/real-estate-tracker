@@ -105,7 +105,8 @@ const INSURANCE_PCT = 1.5;
 const VACANCY_FACTOR = 0.08;
 const MIN_COMPS = 3;
 
-const WEIGHTS = { coc: 0.35, cashflow: 0.25, sqft: 0.2, crime: 0.1, rental: 0.1 } as const;
+// Cash-on-cash 30% · Crime 25% · Cash flow 20% · Price/sqft 15% · Rental 10%.
+const WEIGHTS = { coc: 0.3, crime: 0.25, cashflow: 0.2, sqft: 0.15, rental: 0.1 } as const;
 const POINTS: Record<Letter, number> = { A: 4, B: 3, C: 2, D: 1, F: 0 };
 
 /** Fallback rate if the tracker has never stored a PMMS snapshot. */
@@ -154,61 +155,55 @@ export function gradeManualProperty(
   const fin = computeFinancials(input, rentEst.monthlyRent, rentEst.comps, rate);
   const isMulti = MULTI_TYPES.includes(input.propertyType);
 
-  const components: ManualComponent[] = [];
+  // Compute every component, then assemble in weight-descending order so the
+  // breakdown reads top-to-bottom by importance (matches the dashboard).
+  const sqftCmp = priceSqftVsZipMedian(db, input); // price/sqft vs zip median
+  const crime = lookupCrime(db, input.zip, isMulti); // reuse stored per-zip signal
+  const rental = lookupRental(db, input.zip); // reuse stored per-zip signal
 
-  // Cash-on-cash (35%) and cash flow (25%) — always present.
-  const cocLetter = gradeCashOnCash(fin.cocReturnPct);
-  components.push({
-    key: 'coc',
-    label: 'Cash-on-cash return',
-    weight: WEIGHTS.coc,
-    grade: cocLetter,
-    detail: `${fmtPct(fin.cocReturnPct)} on ${fmtMoney(fin.assumptions.totalCashInvested)} invested`,
-  });
-
-  const cashflowLetter = gradeCashFlow(fin.monthlyCashflow);
-  components.push({
-    key: 'cashflow',
-    label: 'Monthly cash flow',
-    weight: WEIGHTS.cashflow,
-    grade: cashflowLetter,
-    detail: `${fmtMoney(fin.monthlyCashflow)}/mo`,
-  });
-
-  // Price/sqft vs zip median (20%).
-  const sqftCmp = priceSqftVsZipMedian(db, input);
-  components.push({
-    key: 'sqft',
-    label: 'Price / sqft vs zip median',
-    weight: WEIGHTS.sqft,
-    grade: sqftCmp ? gradePricePerSqft(sqftCmp.deltaPct) : null,
-    detail: sqftCmp
-      ? `${fmtMoney(sqftCmp.pricePerSqft)}/sqft vs ${fmtMoney(sqftCmp.zipMedian)} median (${sqftCmp.comps} comps)`
-      : 'Not enough comparable listings in this zip.',
-  });
-
-  // Crime (10%) and rental prevalence (10%) — reuse stored per-zip signals.
-  const crime = lookupCrime(db, input.zip, isMulti);
-  components.push({
-    key: 'crime',
-    label: 'Crime rate',
-    weight: WEIGHTS.crime,
-    grade: crime?.grade ?? null,
-    detail: crime
-      ? `City crime index ${fmtNum(crime.index)}/100k (grade ${crime.grade})`
-      : 'No crime data for this zip.',
-  });
-
-  const rental = lookupRental(db, input.zip);
-  components.push({
-    key: 'rental',
-    label: 'Rental prevalence',
-    weight: WEIGHTS.rental,
-    grade: rental?.grade ?? null,
-    detail: rental
-      ? `${fmtPct(rental.prevalence, 0)} renter-occupied (grade ${rental.grade})`
-      : 'No census data for this zip.',
-  });
+  const components: ManualComponent[] = [
+    {
+      key: 'coc',
+      label: 'Cash-on-cash return',
+      weight: WEIGHTS.coc,
+      grade: gradeCashOnCash(fin.cocReturnPct),
+      detail: `${fmtPct(fin.cocReturnPct)} on ${fmtMoney(fin.assumptions.totalCashInvested)} invested`,
+    },
+    {
+      key: 'crime',
+      label: 'Crime rate',
+      weight: WEIGHTS.crime,
+      grade: crime?.grade ?? null,
+      detail: crime
+        ? `Crime index ${fmtNum(crime.index)} vs county median (grade ${crime.grade})`
+        : 'No crime data for this zip.',
+    },
+    {
+      key: 'cashflow',
+      label: 'Monthly cash flow',
+      weight: WEIGHTS.cashflow,
+      grade: gradeCashFlow(fin.monthlyCashflow),
+      detail: `${fmtMoney(fin.monthlyCashflow)}/mo`,
+    },
+    {
+      key: 'sqft',
+      label: 'Price / sqft vs zip median',
+      weight: WEIGHTS.sqft,
+      grade: sqftCmp ? gradePricePerSqft(sqftCmp.deltaPct) : null,
+      detail: sqftCmp
+        ? `${fmtMoney(sqftCmp.pricePerSqft)}/sqft vs ${fmtMoney(sqftCmp.zipMedian)} median (${sqftCmp.comps} comps)`
+        : 'Not enough comparable listings in this zip.',
+    },
+    {
+      key: 'rental',
+      label: 'Rental prevalence',
+      weight: WEIGHTS.rental,
+      grade: rental?.grade ?? null,
+      detail: rental
+        ? `${fmtPct(rental.prevalence, 0)} renter-occupied (grade ${rental.grade})`
+        : 'No census data for this zip.',
+    },
+  ];
 
   // Weighted combination, renormalized over present components.
   const present = components.filter((c) => c.grade != null);

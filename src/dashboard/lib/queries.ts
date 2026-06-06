@@ -146,10 +146,10 @@ function investableTypesOnly(col: string): string {
 // --- component weights (mirror src/scoring/grades.ts) ----------------------
 
 const COMPONENTS: Array<{ key: string; gradeCol: string; label: string; weight: number }> = [
-  { key: 'coc', gradeCol: 'coc_grade', label: 'Cash-on-cash return', weight: 0.35 },
-  { key: 'cashflow', gradeCol: 'cashflow_grade', label: 'Monthly cash flow', weight: 0.25 },
-  { key: 'sqft', gradeCol: 'sqft_grade', label: 'Price / sqft vs zip median', weight: 0.2 },
-  { key: 'crime', gradeCol: 'crime_grade', label: 'Crime rate', weight: 0.1 },
+  { key: 'coc', gradeCol: 'coc_grade', label: 'Cash-on-cash return', weight: 0.3 },
+  { key: 'crime', gradeCol: 'crime_grade', label: 'Crime rate', weight: 0.25 },
+  { key: 'cashflow', gradeCol: 'cashflow_grade', label: 'Monthly cash flow', weight: 0.2 },
+  { key: 'sqft', gradeCol: 'sqft_grade', label: 'Price / sqft vs zip median', weight: 0.15 },
   { key: 'rental', gradeCol: 'rental_grade', label: 'Rental prevalence', weight: 0.1 },
 ];
 

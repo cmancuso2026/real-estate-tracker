@@ -338,7 +338,7 @@ function GradeResult({ result }: { result: ManualGradeResult }) {
         <Section title="Neighborhood signals">
           <div className="space-y-1 text-sm">
             <Row
-              label="Crime index (city rate /100k)"
+              label="Crime index (100 = national avg)"
               value={result.crimeIndex != null ? fmtNum(result.crimeIndex) : '—'}
             />
             <Row
