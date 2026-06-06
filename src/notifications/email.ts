@@ -4,6 +4,7 @@ import {
   type GradedProperty,
 } from '../db/grades.js';
 import { recordAlertSent } from '../db/alerts.js';
+import { getInvestorProfile, filterByProfile } from './profile-filter.js';
 import {
   toNotificationItem,
   fmtMoney,
@@ -50,7 +51,12 @@ export async function sendEmailDigest(
   opts: { sinceHours?: number; dryRun?: boolean } = {},
 ): Promise<EmailSendSummary> {
   const sinceHours = opts.sinceHours ?? 24;
-  const properties = getRecentGradedProperties(sinceHours);
+  // Apply the same investor-profile filters the dashboard uses, across all
+  // grades — the digest never includes a property hidden on the dashboard.
+  const properties = filterByProfile(
+    getRecentGradedProperties(sinceHours),
+    getInvestorProfile(),
+  );
   const items = properties.map(toNotificationItem);
 
   const date = todayLabel();

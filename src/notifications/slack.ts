@@ -1,6 +1,7 @@
 import { config } from '../config.js';
 import { getAGradeProperties } from '../db/grades.js';
 import { hasAlertBeenSent, recordAlertSent } from '../db/alerts.js';
+import { getInvestorProfile, filterByProfile } from './profile-filter.js';
 import {
   toNotificationItem,
   fmtMoney,
@@ -37,7 +38,9 @@ export interface SlackSendSummary {
 export async function sendSlackAlerts(
   opts: { dryRun?: boolean } = {},
 ): Promise<SlackSendSummary> {
-  const properties = getAGradeProperties();
+  // Only alert on A-grade properties that also match the investor profile —
+  // never alert on something that would be filtered out on the dashboard.
+  const properties = filterByProfile(getAGradeProperties(), getInvestorProfile());
   const summary: SlackSendSummary = {
     candidates: properties.length,
     sent: 0,
