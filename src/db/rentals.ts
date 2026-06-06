@@ -63,6 +63,18 @@ export function countRentals(): number {
 }
 
 /**
+ * The most recent `last_seen_at` for any rental comp in a zip — i.e. when the
+ * zip's comps were last refreshed from Rentcast — as a UTC datetime string, or
+ * null if the zip has none yet. Used to throttle Rentcast to a weekly cadence.
+ */
+export function rentalsLastRefreshedAt(zipCode: string): string | null {
+  const row = getDb()
+    .prepare('SELECT MAX(last_seen_at) AS ts FROM rentals WHERE zip_code = ?')
+    .get(zipCode) as { ts: string | null } | undefined;
+  return row?.ts ?? null;
+}
+
+/**
  * Monthly rents of comparable rental comps in a zip with the same bedroom
  * count (whole-property rent, as stored). `propertyType` narrows further when
  * provided. Returns rents only where a positive value exists.

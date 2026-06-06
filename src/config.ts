@@ -47,6 +47,17 @@ export const config = {
       .filter((z) => /^\d{5}$/.test(z));
   },
 
+  /**
+   * How often (in days) to refresh Rentcast rental comps per zip. Zillow
+   * listings refresh on every fetch:all run (new listings appear daily), but
+   * Rentcast comps change slowly and the API quota is limited, so the combined
+   * pass only re-fetches a zip's comps once this many days have passed since it
+   * was last refreshed. Default 7 (weekly).
+   */
+  get rentalRefreshDays(): number {
+    return numberFromEnv('RENTAL_REFRESH_DAYS', 7);
+  },
+
   // --- Phase 2: scoring engine ---------------------------------------------
 
   /** Investment-property rate premium added to the PMMS base rate (annual %). */
