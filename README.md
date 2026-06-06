@@ -67,7 +67,7 @@ src/
   email/        Gmail parser              (Phase 4)
   notifications/Slack + email digest      (Phase 5)
   scheduler/    Daily cron jobs           (Phase 6)
-  dashboard/    Next.js web app           (Phase 7)
+  dashboard/    Next.js web app           (Phase 5)
 ```
 
 ## Setup
@@ -143,6 +143,39 @@ npm run typecheck
 ```
 
 A typical flow: `npm run refresh:rate` → `npm run fetch:all` → `npm run grade`.
+
+## Phase 5 — web dashboard (`src/dashboard`)
+
+A self-contained **Next.js + Tailwind** app that reads the SQLite database
+directly (read-only) and serves a dashboard at <http://localhost:3000>:
+
+- **Main page** — summary cards (properties tracked, grade distribution, average
+  CoC, best opportunity, the Freddie Mac rate in use) above a sortable,
+  filterable table of every graded property (filter by zip, type, beds, price
+  range, grade; sort any column). Color-coded grade badges (A=green, B=blue,
+  C=yellow, D=orange, F=red).
+- **Property detail** (`/property/[id]`) — full component-by-component scoring
+  breakdown, a step-by-step cash-on-cash calculation, a rent-vs-carrying-cost
+  table, price/sqft vs the zip median, crime/rental signals, Zillow/Realtor
+  links, and a grade-history chart when a property has been graded more than once.
+- **Dark mode** (toggle in the header, persisted) and mobile-responsive layout.
+- **No auth** — intended for local use only.
+
+```bash
+# One-time: install the dashboard's own dependencies
+npm run dashboard:install
+
+# Optional: load sample data so the dashboard has something to show
+npm run seed:demo            # insert demo listings + grades + a rate
+npm run seed:demo -- --clear # remove the demo data
+
+# Run the dashboard (http://localhost:3000)
+npm run dashboard:dev        # dev server with hot reload
+npm run dashboard:build      # production build
+```
+
+The dashboard finds `data/tracker.db` by walking up from its working directory;
+set `TRACKER_DB_PATH` to point it elsewhere.
 
 Each run is idempotent: records are deduplicated on `(source, source_id)`, so
 re-running updates existing rows (price, status, days-on-market, …) and bumps
