@@ -9,6 +9,7 @@ import { PROFILE_PROPERTY_TYPES } from './format';
  * the investor_profile table.
  */
 export interface InvestorProfile {
+  minPurchasePrice: number | null;
   maxPurchasePrice: number | null;
   availableCash: number | null;
   propertyTypes: ProfilePropertyType[];
@@ -17,6 +18,7 @@ export interface InvestorProfile {
 }
 
 export const EMPTY_PROFILE: InvestorProfile = {
+  minPurchasePrice: null,
   maxPurchasePrice: null,
   availableCash: null,
   propertyTypes: [],
@@ -27,6 +29,7 @@ export const EMPTY_PROFILE: InvestorProfile = {
 /** True if any constraint is set (so the dashboard is actively filtering). */
 export function isProfileActive(p: InvestorProfile): boolean {
   return (
+    p.minPurchasePrice != null ||
     p.maxPurchasePrice != null ||
     p.availableCash != null ||
     p.propertyTypes.length > 0 ||
@@ -36,6 +39,7 @@ export function isProfileActive(p: InvestorProfile): boolean {
 }
 
 interface ProfileRow {
+  min_purchase_price: number | null;
   max_purchase_price: number | null;
   available_cash: number | null;
   property_types: string | null;
@@ -52,17 +56,19 @@ export function getProfile(): InvestorProfile {
   try {
     row = db
       .prepare(
-        `SELECT max_purchase_price, available_cash, property_types, min_beds, min_coc_return
+        `SELECT min_purchase_price, max_purchase_price, available_cash, property_types, min_beds, min_coc_return
          FROM investor_profile WHERE id = 1`,
       )
       .get() as ProfileRow | undefined;
   } catch {
-    // Table may not exist yet (never saved, pre-feature database). Treat as empty.
+    // Table/column may not exist yet (never saved, pre-feature database).
+    // Treat as empty; saving once migrates the schema via getWritableDb.
     return EMPTY_PROFILE;
   }
   if (!row) return EMPTY_PROFILE;
 
   return {
+    minPurchasePrice: row.min_purchase_price,
     maxPurchasePrice: row.max_purchase_price,
     availableCash: row.available_cash,
     propertyTypes: parseTypes(row.property_types),
@@ -79,9 +85,10 @@ export function saveProfile(p: InvestorProfile): void {
   }
   db.prepare(
     `INSERT INTO investor_profile
-       (id, max_purchase_price, available_cash, property_types, min_beds, min_coc_return, updated_at)
-     VALUES (1, ?, ?, ?, ?, ?, datetime('now'))
+       (id, min_purchase_price, max_purchase_price, available_cash, property_types, min_beds, min_coc_return, updated_at)
+     VALUES (1, ?, ?, ?, ?, ?, ?, datetime('now'))
      ON CONFLICT (id) DO UPDATE SET
+       min_purchase_price = excluded.min_purchase_price,
        max_purchase_price = excluded.max_purchase_price,
        available_cash     = excluded.available_cash,
        property_types     = excluded.property_types,
@@ -89,6 +96,7 @@ export function saveProfile(p: InvestorProfile): void {
        min_coc_return     = excluded.min_coc_return,
        updated_at         = datetime('now')`,
   ).run(
+    p.minPurchasePrice,
     p.maxPurchasePrice,
     p.availableCash,
     JSON.stringify(p.propertyTypes),

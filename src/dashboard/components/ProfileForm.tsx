@@ -52,6 +52,24 @@ export function ProfileForm({ profile }: { profile: InvestorProfile }) {
   return (
     <form action={saveProfileAction} className="max-w-xl space-y-6">
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+        <Field label="Min purchase price" hint="Floor on list price. Blank = no floor.">
+          <div className="relative">
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">
+              $
+            </span>
+            <input
+              name="min_purchase_price"
+              type="number"
+              min={0}
+              step={1000}
+              inputMode="numeric"
+              placeholder="e.g. 150000"
+              defaultValue={profile.minPurchasePrice ?? ''}
+              className={`${INPUT} pl-7`}
+            />
+          </div>
+        </Field>
+
         <Field label="Max purchase price" hint="Cap on list price. Blank = no cap.">
           <div className="relative">
             <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">

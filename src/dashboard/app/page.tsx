@@ -11,6 +11,7 @@ export const dynamic = 'force-dynamic';
 /** Short human-readable chips describing the active profile constraints. */
 function profileChips(p: InvestorProfile): string[] {
   const chips: string[] = [];
+  if (p.minPurchasePrice != null) chips.push(`≥ ${fmtMoney(p.minPurchasePrice)}`);
   if (p.maxPurchasePrice != null) chips.push(`≤ ${fmtMoney(p.maxPurchasePrice)}`);
   if (p.availableCash != null) chips.push(`cash ${fmtMoney(p.availableCash)}`);
   if (p.minBeds != null) chips.push(`${p.minBeds}+ beds`);

@@ -240,6 +240,9 @@ function resolveLinks(source: string, url: string | null): {
 export function filterByProfile(rows: GradedRow[], p: InvestorProfile): GradedRow[] {
   if (!isProfileActive(p)) return rows;
   return rows.filter((r) => {
+    if (p.minPurchasePrice != null && r.price != null && r.price < p.minPurchasePrice) {
+      return false;
+    }
     if (p.maxPurchasePrice != null && r.price != null && r.price > p.maxPurchasePrice) {
       return false;
     }

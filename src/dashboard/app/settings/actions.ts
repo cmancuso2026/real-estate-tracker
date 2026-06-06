@@ -23,6 +23,7 @@ export async function saveProfileAction(formData: FormData): Promise<void> {
     .filter((t): t is ProfilePropertyType => allowed.has(t));
 
   const profile: InvestorProfile = {
+    minPurchasePrice: num(formData.get('min_purchase_price')),
     maxPurchasePrice: num(formData.get('max_purchase_price')),
     availableCash: num(formData.get('available_cash')),
     propertyTypes,

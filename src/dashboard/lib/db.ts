@@ -68,6 +68,7 @@ export function getWritableDb(): Database.Database | null {
   writable.exec(`
     CREATE TABLE IF NOT EXISTS investor_profile (
       id                  INTEGER PRIMARY KEY CHECK (id = 1),
+      min_purchase_price  REAL,
       max_purchase_price  REAL,
       available_cash      REAL,
       property_types      TEXT,
@@ -76,5 +77,14 @@ export function getWritableDb(): Database.Database | null {
       updated_at          TEXT NOT NULL DEFAULT (datetime('now'))
     );
   `);
+
+  // Migration: add min_purchase_price to profiles created before this column.
+  const cols = writable
+    .prepare('PRAGMA table_info(investor_profile)')
+    .all() as Array<{ name: string }>;
+  if (!cols.some((c) => c.name === 'min_purchase_price')) {
+    writable.exec('ALTER TABLE investor_profile ADD COLUMN min_purchase_price REAL');
+  }
+
   return writable;
 }

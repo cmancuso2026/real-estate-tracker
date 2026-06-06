@@ -148,6 +148,7 @@ CREATE TABLE IF NOT EXISTS alerts_sent (
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS investor_profile (
   id                  INTEGER PRIMARY KEY CHECK (id = 1),
+  min_purchase_price  REAL,                       -- floor on list price
   max_purchase_price  REAL,                       -- cap on list price
   available_cash      REAL,                       -- cash for down payment + closing
   property_types      TEXT,                       -- JSON: ["SFH","Duplex","Triplex","Quad"]
