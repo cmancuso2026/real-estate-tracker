@@ -14,6 +14,7 @@ import { dirname, resolve } from 'node:path';
 
 let db: Database.Database | null = null;
 let resolved = false;
+let writable: Database.Database | null = null;
 
 function locateDb(): string | null {
   const override = process.env.TRACKER_DB_PATH;
@@ -45,4 +46,35 @@ export function getDb(): Database.Database | null {
   db = new Database(path, { readonly: true, fileMustExist: true });
   db.pragma('journal_mode = WAL');
   return db;
+}
+
+/**
+ * A read-write connection, used only for the investor-profile settings the
+ * dashboard owns. The dashboard is otherwise read-only; this is a separate
+ * connection so the rest of the app can't accidentally mutate the tracker.
+ *
+ * Ensures the investor_profile table exists so the dashboard works even on a
+ * database created before this feature (without re-running `npm run db:init`).
+ * Returns null when the database file doesn't exist yet.
+ */
+export function getWritableDb(): Database.Database | null {
+  if (writable) return writable;
+
+  const path = locateDb();
+  if (!path) return null;
+
+  writable = new Database(path); // read-write
+  writable.pragma('journal_mode = WAL');
+  writable.exec(`
+    CREATE TABLE IF NOT EXISTS investor_profile (
+      id                  INTEGER PRIMARY KEY CHECK (id = 1),
+      max_purchase_price  REAL,
+      available_cash      REAL,
+      property_types      TEXT,
+      min_beds            INTEGER,
+      min_coc_return      REAL,
+      updated_at          TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+  `);
+  return writable;
 }

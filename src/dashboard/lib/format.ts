@@ -80,6 +80,50 @@ export function propertyTypeLabel(propertyType: string | null): string {
   return 'SFH';
 }
 
+/** The property types an investor can target in their profile. */
+export const PROFILE_PROPERTY_TYPES = ['SFH', 'Duplex', 'Triplex', 'Quad'] as const;
+export type ProfilePropertyType = (typeof PROFILE_PROPERTY_TYPES)[number];
+
+/**
+ * Classify a raw listing property-type string into a profile category. Unit
+ * counts are detected when present (triplex/quad/duplex); a generic
+ * "multi-family" with no count is reported as 'Multi' (it could be any of
+ * Duplex/Triplex/Quad). Unknown/blank defaults to 'SFH', matching
+ * propertyTypeLabel.
+ */
+export function canonicalPropertyType(
+  propertyType: string | null,
+): ProfilePropertyType | 'Multi' {
+  if (!propertyType) return 'SFH';
+  const t = propertyType.toLowerCase();
+  if (/quad|four.?plex|four.?family|4.?unit/.test(t)) return 'Quad';
+  if (/triplex|three.?family|3.?unit/.test(t)) return 'Triplex';
+  if (/duplex|two.?family|2.?unit/.test(t)) return 'Duplex';
+  if (/multi/.test(t)) return 'Multi';
+  return 'SFH';
+}
+
+/**
+ * Does a listing's type satisfy the investor's selected target types? An empty
+ * selection means "any type". A generic multi-family listing (unit count
+ * unknown) matches when the investor targets any multi-family type.
+ */
+export function matchesProfileTypes(
+  propertyType: string | null,
+  selected: readonly string[],
+): boolean {
+  if (!selected || selected.length === 0) return true;
+  const cat = canonicalPropertyType(propertyType);
+  if (selected.includes(cat)) return true;
+  if (
+    cat === 'Multi' &&
+    selected.some((s) => s === 'Duplex' || s === 'Triplex' || s === 'Quad')
+  ) {
+    return true;
+  }
+  return false;
+}
+
 /** YYYY-MM-DD (or full datetime) -> "Jun 5, 2026". */
 export function fmtDate(s: string | null | undefined): string {
   if (!s) return '—';

@@ -28,7 +28,15 @@ export default function RootLayout({
               <span>🏠</span>
               <span>Real Estate Tracker</span>
             </Link>
-            <ThemeToggle />
+            <div className="flex items-center gap-4">
+              <Link
+                href="/settings"
+                className="text-sm font-medium text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
+              >
+                Investor Profile
+              </Link>
+              <ThemeToggle />
+            </div>
           </div>
         </header>
         <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6">{children}</main>

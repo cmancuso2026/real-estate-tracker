@@ -20,7 +20,13 @@ function Card({
 }
 
 /** Top-of-page summary: totals, grade distribution, avg CoC, best deal, rate. */
-export function SummaryCards({ summary }: { summary: Summary }) {
+export function SummaryCards({
+  summary,
+  profileActive = false,
+}: {
+  summary: Summary;
+  profileActive?: boolean;
+}) {
   const { gradeCounts, best } = summary;
   const maxCount = Math.max(1, ...GRADE_ORDER.map((g) => gradeCounts[g]));
 
@@ -31,7 +37,7 @@ export function SummaryCards({ summary }: { summary: Summary }) {
         <div className="text-sm text-gray-500 dark:text-gray-400">Properties tracked</div>
         <div className="mt-1 text-3xl font-bold tabular">{summary.totalProperties}</div>
         <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-          {summary.totalGraded} graded
+          {summary.totalGraded} graded{profileActive ? ' match your profile' : ''}
         </div>
       </Card>
 

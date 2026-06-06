@@ -1,5 +1,8 @@
 import { getDb } from './db';
 import type { Letter } from './format';
+import { matchesProfileTypes } from './format';
+import type { InvestorProfile } from './profile';
+import { isProfileActive } from './profile';
 
 /**
  * All read queries for the dashboard. These mirror the shapes used by the
@@ -24,6 +27,8 @@ export interface GradedRow {
   price: number | null;
   price_per_sqft: number | null;
   est_rent: number | null;
+  /** Cash needed to close (down payment + closing) — for the available-cash filter. */
+  cash_required: number | null;
   coc_return: number | null;
   monthly_cashflow: number | null;
   overall_grade: Letter;
@@ -180,6 +185,7 @@ function toGradedRow(r: any): GradedRow {
     price: r.price,
     price_per_sqft: r.price_per_sqft,
     est_rent: assumptions?.monthlyRent ?? null,
+    cash_required: assumptions?.totalCashInvested ?? null,
     coc_return: r.coc_return,
     monthly_cashflow: r.monthly_cashflow,
     overall_grade: r.overall_grade as Letter,
@@ -199,20 +205,58 @@ function resolveLinks(source: string, url: string | null): {
   return { zillowUrl: null, realtorUrl: null };
 }
 
+// --- profile filtering -----------------------------------------------------
+
+/**
+ * Keep only the rows that satisfy the investor profile. Unknown values are
+ * treated leniently — a missing price or cash figure doesn't exclude a row, we
+ * only drop rows that are *known* to violate a constraint.
+ */
+export function filterByProfile(rows: GradedRow[], p: InvestorProfile): GradedRow[] {
+  if (!isProfileActive(p)) return rows;
+  return rows.filter((r) => {
+    if (p.maxPurchasePrice != null && r.price != null && r.price > p.maxPurchasePrice) {
+      return false;
+    }
+    if (p.availableCash != null && r.cash_required != null && r.cash_required > p.availableCash) {
+      return false;
+    }
+    if (p.minBeds != null && (r.bedrooms ?? 0) < p.minBeds) return false;
+    if (
+      p.minCocReturn != null &&
+      (r.coc_return == null || r.coc_return < p.minCocReturn)
+    ) {
+      return false;
+    }
+    if (p.propertyTypes.length > 0 && !matchesProfileTypes(r.property_type, p.propertyTypes)) {
+      return false;
+    }
+    return true;
+  });
+}
+
 // --- public queries --------------------------------------------------------
 
-/** Every property at its latest grade, best first. Powers the main table. */
-export function getGradedProperties(): GradedRow[] {
+/**
+ * Every property at its latest grade, best first. Powers the main table. When a
+ * profile is supplied, results are filtered to the investor's buy-box.
+ */
+export function getGradedProperties(profile?: InvestorProfile): GradedRow[] {
   const db = getDb();
   if (!db) return [];
   const rows = db
     .prepare(`${LATEST_GRADE_JOIN} ORDER BY g.overall_score DESC, g.coc_return DESC`)
     .all();
-  return rows.map(toGradedRow);
+  const mapped = rows.map(toGradedRow);
+  return profile ? filterByProfile(mapped, profile) : mapped;
 }
 
-/** Top-of-page summary metrics. */
-export function getSummary(): Summary {
+/**
+ * Top-of-page summary metrics. When a profile is supplied, the grade
+ * distribution, average CoC and best opportunity reflect only the matching
+ * properties; totalProperties remains the full count of tracked listings.
+ */
+export function getSummary(profile?: InvestorProfile): Summary {
   const db = getDb();
   const empty: Summary = {
     totalProperties: 0,
@@ -228,7 +272,7 @@ export function getSummary(): Summary {
     db.prepare('SELECT COUNT(*) AS n FROM listings').get() as { n: number }
   ).n;
 
-  const graded = getGradedProperties();
+  const graded = getGradedProperties(profile);
   const gradeCounts: Record<Letter, number> = { A: 0, B: 0, C: 0, D: 0, F: 0 };
   let cocSum = 0;
   let cocCount = 0;

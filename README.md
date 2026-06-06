@@ -169,6 +169,12 @@ directly (read-only) and serves a dashboard at <http://localhost:3000>:
   breakdown, a step-by-step cash-on-cash calculation, a rent-vs-carrying-cost
   table, price/sqft vs the zip median, crime/rental signals, Zillow/Realtor
   links, and a grade-history chart when a property has been graded more than once.
+- **Investor Profile** (`/settings`) — a saved buy-box: max purchase price,
+  available cash (down payment + closing), target property types
+  (SFH/Duplex/Triplex/Quad), minimum beds, and minimum cash-on-cash return.
+  Saved to the database (single `investor_profile` row); the dashboard filters
+  all listings and grades against it before displaying results, with a banner
+  summarizing the active constraints.
 - **Dark mode** (toggle in the header, persisted) and mobile-responsive layout.
 - **No auth** — intended for local use only.
 
@@ -211,6 +217,7 @@ sqlite> SELECT zip_code, COUNT(*), AVG(rent) FROM rentals GROUP BY zip_code;
 | `crime_cache`    | Per-zip crime index cache (30-day TTL)                   |
 | `census_cache`   | Per-zip renter-occupancy cache (90-day TTL)              |
 | `alerts_sent`    | Sent-notification log for de-duping alerts *(Phase 5)*   |
+| `investor_profile` | Saved dashboard buy-box: budget, target types, thresholds |
 
 The `grades` table stores, per run: `property_id`, `overall_grade`,
 `overall_score`, each component grade (`coc_grade`, `cashflow_grade`,

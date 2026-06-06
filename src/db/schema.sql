@@ -139,3 +139,19 @@ CREATE TABLE IF NOT EXISTS alerts_sent (
   sent_at         TEXT    NOT NULL DEFAULT (datetime('now')),
   UNIQUE (listing_id, channel, alert_type)
 );
+
+-- ---------------------------------------------------------------------------
+-- investor_profile: a single saved buy-box (one row, id = 1) that the dashboard
+-- uses to filter listings/grades down to deals that fit the investor's budget
+-- and targets. NULL columns mean "no constraint"; an empty property_types list
+-- means "any type". Written by the dashboard's settings page.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS investor_profile (
+  id                  INTEGER PRIMARY KEY CHECK (id = 1),
+  max_purchase_price  REAL,                       -- cap on list price
+  available_cash      REAL,                       -- cash for down payment + closing
+  property_types      TEXT,                       -- JSON: ["SFH","Duplex","Triplex","Quad"]
+  min_beds            INTEGER,                     -- minimum bedrooms
+  min_coc_return      REAL,                        -- minimum cash-on-cash return (%)
+  updated_at          TEXT NOT NULL DEFAULT (datetime('now'))
+);
