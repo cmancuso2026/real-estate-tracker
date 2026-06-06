@@ -113,6 +113,27 @@ const FALLBACK_RATE = { effectiveRate: 7.5, baseRate: 6.75, premium: 0.75 };
 
 const MULTI_TYPES: ManualPropertyType[] = ['Duplex', 'Triplex', 'Quad'];
 
+/**
+ * Strict allow-list of investable types (SFH / Duplex / Triplex / Quad) as a
+ * SQL predicate over the bare `property_type` column, so price/sqft comps are
+ * drawn only from like-kind inventory. Mirrors lib/queries.ts:investableTypesOnly.
+ */
+const INVESTABLE_TYPES_SQL = (() => {
+  const c = `LOWER(COALESCE(property_type, ''))`;
+  return (
+    `(${c} LIKE '%single%family%'` +
+    ` OR ${c} LIKE '%sfh%'` +
+    ` OR ${c} LIKE '%multi%'` +
+    ` OR ${c} LIKE '%duplex%'` +
+    ` OR ${c} LIKE '%triplex%'` +
+    ` OR ${c} LIKE '%quad%'` +
+    ` OR ${c} LIKE '%plex%'` +
+    ` OR ${c} LIKE '%two%family%'` +
+    ` OR ${c} LIKE '%three%family%'` +
+    ` OR ${c} LIKE '%four%family%')`
+  );
+})();
+
 // --- public entry point ----------------------------------------------------
 
 export function gradeManualProperty(
@@ -364,8 +385,7 @@ function priceSqftVsZipMedian(
         ${requireBaths ? 'AND bathrooms = ?' : ''}
         AND price IS NOT NULL AND price > 0
         AND living_area IS NOT NULL AND living_area > 0
-        AND LOWER(COALESCE(property_type, '')) NOT LIKE '%apartment%'
-        AND LOWER(COALESCE(property_type, '')) NOT LIKE '%condo%'`;
+        AND ${INVESTABLE_TYPES_SQL}`;
     const rows = (
       requireBaths
         ? db.prepare(sql).all(input.zip, beds, baths)

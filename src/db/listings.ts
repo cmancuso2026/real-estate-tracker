@@ -64,16 +64,27 @@ export function upsertListings(records: ListingRecord[]): UpsertResult {
 }
 
 /**
- * SQL predicate that excludes apartments and condominiums (case-insensitive,
- * matching CONDO/Condo/condominium and APARTMENT/Apartment). We only invest in
- * SFH / Duplex / Triplex / Quad, so this is applied wherever for-sale inventory
- * is read — grading and price/sqft comps — so those types never reach a grade
- * or skew a comp median. `col` is the (optionally table-qualified) column.
+ * SQL predicate keeping ONLY the property types we invest in: single-family
+ * (SFH) and duplex / triplex / quad (which Zillow reports as MULTI_FAMILY).
+ * Everything else — condo, apartment, townhouse, manufactured, lot/land, and
+ * any unknown or blank type — is excluded. This is a strict allow-list, applied
+ * wherever for-sale inventory is read (grading and price/sqft comps) so only
+ * these types ever reach a grade or a comp median. `col` is the (optionally
+ * table-qualified) property_type column.
  */
-export function excludeApartmentsCondos(col = 'property_type'): string {
+export function investableTypesOnly(col = 'property_type'): string {
+  const c = `LOWER(COALESCE(${col}, ''))`;
   return (
-    `LOWER(COALESCE(${col}, '')) NOT LIKE '%apartment%' ` +
-    `AND LOWER(COALESCE(${col}, '')) NOT LIKE '%condo%'`
+    `(${c} LIKE '%single%family%'` +
+    ` OR ${c} LIKE '%sfh%'` +
+    ` OR ${c} LIKE '%multi%'` +
+    ` OR ${c} LIKE '%duplex%'` +
+    ` OR ${c} LIKE '%triplex%'` +
+    ` OR ${c} LIKE '%quad%'` +
+    ` OR ${c} LIKE '%plex%'` +
+    ` OR ${c} LIKE '%two%family%'` +
+    ` OR ${c} LIKE '%three%family%'` +
+    ` OR ${c} LIKE '%four%family%')`
   );
 }
 
@@ -115,20 +126,21 @@ export function getListingById(id: number): ListingRow | null {
 }
 
 /** All listings (optionally filtered to a zip) — used for batch grading.
- * Apartments and condominiums are excluded so they're never graded. */
+ * Only SFH / Duplex / Triplex / Quad are returned; all other types are excluded
+ * so they're never graded. */
 export function getListings(zipCode?: string): ListingRow[] {
   const db = getDb();
   if (zipCode) {
     return db
       .prepare(
         `SELECT ${LISTING_COLUMNS} FROM listings
-         WHERE zip_code = ? AND ${excludeApartmentsCondos()}`,
+         WHERE zip_code = ? AND ${investableTypesOnly()}`,
       )
       .all(zipCode) as ListingRow[];
   }
   return db
     .prepare(
-      `SELECT ${LISTING_COLUMNS} FROM listings WHERE ${excludeApartmentsCondos()}`,
+      `SELECT ${LISTING_COLUMNS} FROM listings WHERE ${investableTypesOnly()}`,
     )
     .all() as ListingRow[];
 }
@@ -151,7 +163,7 @@ export function comparablePricePerSqft(
       ${requireBaths ? 'AND bathrooms = ?' : ''}
       AND price IS NOT NULL AND price > 0
       AND living_area IS NOT NULL AND living_area > 0
-      AND ${excludeApartmentsCondos()}
+      AND ${investableTypesOnly()}
   `;
   const rows = (
     requireBaths

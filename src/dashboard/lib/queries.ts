@@ -120,15 +120,26 @@ export interface Summary {
 }
 
 /**
- * SQL predicate excluding apartments and condominiums (case-insensitive). The
- * tracker no longer grades these types, but legacy grade rows may still exist,
- * so the dashboard also filters them out at query time — they never show in
- * results, comps, or summary counts. Mirrors db/listings.ts:excludeApartmentsCondos.
+ * SQL predicate keeping ONLY investable property types — single-family and
+ * duplex / triplex / quad (MULTI_FAMILY) — and excluding everything else
+ * (condo, apartment, townhouse, manufactured, lot, unknown). The tracker no
+ * longer grades non-investable types, but legacy grade rows may still exist, so
+ * the dashboard also filters at query time — they never show in results, comps,
+ * or summary counts. Mirrors db/listings.ts:investableTypesOnly.
  */
-function excludeApartmentsCondos(col: string): string {
+function investableTypesOnly(col: string): string {
+  const c = `LOWER(COALESCE(${col}, ''))`;
   return (
-    `LOWER(COALESCE(${col}, '')) NOT LIKE '%apartment%' ` +
-    `AND LOWER(COALESCE(${col}, '')) NOT LIKE '%condo%'`
+    `(${c} LIKE '%single%family%'` +
+    ` OR ${c} LIKE '%sfh%'` +
+    ` OR ${c} LIKE '%multi%'` +
+    ` OR ${c} LIKE '%duplex%'` +
+    ` OR ${c} LIKE '%triplex%'` +
+    ` OR ${c} LIKE '%quad%'` +
+    ` OR ${c} LIKE '%plex%'` +
+    ` OR ${c} LIKE '%two%family%'` +
+    ` OR ${c} LIKE '%three%family%'` +
+    ` OR ${c} LIKE '%four%family%')`
   );
 }
 
@@ -157,7 +168,7 @@ const LATEST_GRADE_JOIN = `
   FROM grades g
   JOIN listings l ON l.id = g.property_id
   WHERE g.id = (SELECT MAX(g2.id) FROM grades g2 WHERE g2.property_id = g.property_id)
-    AND ${excludeApartmentsCondos('l.property_type')}
+    AND ${investableTypesOnly('l.property_type')}
 `;
 
 // --- helpers ---------------------------------------------------------------
@@ -285,7 +296,7 @@ export function getSummary(profile?: InvestorProfile): Summary {
   const totalProperties = (
     db
       .prepare(
-        `SELECT COUNT(*) AS n FROM listings WHERE ${excludeApartmentsCondos('property_type')}`,
+        `SELECT COUNT(*) AS n FROM listings WHERE ${investableTypesOnly('property_type')}`,
       )
       .get() as { n: number }
   ).n;
@@ -413,7 +424,7 @@ function priceSqftVsZipMedian(r: any): PriceSqftComparison | null {
         ${requireBaths ? 'AND bathrooms = ?' : ''}
         AND price IS NOT NULL AND price > 0
         AND living_area IS NOT NULL AND living_area > 0
-        AND ${excludeApartmentsCondos('property_type')}`;
+        AND ${investableTypesOnly('property_type')}`;
     const rows = (
       requireBaths
         ? db.prepare(sql).all(r.zip_code, beds, baths)
