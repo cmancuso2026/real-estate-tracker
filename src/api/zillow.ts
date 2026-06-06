@@ -4,37 +4,43 @@ import { getJson } from './http.js';
 import type { ListingRecord } from '../db/types.js';
 
 /**
- * Zillow via RapidAPI (default provider: zillow-com1.p.rapidapi.com).
+ * Zillow via RapidAPI (provider: us-property-market1.p.rapidapi.com).
  *
- * GET https://<host>/propertyExtendedSearch
- *   ?location=78704&status_type=ForSale&home_type=Houses&page=1
+ * GET https://<host>/search
+ *   ?location=33126&status_type=ForSale&home_type=Houses&page=1
  *   headers: X-RapidAPI-Key, X-RapidAPI-Host
  *
- * The response shape varies slightly between RapidAPI Zillow providers, so the
- * schema is intentionally lenient and we keep the full payload in raw_json.
+ * Returns { props[], totalPages, currentPage, totalResultCount, resultsPerPage }.
+ * Each prop carries a single combined `address` string (e.g.
+ * "251 NW 60th Ct, Miami, FL 33126") rather than separate city/state/zip
+ * fields, so we parse those out below. The schema is intentionally lenient and
+ * we keep the full payload in raw_json.
+ *
+ * NOTE: the BASIC plan enforces a hard 1-request/second limit, so we throttle
+ * between page requests to avoid 429s.
  */
 
 const ZillowProp = z
   .object({
-    zpid: z.union([z.string(), z.number()]).optional(),
-    address: z.string().optional(),
-    addressStreet: z.string().optional(),
-    addressCity: z.string().optional(),
-    addressState: z.string().optional(),
-    addressZipcode: z.union([z.string(), z.number()]).optional(),
-    price: z.number().optional(),
-    bedrooms: z.number().optional(),
-    bathrooms: z.number().optional(),
-    livingArea: z.number().optional(),
-    lotAreaValue: z.number().optional(),
-    lotAreaUnit: z.string().optional(),
-    propertyType: z.string().optional(),
-    daysOnZillow: z.number().optional(),
-    listingStatus: z.string().optional(),
-    detailUrl: z.string().optional(),
-    latitude: z.number().optional(),
-    longitude: z.number().optional(),
-    yearBuilt: z.number().optional(),
+    zpid: z.union([z.string(), z.number()]).nullish(),
+    address: z.string().nullish(),
+    addressStreet: z.string().nullish(),
+    addressCity: z.string().nullish(),
+    addressState: z.string().nullish(),
+    addressZipcode: z.union([z.string(), z.number()]).nullish(),
+    price: z.number().nullish(),
+    bedrooms: z.number().nullish(),
+    bathrooms: z.number().nullish(),
+    livingArea: z.number().nullish(),
+    lotAreaValue: z.number().nullish(),
+    lotAreaUnit: z.string().nullish(),
+    propertyType: z.string().nullish(),
+    daysOnZillow: z.number().nullish(),
+    listingStatus: z.string().nullish(),
+    detailUrl: z.string().nullish(),
+    latitude: z.number().nullish(),
+    longitude: z.number().nullish(),
+    yearBuilt: z.number().nullish(),
   })
   .passthrough();
 
@@ -53,7 +59,14 @@ export interface FetchListingsOptions {
   maxPages?: number;
 }
 
-const BASE_PATH = '/propertyExtendedSearch';
+const BASE_PATH = '/search';
+
+/** BASIC-plan rate limit is 1 req/sec; pad slightly to stay under it. */
+const THROTTLE_MS = 1_100;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
 
 /** Fetch for-sale listings for a zip code across pages, normalized. */
 export async function fetchListingsByZip(
@@ -74,6 +87,8 @@ export async function fetchListingsByZip(
   let totalPages = 1;
 
   do {
+    if (page > 1) await sleep(THROTTLE_MS); // respect 1 req/sec on BASIC plan
+
     const raw = await getJson(url, {
       headers,
       query: {
@@ -91,15 +106,20 @@ export async function fetchListingsByZip(
       const zpid = p.zpid != null ? String(p.zpid) : null;
       if (!zpid) continue; // can't dedupe without a stable id — skip
 
+      // This provider returns a single combined address string; fall back to
+      // the discrete fields if a future payload supplies them.
+      const addr = parseAddress(p.address);
       const zip =
-        p.addressZipcode != null ? String(p.addressZipcode) : zipCode;
+        p.addressZipcode != null
+          ? String(p.addressZipcode)
+          : addr.zip ?? zipCode;
 
       records.push({
         source: 'zillow',
         source_id: zpid,
-        address: p.address ?? p.addressStreet ?? null,
-        city: p.addressCity ?? null,
-        state: p.addressState ?? null,
+        address: p.addressStreet ?? addr.street ?? p.address ?? null,
+        city: p.addressCity ?? addr.city ?? null,
+        state: p.addressState ?? addr.state ?? null,
         zip_code: zip,
         latitude: p.latitude ?? null,
         longitude: p.longitude ?? null,
@@ -123,10 +143,44 @@ export async function fetchListingsByZip(
   return records;
 }
 
+interface ParsedAddress {
+  street: string | null;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
+}
+
+/**
+ * Split a combined Zillow address such as
+ * "251 NW 60th Ct, Miami, FL 33126" into its parts. Returns nulls for any
+ * component that can't be confidently extracted.
+ */
+function parseAddress(address: string | null | undefined): ParsedAddress {
+  const empty: ParsedAddress = {
+    street: null,
+    city: null,
+    state: null,
+    zip: null,
+  };
+  if (!address) return empty;
+
+  const parts = address.split(',').map((s) => s.trim());
+  // Expected: ["251 NW 60th Ct", "Miami", "FL 33126"]
+  const last = parts[parts.length - 1] ?? '';
+  const stateZip = last.match(/^([A-Z]{2})\s+(\d{5})(?:-\d{4})?$/);
+
+  return {
+    street: parts[0] || null,
+    city: parts.length >= 3 ? parts[parts.length - 2] || null : null,
+    state: stateZip ? stateZip[1] ?? null : null,
+    zip: stateZip ? stateZip[2] ?? null : null,
+  };
+}
+
 /** Normalize lot size to square feet (Zillow reports acres or sqft). */
 function normalizeLotSize(
-  value: number | undefined,
-  unit: string | undefined,
+  value: number | null | undefined,
+  unit: string | null | undefined,
 ): number | null {
   if (value == null) return null;
   if (unit && unit.toLowerCase().startsWith('acre')) {
@@ -135,7 +189,7 @@ function normalizeLotSize(
   return Math.round(value);
 }
 
-function toAbsoluteUrl(detailUrl: string | undefined): string | null {
+function toAbsoluteUrl(detailUrl: string | null | undefined): string | null {
   if (!detailUrl) return null;
   if (detailUrl.startsWith('http')) return detailUrl;
   return `https://www.zillow.com${detailUrl}`;
