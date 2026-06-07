@@ -184,7 +184,7 @@ function groupByGrade(
 }
 
 /** POST to the SendGrid v3 mail/send endpoint. 202 = accepted. */
-async function sendViaSendGrid(subject: string, html: string): Promise<void> {
+export async function sendViaSendGrid(subject: string, html: string): Promise<void> {
   const to = config.sendgridToEmails.map((email) => ({ email }));
   const payload = {
     personalizations: [{ to }],

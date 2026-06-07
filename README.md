@@ -74,7 +74,7 @@ src/
   scoring/      A-F grading engine        (Phase 2)
   email/        Gmail parser              (Phase 4)
   notifications/Slack + email digest      (Phase 5)
-  scheduler/    Daily cron jobs           (Phase 6)
+  scheduler/    node-cron jobs (weekly digest, Fri 8 AM ET)
   dashboard/    Next.js web app           (Phase 5)
 ```
 
@@ -148,6 +148,19 @@ npm run grade 78704
 
 # Inspect the city-level crime data (zip→city, FBI agency, rate, median)
 npm run crime:check
+
+# Send notifications (Slack A-grade alerts, daily email digest)
+npm run notify:slack
+npm run notify:email
+
+# Weekly A-grade email digest — all grade-A properties from the last 7 days.
+# Always sends; a quiet week gets a short "market was quiet" note.
+npm run notify:email:weekly
+npm run notify:email:weekly -- --dry   # build but don't send
+
+# Run the long-lived cron scheduler (keep it alive under pm2/systemd/Docker).
+# Currently registers the weekly digest for Fridays at 8 AM Eastern (0 8 * * 5).
+npm run scheduler
 
 # Type-check without emitting
 npm run typecheck

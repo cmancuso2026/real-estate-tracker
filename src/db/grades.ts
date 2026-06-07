@@ -77,6 +77,7 @@ export interface GradedProperty {
   price_per_sqft: number | null;
   crime_index: number | null;
   rental_prevalence: number | null;
+  reasoning: string | null;
   graded_at: string;
 }
 
@@ -88,7 +89,7 @@ const LATEST_GRADE_JOIN = `
     l.zip_code, l.latitude, l.longitude, l.price, l.bedrooms, l.bathrooms,
     l.living_area, l.property_type, l.listing_url,
     g.overall_grade, g.overall_score, g.coc_return, g.monthly_cashflow,
-    g.price_per_sqft, g.crime_index, g.rental_prevalence, g.graded_at
+    g.price_per_sqft, g.crime_index, g.rental_prevalence, g.reasoning, g.graded_at
   FROM grades g
   JOIN listings l ON l.id = g.property_id
   WHERE g.id = (SELECT MAX(g2.id) FROM grades g2 WHERE g2.property_id = g.property_id)

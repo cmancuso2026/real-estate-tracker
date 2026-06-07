@@ -19,6 +19,8 @@
     "dashboard:build": "npm --prefix src/dashboard run build",
     "notify:slack": "tsx src/scripts/notify-slack.ts",
     "notify:email": "tsx src/scripts/notify-email.ts",
+    "notify:email:weekly": "tsx src/scripts/notify-email-weekly.ts",
+    "scheduler": "tsx src/scheduler/index.ts",
     "test:slack": "tsx src/scripts/test-slack.ts",
     "test:email": "tsx src/scripts/test-email.ts"
   },
@@ -28,11 +30,13 @@
   "dependencies": {
     "better-sqlite3": "^11.8.1",
     "dotenv": "^16.4.7",
+    "node-cron": "^3.0.3",
     "zod": "^3.24.1"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.10.5",
+    "@types/node-cron": "^3.0.11",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3"
   }

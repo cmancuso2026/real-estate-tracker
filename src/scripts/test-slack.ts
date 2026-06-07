@@ -31,6 +31,8 @@ const sampleProperty: GradedProperty = {
   price_per_sqft: 290,
   crime_index: 380.2,
   rental_prevalence: 58,
+  reasoning:
+    'Overall grade A for an SFH: strong cash-on-cash return of 9.4%, with solid monthly cash flow of $612/mo and price/sqft below the zip median.',
   graded_at: 'now',
 };
 
