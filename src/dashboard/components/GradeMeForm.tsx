@@ -2,11 +2,8 @@
 
 import { useActionState } from 'react';
 import { useFormStatus } from 'react-dom';
-import {
-  gradeManualAction,
-  INITIAL_GRADE_STATE,
-  type GradeFormState,
-} from '@/app/grade/actions';
+import { gradeManualAction } from '@/app/grade/actions';
+import { INITIAL_GRADE_STATE, type GradeFormState } from '@/app/grade/state';
 import type { ManualComponent, ManualGradeResult } from '@/lib/grade-manual';
 import {
   fmtMoney,
