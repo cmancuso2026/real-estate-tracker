@@ -10,6 +10,8 @@ import {
   fmtSqft,
   fmtDate,
   propertyTypeLabel,
+  formatThousands,
+  parseThousands,
   GRADE_ORDER,
   type Letter,
 } from '@/lib/format';
@@ -79,8 +81,8 @@ export function ListingsExplorer({ properties }: { properties: GradedRow[] }) {
 
   const filtered = useMemo(() => {
     const minB = minBeds ? Number(minBeds) : null;
-    const minP = minPrice ? Number(minPrice) : null;
-    const maxP = maxPrice ? Number(maxPrice) : null;
+    const minP = parseThousands(minPrice);
+    const maxP = parseThousands(maxPrice);
 
     const rows = properties.filter((p) => {
       if (zip && p.zip_code !== zip) return false;
@@ -138,7 +140,6 @@ export function ListingsExplorer({ properties }: { properties: GradedRow[] }) {
         <select className={SELECT} value={type} onChange={(e) => setType(e.target.value)}>
           <option value="">All types</option>
           <option value="SFH">SFH</option>
-          <option value="Duplex">Duplex</option>
           <option value="Multi">Multi</option>
         </select>
 
@@ -153,19 +154,19 @@ export function ListingsExplorer({ properties }: { properties: GradedRow[] }) {
 
         <input
           className={`${SELECT} w-28`}
-          type="number"
+          type="text"
           inputMode="numeric"
           placeholder="Min $"
           value={minPrice}
-          onChange={(e) => setMinPrice(e.target.value)}
+          onChange={(e) => setMinPrice(formatThousands(e.target.value))}
         />
         <input
           className={`${SELECT} w-28`}
-          type="number"
+          type="text"
           inputMode="numeric"
           placeholder="Max $"
           value={maxPrice}
-          onChange={(e) => setMaxPrice(e.target.value)}
+          onChange={(e) => setMaxPrice(formatThousands(e.target.value))}
         />
 
         <select className={SELECT} value={grade} onChange={(e) => setGrade(e.target.value)}>

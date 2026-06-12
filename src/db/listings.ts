@@ -145,7 +145,7 @@ export async function getListingById(id: number): Promise<ListingRow | null> {
 }
 
 /** All listings (optionally filtered to a zip) — used for batch grading.
- * Only SFH / Duplex / Triplex / Quad are returned; all other types are excluded
+ * Only SFH and multi-family types are returned; all other types are excluded
  * so they're never graded. */
 export async function getListings(zipCode?: string): Promise<ListingRow[]> {
   if (zipCode) {

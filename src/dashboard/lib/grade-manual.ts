@@ -23,7 +23,7 @@ import type { Letter } from './format';
 
 // --- inputs / outputs ------------------------------------------------------
 
-export type ManualPropertyType = 'SFH' | 'Duplex' | 'Triplex' | 'Quad';
+export type ManualPropertyType = 'SFH' | 'Triplex' | 'Quad' | 'Multi';
 
 export interface ManualGradeInput {
   address: string;
@@ -112,12 +112,13 @@ const POINTS: Record<Letter, number> = { A: 4, B: 3, C: 2, D: 1, F: 0 };
 /** Fallback rate if the tracker has never stored a PMMS snapshot. */
 const FALLBACK_RATE = { effectiveRate: 7.5, baseRate: 6.75, premium: 0.75 };
 
-const MULTI_TYPES: ManualPropertyType[] = ['Duplex', 'Triplex', 'Quad'];
+const MULTI_TYPES: ManualPropertyType[] = ['Triplex', 'Quad', 'Multi'];
 
 /**
- * Strict allow-list of investable types (SFH / Duplex / Triplex / Quad) as a
- * SQL predicate over the bare `property_type` column, so price/sqft comps are
- * drawn only from like-kind inventory. Mirrors lib/queries.ts:investableTypesOnly.
+ * Strict allow-list of investable types (SFH plus any multi-family — triplex,
+ * quad, duplex, generic multi) as a SQL predicate over the bare `property_type`
+ * column, so price/sqft comps are drawn only from like-kind inventory. Mirrors
+ * lib/queries.ts:investableTypesOnly.
  */
 const INVESTABLE_TYPES_SQL = (() => {
   const c = `LOWER(COALESCE(property_type, ''))`;

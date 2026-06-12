@@ -12,7 +12,7 @@ import type { GradedProperty } from '../db/grades.js';
  * is intentionally duplicated rather than imported across the boundary.)
  *
  * Applied filters (matching the profile fields the dashboard enforces):
- *   - investable property types only (SFH / Duplex / Triplex / Quad) — always,
+ *   - investable property types only (SFH plus any multi-family) — always,
  *     mirroring the dashboard's query-level allow-list
  *   - minimum / maximum list price
  *   - target property types (the profile's selected subset)
@@ -34,7 +34,7 @@ export interface InvestorProfile {
   minCocReturn: number | null;
 }
 
-const PROFILE_PROPERTY_TYPES = ['SFH', 'Duplex', 'Triplex', 'Quad'];
+const PROFILE_PROPERTY_TYPES = ['SFH', 'Triplex', 'Quad', 'Multi'];
 
 /** The saved investor profile, or null if none/unavailable. */
 export async function getInvestorProfile(): Promise<InvestorProfile | null> {
@@ -92,7 +92,7 @@ export function filterByProfile<T extends GradedProperty>(
   profile: InvestorProfile | null,
 ): T[] {
   return rows.filter((r) => {
-    if (!isInvestableType(r.property_type)) return false; // SFH/Duplex/Triplex/Quad only
+    if (!isInvestableType(r.property_type)) return false; // SFH + multi-family only
     if (!profile) return true;
 
     if (
@@ -146,13 +146,12 @@ export function isInvestableType(propertyType: string | null): boolean {
 /** Classify a raw type into a profile category. Mirrors canonicalPropertyType. */
 function canonicalPropertyType(
   propertyType: string | null,
-): 'SFH' | 'Duplex' | 'Triplex' | 'Quad' | 'Multi' {
+): 'SFH' | 'Triplex' | 'Quad' | 'Multi' {
   if (!propertyType) return 'SFH';
   const t = propertyType.toLowerCase();
   if (/quad|four.?plex|four.?family|4.?unit/.test(t)) return 'Quad';
   if (/triplex|three.?family|3.?unit/.test(t)) return 'Triplex';
-  if (/duplex|two.?family|2.?unit/.test(t)) return 'Duplex';
-  if (/multi/.test(t)) return 'Multi';
+  if (/multi|duplex|plex|two.?family|2.?unit/.test(t)) return 'Multi';
   return 'SFH';
 }
 
@@ -164,9 +163,12 @@ function matchesProfileTypes(
   if (!selected || selected.length === 0) return true;
   const cat = canonicalPropertyType(propertyType);
   if (selected.includes(cat)) return true;
+  if (cat === 'Multi' && selected.some((s) => s === 'Triplex' || s === 'Quad')) {
+    return true;
+  }
   if (
-    cat === 'Multi' &&
-    selected.some((s) => s === 'Duplex' || s === 'Triplex' || s === 'Quad')
+    selected.includes('Multi') &&
+    (cat === 'Triplex' || cat === 'Quad' || cat === 'Multi')
   ) {
     return true;
   }

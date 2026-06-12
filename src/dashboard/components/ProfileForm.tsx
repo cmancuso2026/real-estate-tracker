@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useFormStatus } from 'react-dom';
 import type { InvestorProfile } from '@/lib/profile';
-import { PROFILE_PROPERTY_TYPES } from '@/lib/format';
+import { PROFILE_PROPERTY_TYPES, formatThousands } from '@/lib/format';
 import { saveProfileAction } from '@/app/settings/actions';
 
 const INPUT =
@@ -13,9 +13,9 @@ const INPUT =
 
 const TYPE_HINTS: Record<string, string> = {
   SFH: 'Single-family',
-  Duplex: '2 units',
   Triplex: '3 units',
   Quad: '4 units',
+  Multi: 'Any multi-family',
 };
 
 function Field({
@@ -53,7 +53,7 @@ function MoneyInput({
   placeholder?: string;
 }) {
   const [value, setValue] = useState(
-    defaultValue != null ? defaultValue.toLocaleString('en-US') : '',
+    defaultValue != null ? formatThousands(String(defaultValue)) : '',
   );
   return (
     <div className="relative">
@@ -67,10 +67,7 @@ function MoneyInput({
         autoComplete="off"
         placeholder={placeholder}
         value={value}
-        onChange={(e) => {
-          const digits = e.target.value.replace(/\D/g, '');
-          setValue(digits ? Number(digits).toLocaleString('en-US') : '');
-        }}
+        onChange={(e) => setValue(formatThousands(e.target.value))}
         className={`${INPUT} pl-7`}
       />
     </div>

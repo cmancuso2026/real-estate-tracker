@@ -108,15 +108,10 @@ export function fmtSqft(p: GradedProperty): string {
   return p.living_area != null ? p.living_area.toLocaleString('en-US') : 'n/a';
 }
 
-/** Friendly property-type label: SFH / Duplex / Multi. */
+/** Friendly property-type label for display: only "SFH" or "Multi". */
 export function fmtType(propertyType: string | null): string {
   if (!propertyType) return 'SFH';
-  const t = propertyType.toLowerCase();
-  if (/duplex|two.?family/.test(t)) return 'Duplex';
-  if (/multi|triplex|fourplex|quadplex|three.?family|four.?family/.test(t)) {
-    return 'Multi';
-  }
-  return 'SFH';
+  return /single.?family|sfh/.test(propertyType.toLowerCase()) ? 'SFH' : 'Multi';
 }
 
 export function fmtNum(n: number | null | undefined): string {

@@ -162,7 +162,7 @@ CREATE TABLE IF NOT EXISTS investor_profile (
   min_purchase_price  DOUBLE PRECISION,        -- floor on list price
   max_purchase_price  DOUBLE PRECISION,        -- cap on list price
   available_cash      DOUBLE PRECISION,        -- cash for down payment + closing
-  property_types      TEXT,                    -- JSON: ["SFH","Duplex","Triplex","Quad"]
+  property_types      TEXT,                    -- JSON: ["SFH","Triplex","Quad","Multi"]
   min_beds            INTEGER,                 -- minimum bedrooms
   min_coc_return      DOUBLE PRECISION,        -- minimum cash-on-cash return (%)
   updated_at          TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')

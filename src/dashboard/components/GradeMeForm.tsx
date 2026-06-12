@@ -22,9 +22,9 @@ const INPUT =
 
 const PROPERTY_TYPES = [
   { value: 'SFH', hint: 'Single-family' },
-  { value: 'Duplex', hint: '2 units' },
   { value: 'Triplex', hint: '3 units' },
   { value: 'Quad', hint: '4 units' },
+  { value: 'Multi', hint: 'Multi-family' },
 ] as const;
 
 function Field({

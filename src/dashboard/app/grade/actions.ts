@@ -7,7 +7,7 @@ import {
 } from '@/lib/grade-manual';
 import type { GradeFormState } from './state';
 
-const PROPERTY_TYPES: ManualPropertyType[] = ['SFH', 'Duplex', 'Triplex', 'Quad'];
+const PROPERTY_TYPES: ManualPropertyType[] = ['SFH', 'Triplex', 'Quad', 'Multi'];
 
 /** Required positive number from a form field. */
 function posNum(value: FormDataEntryValue | null): number | null {

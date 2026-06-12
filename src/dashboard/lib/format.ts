@@ -65,44 +65,42 @@ export function fmtBedsBaths(
   return `${fmtNum(beds)} / ${fmtNum(baths)}`;
 }
 
-/** Friendly property-type bucket: SFH / Duplex / Multi. */
+/**
+ * Friendly property-type bucket for display: only "SFH" or "Multi". Anything
+ * that isn't an explicit single-family dwelling (duplex, triplex, quad, generic
+ * multi-family, etc.) is shown as "Multi". Unknown/blank defaults to SFH.
+ */
 export function propertyTypeLabel(propertyType: string | null): string {
   if (!propertyType) return 'SFH';
-  const t = propertyType.toLowerCase();
-  if (/duplex|two.?family/.test(t)) return 'Duplex';
-  if (/multi|triplex|fourplex|quadplex|three.?family|four.?family/.test(t)) {
-    return 'Multi';
-  }
-  return 'SFH';
+  return /single.?family|sfh/.test(propertyType.toLowerCase()) ? 'SFH' : 'Multi';
 }
 
 /** The property types an investor can target in their profile. */
-export const PROFILE_PROPERTY_TYPES = ['SFH', 'Duplex', 'Triplex', 'Quad'] as const;
+export const PROFILE_PROPERTY_TYPES = ['SFH', 'Triplex', 'Quad', 'Multi'] as const;
 export type ProfilePropertyType = (typeof PROFILE_PROPERTY_TYPES)[number];
 
 /**
- * Classify a raw listing property-type string into a profile category. Unit
- * counts are detected when present (triplex/quad/duplex); a generic
- * "multi-family" with no count is reported as 'Multi' (it could be any of
- * Duplex/Triplex/Quad). Unknown/blank defaults to 'SFH', matching
- * propertyTypeLabel.
+ * Classify a raw listing property-type string into a profile category. Specific
+ * unit counts are detected when present (triplex/quad); any other multi-family
+ * dwelling — including duplex, two-family, or a generic "multi-family" with no
+ * count — is reported as 'Multi'. Unknown/blank defaults to 'SFH'.
  */
 export function canonicalPropertyType(
   propertyType: string | null,
-): ProfilePropertyType | 'Multi' {
+): ProfilePropertyType {
   if (!propertyType) return 'SFH';
   const t = propertyType.toLowerCase();
   if (/quad|four.?plex|four.?family|4.?unit/.test(t)) return 'Quad';
   if (/triplex|three.?family|3.?unit/.test(t)) return 'Triplex';
-  if (/duplex|two.?family|2.?unit/.test(t)) return 'Duplex';
-  if (/multi/.test(t)) return 'Multi';
+  if (/multi|duplex|plex|two.?family|2.?unit/.test(t)) return 'Multi';
   return 'SFH';
 }
 
 /**
  * Does a listing's type satisfy the investor's selected target types? An empty
- * selection means "any type". A generic multi-family listing (unit count
- * unknown) matches when the investor targets any multi-family type.
+ * selection means "any type". 'Multi' is the umbrella for any multi-family
+ * dwelling: a generic multi listing matches a specific Triplex/Quad target, and
+ * any multi-family listing (Triplex/Quad/Multi) matches a 'Multi' target.
  */
 export function matchesProfileTypes(
   propertyType: string | null,
@@ -111,13 +109,32 @@ export function matchesProfileTypes(
   if (!selected || selected.length === 0) return true;
   const cat = canonicalPropertyType(propertyType);
   if (selected.includes(cat)) return true;
+  if (cat === 'Multi' && selected.some((s) => s === 'Triplex' || s === 'Quad')) {
+    return true;
+  }
   if (
-    cat === 'Multi' &&
-    selected.some((s) => s === 'Duplex' || s === 'Triplex' || s === 'Quad')
+    selected.includes('Multi') &&
+    (cat === 'Triplex' || cat === 'Quad' || cat === 'Multi')
   ) {
     return true;
   }
   return false;
+}
+
+/**
+ * Group a string of digits with comma thousands separators as the user types:
+ * "400000" -> "400,000", "1000000" -> "1,000,000". Non-digits are dropped, so
+ * the field can be re-formatted on every keystroke. Empty in -> empty out.
+ */
+export function formatThousands(value: string): string {
+  const digits = value.replace(/\D/g, '');
+  return digits ? Number(digits).toLocaleString('en-US') : '';
+}
+
+/** Parse a comma-formatted money string back to a raw number (null if empty). */
+export function parseThousands(value: string): number | null {
+  const digits = value.replace(/\D/g, '');
+  return digits ? Number(digits) : null;
 }
 
 /** YYYY-MM-DD (or full datetime) -> "Jun 5, 2026". */
