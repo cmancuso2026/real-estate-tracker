@@ -17,6 +17,7 @@ import {
 } from '@/lib/format';
 import type { GradedRow } from '@/lib/queries';
 import { GradeBadge } from './GradeBadge';
+import { MultiSelect } from './MultiSelect';
 
 type SortKey =
   | 'address'
@@ -62,22 +63,23 @@ const SELECT =
 export function ListingsExplorer({ properties }: { properties: GradedRow[] }) {
   const router = useRouter();
 
-  const [zip, setZip] = useState('');
-  const [type, setType] = useState('');
-  const [minBeds, setMinBeds] = useState('');
-  const [minPrice, setMinPrice] = useState('');
-  const [maxPrice, setMaxPrice] = useState('');
-  const [grade, setGrade] = useState('');
-  const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({
-    key: 'grade',
-    dir: 'desc',
-  });
-
   const zips = useMemo(
     () =>
       Array.from(new Set(properties.map((p) => p.zip_code).filter(Boolean) as string[])).sort(),
     [properties],
   );
+
+  // Multi-select filters default to everything selected (no filtering).
+  const [selectedZips, setSelectedZips] = useState<string[]>(() => zips);
+  const [grades, setGrades] = useState<string[]>(() => [...GRADE_ORDER]);
+  const [type, setType] = useState('');
+  const [minBeds, setMinBeds] = useState('');
+  const [minPrice, setMinPrice] = useState('');
+  const [maxPrice, setMaxPrice] = useState('');
+  const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({
+    key: 'grade',
+    dir: 'desc',
+  });
 
   const filtered = useMemo(() => {
     const minB = minBeds ? Number(minBeds) : null;
@@ -85,9 +87,9 @@ export function ListingsExplorer({ properties }: { properties: GradedRow[] }) {
     const maxP = parseThousands(maxPrice);
 
     const rows = properties.filter((p) => {
-      if (zip && p.zip_code !== zip) return false;
+      if (!selectedZips.includes(p.zip_code ?? '')) return false;
       if (type && propertyTypeLabel(p.property_type) !== type) return false;
-      if (grade && p.overall_grade !== grade) return false;
+      if (!grades.includes(p.overall_grade ?? '')) return false;
       if (minB != null && (p.bedrooms ?? 0) < minB) return false;
       if (minP != null && (p.price ?? 0) < minP) return false;
       if (maxP != null && (p.price ?? Infinity) > maxP) return false;
@@ -103,7 +105,7 @@ export function ListingsExplorer({ properties }: { properties: GradedRow[] }) {
       if (av > bv) return 1 * dir;
       return 0;
     });
-  }, [properties, zip, type, minBeds, minPrice, maxPrice, grade, sort]);
+  }, [properties, selectedZips, type, minBeds, minPrice, maxPrice, grades, sort]);
 
   function toggleSort(key: SortKey) {
     setSort((s) =>
@@ -114,28 +116,32 @@ export function ListingsExplorer({ properties }: { properties: GradedRow[] }) {
   }
 
   function reset() {
-    setZip('');
+    setSelectedZips(zips);
     setType('');
     setMinBeds('');
     setMinPrice('');
     setMaxPrice('');
-    setGrade('');
+    setGrades([...GRADE_ORDER]);
   }
 
-  const hasFilters = zip || type || minBeds || minPrice || maxPrice || grade;
+  const hasFilters =
+    type ||
+    minBeds ||
+    minPrice ||
+    maxPrice ||
+    selectedZips.length !== zips.length ||
+    grades.length !== GRADE_ORDER.length;
 
   return (
     <section className="mt-6">
       {/* Filters */}
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <select className={SELECT} value={zip} onChange={(e) => setZip(e.target.value)}>
-          <option value="">All zips</option>
-          {zips.map((z) => (
-            <option key={z} value={z}>
-              {z}
-            </option>
-          ))}
-        </select>
+        <MultiSelect
+          options={zips}
+          selected={selectedZips}
+          onChange={setSelectedZips}
+          noun="zips"
+        />
 
         <select className={SELECT} value={type} onChange={(e) => setType(e.target.value)}>
           <option value="">All types</option>
@@ -169,14 +175,13 @@ export function ListingsExplorer({ properties }: { properties: GradedRow[] }) {
           onChange={(e) => setMaxPrice(formatThousands(e.target.value))}
         />
 
-        <select className={SELECT} value={grade} onChange={(e) => setGrade(e.target.value)}>
-          <option value="">All grades</option>
-          {GRADE_ORDER.map((g) => (
-            <option key={g} value={g}>
-              Grade {g}
-            </option>
-          ))}
-        </select>
+        <MultiSelect
+          options={[...GRADE_ORDER]}
+          selected={grades}
+          onChange={setGrades}
+          noun="grades"
+          renderLabel={(g) => `Grade ${g}`}
+        />
 
         {hasFilters && (
           <button

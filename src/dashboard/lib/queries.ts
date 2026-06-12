@@ -280,6 +280,19 @@ export async function getGradedProperties(
 }
 
 /**
+ * Distinct zip codes present in the listings table, sorted. Powers the zip
+ * dropdown on the Grade-a-Property form so it only offers tracked markets.
+ */
+export async function getListingZips(): Promise<string[]> {
+  const rows = await query<{ zip_code: string }>(
+    `SELECT DISTINCT zip_code FROM listings
+     WHERE zip_code IS NOT NULL AND zip_code <> ''
+     ORDER BY zip_code`,
+  );
+  return rows.map((r) => String(r.zip_code));
+}
+
+/**
  * Top-of-page summary metrics. When a profile is supplied, the grade
  * distribution, average CoC and best opportunity reflect only the matching
  * properties; totalProperties remains the full count of tracked listings.

@@ -58,7 +58,7 @@ function SubmitButton() {
   );
 }
 
-export function GradeMeForm() {
+export function GradeMeForm({ zips }: { zips: string[] }) {
   const [state, formAction] = useActionState<GradeFormState, FormData>(
     gradeManualAction,
     INITIAL_GRADE_STATE,
@@ -80,15 +80,19 @@ export function GradeMeForm() {
 
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
           <Field label="Zip code">
-            <input
+            <select
               name="zip"
-              type="text"
-              inputMode="numeric"
-              placeholder="33126"
-              defaultValue={v.zip ?? ''}
+              defaultValue={v.zip ?? zips[0] ?? ''}
               className={INPUT}
               required
-            />
+            >
+              {zips.length === 0 && <option value="">No tracked zips</option>}
+              {zips.map((z) => (
+                <option key={z} value={z}>
+                  {z}
+                </option>
+              ))}
+            </select>
           </Field>
 
           <Field label="List price">

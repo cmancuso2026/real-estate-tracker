@@ -1,9 +1,12 @@
 import { GradeMeForm } from '@/components/GradeMeForm';
+import { getListingZips } from '@/lib/queries';
 
 // The grader reads the live database on each submission.
 export const dynamic = 'force-dynamic';
 
-export default function GradePage() {
+export default async function GradePage() {
+  const zips = await getListingZips();
+
   return (
     <>
       <div className="mb-5">
@@ -15,7 +18,7 @@ export default function GradePage() {
         </p>
       </div>
 
-      <GradeMeForm />
+      <GradeMeForm zips={zips} />
     </>
   );
 }
