@@ -26,6 +26,20 @@ export const EMPTY_PROFILE: InvestorProfile = {
   minCocReturn: null,
 };
 
+/**
+ * Sensible starting buy-box, shown on the settings form when no profile has
+ * been saved yet (or the saved one is empty). The user can change or clear any
+ * of these before saving. Min price $400k, min 3 beds, all property types.
+ */
+export const DEFAULT_PROFILE: InvestorProfile = {
+  minPurchasePrice: 400000,
+  maxPurchasePrice: null,
+  availableCash: null,
+  propertyTypes: [...PROFILE_PROPERTY_TYPES],
+  minBeds: 3,
+  minCocReturn: null,
+};
+
 /** True if any constraint is set (so the dashboard is actively filtering). */
 export function isProfileActive(p: InvestorProfile): boolean {
   return (

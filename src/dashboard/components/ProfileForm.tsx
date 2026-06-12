@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { useFormStatus } from 'react-dom';
 import type { InvestorProfile } from '@/lib/profile';
 import { PROFILE_PROPERTY_TYPES } from '@/lib/format';
@@ -35,6 +36,47 @@ function Field({
   );
 }
 
+/**
+ * A dollar input that inserts comma thousands-separators live as you type
+ * (e.g. 400000 -> 400,000; 1000000 -> 1,000,000). The displayed value carries
+ * commas, but the field is plain digits otherwise, so the server strips commas
+ * and stores the raw number. Uses type="text" because type="number" can't show
+ * grouping separators.
+ */
+function MoneyInput({
+  name,
+  defaultValue,
+  placeholder,
+}: {
+  name: string;
+  defaultValue: number | null;
+  placeholder?: string;
+}) {
+  const [value, setValue] = useState(
+    defaultValue != null ? defaultValue.toLocaleString('en-US') : '',
+  );
+  return (
+    <div className="relative">
+      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">
+        $
+      </span>
+      <input
+        name={name}
+        type="text"
+        inputMode="numeric"
+        autoComplete="off"
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => {
+          const digits = e.target.value.replace(/\D/g, '');
+          setValue(digits ? Number(digits).toLocaleString('en-US') : '');
+        }}
+        className={`${INPUT} pl-7`}
+      />
+    </div>
+  );
+}
+
 function SubmitButton() {
   const { pending } = useFormStatus();
   return (
@@ -53,57 +95,27 @@ export function ProfileForm({ profile }: { profile: InvestorProfile }) {
     <form action={saveProfileAction} className="max-w-xl space-y-6">
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
         <Field label="Min purchase price" hint="Floor on list price. Blank = no floor.">
-          <div className="relative">
-            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">
-              $
-            </span>
-            <input
-              name="min_purchase_price"
-              type="number"
-              min={0}
-              step={1000}
-              inputMode="numeric"
-              placeholder="e.g. 150000"
-              defaultValue={profile.minPurchasePrice ?? ''}
-              className={`${INPUT} pl-7`}
-            />
-          </div>
+          <MoneyInput
+            name="min_purchase_price"
+            defaultValue={profile.minPurchasePrice}
+            placeholder="e.g. 400,000"
+          />
         </Field>
 
         <Field label="Max purchase price" hint="Cap on list price. Blank = no cap.">
-          <div className="relative">
-            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">
-              $
-            </span>
-            <input
-              name="max_purchase_price"
-              type="number"
-              min={0}
-              step={1000}
-              inputMode="numeric"
-              placeholder="e.g. 500000"
-              defaultValue={profile.maxPurchasePrice ?? ''}
-              className={`${INPUT} pl-7`}
-            />
-          </div>
+          <MoneyInput
+            name="max_purchase_price"
+            defaultValue={profile.maxPurchasePrice}
+            placeholder="e.g. 500,000"
+          />
         </Field>
 
         <Field label="Available cash" hint="For down payment + closing costs.">
-          <div className="relative">
-            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">
-              $
-            </span>
-            <input
-              name="available_cash"
-              type="number"
-              min={0}
-              step={1000}
-              inputMode="numeric"
-              placeholder="e.g. 150000"
-              defaultValue={profile.availableCash ?? ''}
-              className={`${INPUT} pl-7`}
-            />
-          </div>
+          <MoneyInput
+            name="available_cash"
+            defaultValue={profile.availableCash}
+            placeholder="e.g. 150,000"
+          />
         </Field>
 
         <Field label="Minimum beds" hint="Blank = any.">

@@ -5,10 +5,14 @@ import { redirect } from 'next/navigation';
 import { saveProfile, type InvestorProfile } from '@/lib/profile';
 import { PROFILE_PROPERTY_TYPES, type ProfilePropertyType } from '@/lib/format';
 
-/** Parse a form number field: blank/invalid -> null, negatives clamped out. */
+/**
+ * Parse a form number field: blank/invalid -> null, negatives clamped out.
+ * Commas are stripped first so comma-formatted money inputs (e.g. "400,000")
+ * persist as the raw number.
+ */
 function num(value: FormDataEntryValue | null): number | null {
   if (value == null) return null;
-  const s = String(value).trim();
+  const s = String(value).trim().replace(/,/g, '');
   if (s === '') return null;
   const n = Number(s);
   return Number.isFinite(n) && n >= 0 ? n : null;

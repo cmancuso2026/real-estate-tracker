@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { getProfile } from '@/lib/profile';
+import { getProfile, isProfileActive, DEFAULT_PROFILE } from '@/lib/profile';
 import { ProfileForm } from '@/components/ProfileForm';
 
 // Always read the live profile from the database.
@@ -11,7 +11,10 @@ export default async function SettingsPage({
   searchParams: Promise<{ saved?: string }>;
 }) {
   const { saved } = await searchParams;
-  const profile = await getProfile();
+  // Pre-fill the form with the saved buy-box. When nothing has been saved yet
+  // (or the saved profile is empty), start from sensible defaults instead.
+  const savedProfile = await getProfile();
+  const profile = isProfileActive(savedProfile) ? savedProfile : DEFAULT_PROFILE;
 
   return (
     <>
