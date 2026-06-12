@@ -28,13 +28,22 @@ const ALERT_TYPE = 'daily_digest';
 const CHANNEL = 'email';
 const GRADE_ORDER: Letter[] = ['A', 'B', 'C', 'D', 'F'];
 
+// Hardcoded grade colors — identical to the dashboard (src/dashboard/lib/format.ts
+// GRADE_HEX) so a grade looks the same in the email as in the app. The grade
+// badge is a colored circle with white text. A=green, B=blue, C=yellow,
+// D=orange, F=red.
 const GRADE_COLOR: Record<Letter, string> = {
-  A: '#1a7f37',
-  B: '#3b7dd8',
-  C: '#b58900',
-  D: '#cb6e17',
-  F: '#cf222e',
+  A: '#16a34a',
+  B: '#2563eb',
+  C: '#ca8a04',
+  D: '#ea580c',
+  F: '#dc2626',
 };
+
+/** A colored circle badge with white text, inline-table for email-client support. */
+function gradeBadgeHtml(grade: Letter | string, color: string): string {
+  return `<table role="presentation" cellpadding="0" cellspacing="0" style="display:inline-table"><tr><td align="center" valign="middle" width="24" height="24" style="width:24px;height:24px;background-color:${color};border-radius:12px;color:#ffffff;font-size:13px;font-weight:700;line-height:24px;text-align:center">${grade}</td></tr></table>`;
+}
 
 export interface EmailSendSummary {
   total: number;
@@ -147,7 +156,7 @@ function propertyRow(item: NotificationItem, color: string): string {
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
             <tr>
               <td style="font-size:14px;font-weight:600">${address}</td>
-              <td align="right" style="font-size:14px;font-weight:700;color:${color}">${p.overall_grade}</td>
+              <td align="right">${gradeBadgeHtml(p.overall_grade, color)}</td>
             </tr>
             <tr><td colspan="2" style="font-size:12px;color:#57606a;padding-top:2px">${sub}</td></tr>
             <tr><td colspan="2" style="font-size:13px;padding-top:8px">
