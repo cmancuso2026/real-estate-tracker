@@ -25,7 +25,10 @@ function optional(name: string, fallback = ''): string {
 }
 
 export const config = {
-  databasePath: optional('DATABASE_PATH', './data/tracker.db'),
+  /** Postgres connection string (Railway provides this as DATABASE_URL). */
+  get databaseUrl(): string {
+    return required('DATABASE_URL');
+  },
 
   get rentcastApiKey(): string {
     return required('RENTCAST_API_KEY');

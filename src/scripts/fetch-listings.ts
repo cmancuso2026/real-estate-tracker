@@ -12,7 +12,7 @@ import { fetchListingsByZip } from '../api/zillow.js';
  *   npm run fetch:listings 78704 78745
  */
 async function main(): Promise<void> {
-  initDb();
+  await initDb();
 
   const zips = argZips() ?? config.targetZipCodes;
   if (zips.length === 0) {
@@ -28,7 +28,7 @@ async function main(): Promise<void> {
     process.stdout.write(`Zillow: fetching for-sale listings for ${zip} … `);
     try {
       const listings = await fetchListingsByZip(zip);
-      const { inserted, updated } = upsertListings(listings);
+      const { inserted, updated } = await upsertListings(listings);
       totalInserted += inserted;
       totalUpdated += updated;
       console.log(`${listings.length} listings (${inserted} new, ${updated} updated)`);
@@ -40,9 +40,9 @@ async function main(): Promise<void> {
 
   console.log(
     `\n✓ Listings: ${totalInserted} new, ${totalUpdated} updated. ` +
-      `Total in DB: ${countListings()}.`,
+      `Total in DB: ${await countListings()}.`,
   );
-  closeDb();
+  await closeDb();
 }
 
 function argZips(): string[] | null {

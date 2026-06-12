@@ -40,7 +40,10 @@ export async function sendSlackAlerts(
 ): Promise<SlackSendSummary> {
   // Only alert on A-grade properties that also match the investor profile —
   // never alert on something that would be filtered out on the dashboard.
-  const properties = filterByProfile(getAGradeProperties(), getInvestorProfile());
+  const properties = filterByProfile(
+    await getAGradeProperties(),
+    await getInvestorProfile(),
+  );
   const summary: SlackSendSummary = {
     candidates: properties.length,
     sent: 0,
@@ -48,12 +51,12 @@ export async function sendSlackAlerts(
   };
 
   for (const p of properties) {
-    if (hasAlertBeenSent(p.listing_id, CHANNEL, ALERT_TYPE)) {
+    if (await hasAlertBeenSent(p.listing_id, CHANNEL, ALERT_TYPE)) {
       summary.skipped++;
       continue;
     }
 
-    const item = toNotificationItem(p);
+    const item = await toNotificationItem(p);
     const text = buildSlackText(item);
 
     if (opts.dryRun) {
@@ -63,7 +66,7 @@ export async function sendSlackAlerts(
     }
 
     await postToSlack({ text });
-    recordAlertSent(p.listing_id, CHANNEL, ALERT_TYPE);
+    await recordAlertSent(p.listing_id, CHANNEL, ALERT_TYPE);
     summary.sent++;
   }
 

@@ -24,7 +24,7 @@ import { fetchRentalsByZip } from '../api/rentcast.js';
  *   npm run fetch:all 78704 78745
  */
 async function main(): Promise<void> {
-  initDb();
+  await initDb();
 
   const zips = argZips() ?? config.targetZipCodes;
   if (zips.length === 0) {
@@ -41,7 +41,7 @@ async function main(): Promise<void> {
     // Zillow: every run — new for-sale listings appear daily.
     try {
       const listings = await fetchListingsByZip(zip);
-      const r = upsertListings(listings);
+      const r = await upsertListings(listings);
       console.log(
         `  Zillow listings: ${listings.length} (${r.inserted} new, ${r.updated} updated)`,
       );
@@ -51,7 +51,7 @@ async function main(): Promise<void> {
 
     // Rentcast: weekly per zip — comps change slowly, so skip if this zip was
     // refreshed within RENTAL_REFRESH_DAYS to conserve API quota.
-    const lastRefresh = rentalsLastRefreshedAt(zip);
+    const lastRefresh = await rentalsLastRefreshedAt(zip);
     const ageDays = lastRefresh != null ? daysSince(lastRefresh) : null;
     if (ageDays != null && ageDays < refreshDays) {
       console.log(
@@ -61,7 +61,7 @@ async function main(): Promise<void> {
     } else {
       try {
         const rentals = await fetchRentalsByZip(zip);
-        const r = upsertRentals(rentals);
+        const r = await upsertRentals(rentals);
         console.log(
           `  Rentcast comps: ${rentals.length} (${r.inserted} new, ${r.updated} updated)`,
         );
@@ -72,9 +72,9 @@ async function main(): Promise<void> {
   }
 
   console.log(
-    `\n✓ Done. DB totals — listings: ${countListings()}, rentals: ${countRentals()}.`,
+    `\n✓ Done. DB totals — listings: ${await countListings()}, rentals: ${await countRentals()}.`,
   );
-  closeDb();
+  await closeDb();
 }
 
 function argZips(): string[] | null {

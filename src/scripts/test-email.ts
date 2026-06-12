@@ -9,7 +9,7 @@ import { sendEmailDigest } from '../notifications/email.js';
  *   npm run test:email
  */
 async function main(): Promise<void> {
-  initDb();
+  await initDb();
   // ~10 years so existing graded data is pulled into the test digest.
   const summary = await sendEmailDigest({ sinceHours: 24 * 3650 });
   console.log(`✓ Test digest sent — "${summary.subject}"`);
@@ -19,7 +19,7 @@ async function main(): Promise<void> {
       '  (No graded properties found — sent an empty digest. Run `npm run grade` first for a fuller test.)',
     );
   }
-  closeDb();
+  await closeDb();
 }
 
 main().catch((err) => {

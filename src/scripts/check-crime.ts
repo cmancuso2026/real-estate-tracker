@@ -52,4 +52,6 @@ main()
     console.error(err);
     process.exitCode = 1;
   })
-  .finally(() => closeDb());
+  .finally(async () => {
+    await closeDb();
+  });

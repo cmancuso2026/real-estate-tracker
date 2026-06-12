@@ -54,10 +54,10 @@ export async function sendEmailDigest(
   // Apply the same investor-profile filters the dashboard uses, across all
   // grades — the digest never includes a property hidden on the dashboard.
   const properties = filterByProfile(
-    getRecentGradedProperties(sinceHours),
-    getInvestorProfile(),
+    await getRecentGradedProperties(sinceHours),
+    await getInvestorProfile(),
   );
-  const items = properties.map(toNotificationItem);
+  const items = await Promise.all(properties.map(toNotificationItem));
 
   const date = todayLabel();
   const aCount = properties.filter((p) => p.overall_grade === 'A').length;
@@ -70,7 +70,7 @@ export async function sendEmailDigest(
   } else {
     await sendViaSendGrid(subject, html);
     for (const p of properties) {
-      recordAlertSent(p.listing_id, CHANNEL, ALERT_TYPE);
+      await recordAlertSent(p.listing_id, CHANNEL, ALERT_TYPE);
     }
   }
 

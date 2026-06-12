@@ -17,16 +17,18 @@ export interface RentEstimate {
  * comps), then take the median rent. Returns null when no comparable rent
  * exists — the property then can't be graded on the cash-flow components.
  */
-export function estimateMonthlyRent(listing: ListingRow): RentEstimate | null {
+export async function estimateMonthlyRent(
+  listing: ListingRow,
+): Promise<RentEstimate | null> {
   if (listing.zip_code == null || listing.bedrooms == null) return null;
   const beds = Math.round(listing.bedrooms);
 
   // Prefer same property-type comps; fall back to any type if too thin.
-  const typed = comparableRents(listing.zip_code, beds, listing.property_type);
+  const typed = await comparableRents(listing.zip_code, beds, listing.property_type);
   const rents =
     typed.length >= MIN_COMPS
       ? typed
-      : comparableRents(listing.zip_code, beds);
+      : await comparableRents(listing.zip_code, beds);
 
   const m = median(rents);
   if (m == null) return null;
@@ -46,9 +48,9 @@ export interface PricePerSqftComparison {
  * Falls back to beds-only matching when bed+bath yields too few comps. Returns
  * null if the listing lacks price/area or there are no comparable listings.
  */
-export function pricePerSqftVsZipMedian(
+export async function pricePerSqftVsZipMedian(
   listing: ListingRow,
-): PricePerSqftComparison | null {
+): Promise<PricePerSqftComparison | null> {
   if (
     listing.zip_code == null ||
     listing.bedrooms == null ||
@@ -63,9 +65,9 @@ export function pricePerSqftVsZipMedian(
   const beds = Math.round(listing.bedrooms);
   const baths = Math.round(listing.bathrooms);
 
-  let comps = comparablePricePerSqft(listing.zip_code, beds, baths, true);
+  let comps = await comparablePricePerSqft(listing.zip_code, beds, baths, true);
   if (comps.length < MIN_COMPS) {
-    comps = comparablePricePerSqft(listing.zip_code, beds, baths, false);
+    comps = await comparablePricePerSqft(listing.zip_code, beds, baths, false);
   }
 
   const zipMedian = median(comps);

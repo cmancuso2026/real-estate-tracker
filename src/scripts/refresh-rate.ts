@@ -9,14 +9,14 @@ import { refreshInterestRate } from '../scoring/interest-rate.js';
  *   npm run refresh:rate
  */
 async function main(): Promise<void> {
-  initDb();
+  await initDb();
   const s = await refreshInterestRate();
   console.log(
     `✓ Rate updated — base ${s.baseRate}%` +
       (s.weekDate ? ` (week of ${s.weekDate})` : '') +
       ` + ${s.premium}% premium = ${s.effectiveRate}% effective.`,
   );
-  closeDb();
+  await closeDb();
 }
 
 main().catch((err) => {

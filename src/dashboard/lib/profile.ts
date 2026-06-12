@@ -1,4 +1,4 @@
-import { getDb, getWritableDb } from './db';
+import { getPool, query, queryOne, ensureProfileTable, NOW_UTC } from './db';
 import type { ProfilePropertyType } from './format';
 import { PROFILE_PROPERTY_TYPES } from './format';
 
@@ -48,21 +48,18 @@ interface ProfileRow {
 }
 
 /** The saved profile, or an empty (no-constraint) profile if none exists. */
-export function getProfile(): InvestorProfile {
-  const db = getDb();
-  if (!db) return EMPTY_PROFILE;
+export async function getProfile(): Promise<InvestorProfile> {
+  if (!getPool()) return EMPTY_PROFILE;
 
-  let row: ProfileRow | undefined;
+  let row: ProfileRow | null;
   try {
-    row = db
-      .prepare(
-        `SELECT min_purchase_price, max_purchase_price, available_cash, property_types, min_beds, min_coc_return
-         FROM investor_profile WHERE id = 1`,
-      )
-      .get() as ProfileRow | undefined;
+    row = await queryOne<ProfileRow>(
+      `SELECT min_purchase_price, max_purchase_price, available_cash, property_types, min_beds, min_coc_return
+       FROM investor_profile WHERE id = 1`,
+    );
   } catch {
     // Table/column may not exist yet (never saved, pre-feature database).
-    // Treat as empty; saving once migrates the schema via getWritableDb.
+    // Treat as empty; saving once creates the table via ensureProfileTable.
     return EMPTY_PROFILE;
   }
   if (!row) return EMPTY_PROFILE;
@@ -77,16 +74,16 @@ export function getProfile(): InvestorProfile {
   };
 }
 
-/** Upsert the single profile row. Throws if the database isn't writable. */
-export function saveProfile(p: InvestorProfile): void {
-  const db = getWritableDb();
-  if (!db) {
-    throw new Error('Tracker database not found — cannot save the investor profile.');
+/** Upsert the single profile row. Throws if the database isn't reachable. */
+export async function saveProfile(p: InvestorProfile): Promise<void> {
+  if (!getPool()) {
+    throw new Error('Database not configured — cannot save the investor profile.');
   }
-  db.prepare(
+  await ensureProfileTable();
+  await query(
     `INSERT INTO investor_profile
        (id, min_purchase_price, max_purchase_price, available_cash, property_types, min_beds, min_coc_return, updated_at)
-     VALUES (1, ?, ?, ?, ?, ?, ?, datetime('now'))
+     VALUES (1, $1, $2, $3, $4, $5, $6, ${NOW_UTC})
      ON CONFLICT (id) DO UPDATE SET
        min_purchase_price = excluded.min_purchase_price,
        max_purchase_price = excluded.max_purchase_price,
@@ -94,14 +91,15 @@ export function saveProfile(p: InvestorProfile): void {
        property_types     = excluded.property_types,
        min_beds           = excluded.min_beds,
        min_coc_return     = excluded.min_coc_return,
-       updated_at         = datetime('now')`,
-  ).run(
-    p.minPurchasePrice,
-    p.maxPurchasePrice,
-    p.availableCash,
-    JSON.stringify(p.propertyTypes),
-    p.minBeds,
-    p.minCocReturn,
+       updated_at         = ${NOW_UTC}`,
+    [
+      p.minPurchasePrice,
+      p.maxPurchasePrice,
+      p.availableCash,
+      JSON.stringify(p.propertyTypes),
+      p.minBeds,
+      p.minCocReturn,
+    ],
   );
 }
 

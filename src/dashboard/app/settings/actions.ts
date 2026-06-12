@@ -31,7 +31,7 @@ export async function saveProfileAction(formData: FormData): Promise<void> {
     minCocReturn: num(formData.get('min_coc_return')),
   };
 
-  saveProfile(profile);
+  await saveProfile(profile);
 
   // The profile changes what both pages display, so revalidate both.
   revalidatePath('/');

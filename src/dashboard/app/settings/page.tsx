@@ -11,7 +11,7 @@ export default async function SettingsPage({
   searchParams: Promise<{ saved?: string }>;
 }) {
   const { saved } = await searchParams;
-  const profile = getProfile();
+  const profile = await getProfile();
 
   return (
     <>

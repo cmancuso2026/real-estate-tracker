@@ -35,8 +35,8 @@ const JOBS: Job[] = [
   },
 ];
 
-function start(): void {
-  initDb();
+async function start(): Promise<void> {
+  await initDb();
 
   for (const job of JOBS) {
     if (!cron.validate(job.schedule)) {
@@ -59,13 +59,16 @@ function start(): void {
   console.log(`Scheduler running — ${JOBS.length} job(s). Press Ctrl-C to stop.`);
 }
 
-function shutdown(): void {
+async function shutdown(): Promise<void> {
   console.log('\nScheduler shutting down…');
-  closeDb();
+  await closeDb();
   process.exit(0);
 }
 
-process.on('SIGINT', shutdown);
-process.on('SIGTERM', shutdown);
+process.on('SIGINT', () => void shutdown());
+process.on('SIGTERM', () => void shutdown());
 
-start();
+start().catch((err) => {
+  console.error('Scheduler failed to start:', err);
+  process.exit(1);
+});

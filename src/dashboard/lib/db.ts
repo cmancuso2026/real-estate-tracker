@@ -1,90 +1,93 @@
-import Database from 'better-sqlite3';
-import { existsSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import pg from 'pg';
 
 /**
- * Read-only SQLite access for the dashboard.
+ * Postgres access for the dashboard.
  *
- * The dashboard is a self-contained Next.js app living at src/dashboard, but the
- * tracker database lives at the project root (data/tracker.db). Rather than
- * hard-code "../../", we walk up from the current working directory looking for
- * a `data/tracker.db`, and allow an explicit override via TRACKER_DB_PATH. The
- * connection is opened read-only — the dashboard never mutates the tracker.
+ * The dashboard is a self-contained Next.js app, so it reads DATABASE_URL
+ * straight from the environment rather than importing the tracker's
+ * env-coupled config. A single pool is memoized for the life of the server
+ * process. When DATABASE_URL isn't set the pool is null and queries return
+ * empty results — callers treat that as "no data" (fresh deploy before
+ * migrations / a DB plugin is attached).
  */
 
-let db: Database.Database | null = null;
+const { Pool } = pg;
+
+/**
+ * Current UTC time as a "YYYY-MM-DD HH24:MI:SS" text string — the same shape
+ * the tracker stores in its TEXT timestamp columns, so dates round-trip
+ * identically. Use wherever a write needs "now".
+ */
+export const NOW_UTC = `to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')`;
+
+let pool: pg.Pool | null = null;
 let resolved = false;
-let writable: Database.Database | null = null;
 
-function locateDb(): string | null {
-  const override = process.env.TRACKER_DB_PATH;
-  if (override) return existsSync(override) ? override : null;
-
-  let dir = process.cwd();
-  // Walk up to the filesystem root looking for data/tracker.db.
-  for (let i = 0; i < 8; i++) {
-    const candidate = resolve(dir, 'data', 'tracker.db');
-    if (existsSync(candidate)) return candidate;
-    const parent = dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
+function sslConfig(url: string): pg.PoolConfig['ssl'] {
+  if (process.env.DATABASE_SSL === 'false') return undefined;
+  if (process.env.DATABASE_SSL === 'true' || /sslmode=require/.test(url)) {
+    return { rejectUnauthorized: false };
   }
-  return null;
+  return undefined;
 }
 
-/**
- * The shared read-only connection, or null when the database file doesn't exist
- * yet (fresh checkout before `npm run db:init`). Callers treat null as "no data".
- */
-export function getDb(): Database.Database | null {
-  if (resolved) return db;
+/** The shared pool, or null when DATABASE_URL isn't configured. */
+export function getPool(): pg.Pool | null {
+  if (resolved) return pool;
   resolved = true;
+  const url = process.env.DATABASE_URL;
+  if (!url) return (pool = null);
+  pool = new Pool({
+    connectionString: url,
+    ssl: sslConfig(url),
+    max: Number(process.env.PG_POOL_MAX ?? 5),
+  });
+  return pool;
+}
 
-  const path = locateDb();
-  if (!path) return (db = null);
+/** Run a query and return its rows (empty array when there's no database). */
+export async function query<T = Record<string, unknown>>(
+  text: string,
+  params: unknown[] = [],
+): Promise<T[]> {
+  const p = getPool();
+  if (!p) return [];
+  const res = await p.query(text, params);
+  return res.rows as T[];
+}
 
-  db = new Database(path, { readonly: true, fileMustExist: true });
-  db.pragma('journal_mode = WAL');
-  return db;
+/** Run a query and return the first row, or null. */
+export async function queryOne<T = Record<string, unknown>>(
+  text: string,
+  params: unknown[] = [],
+): Promise<T | null> {
+  const rows = await query<T>(text, params);
+  return rows[0] ?? null;
 }
 
 /**
- * A read-write connection, used only for the investor-profile settings the
- * dashboard owns. The dashboard is otherwise read-only; this is a separate
- * connection so the rest of the app can't accidentally mutate the tracker.
- *
- * Ensures the investor_profile table exists so the dashboard works even on a
- * database created before this feature (without re-running `npm run db:init`).
- * Returns null when the database file doesn't exist yet.
+ * Ensure the investor_profile table exists before the dashboard writes to it,
+ * so saving works even against a database created before this feature (or
+ * before migrations ran). Memoized so it runs at most once per process.
  */
-export function getWritableDb(): Database.Database | null {
-  if (writable) return writable;
-
-  const path = locateDb();
-  if (!path) return null;
-
-  writable = new Database(path); // read-write
-  writable.pragma('journal_mode = WAL');
-  writable.exec(`
-    CREATE TABLE IF NOT EXISTS investor_profile (
-      id                  INTEGER PRIMARY KEY CHECK (id = 1),
-      min_purchase_price  REAL,
-      max_purchase_price  REAL,
-      available_cash      REAL,
-      property_types      TEXT,
-      min_beds            INTEGER,
-      min_coc_return      REAL,
-      updated_at          TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-  `);
-
-  // Migration: add min_purchase_price to profiles created before this column.
-  const cols = writable
-    .prepare('PRAGMA table_info(investor_profile)')
-    .all() as Array<{ name: string }>;
-  if (!cols.some((c) => c.name === 'min_purchase_price')) {
-    writable.exec('ALTER TABLE investor_profile ADD COLUMN min_purchase_price REAL');
-  }
-
-  return writable;
+let profileTableReady: Promise<void> | null = null;
+export function ensureProfileTable(): Promise<void> {
+  if (profileTableReady) return profileTableReady;
+  const p = getPool();
+  if (!p) return Promise.resolve();
+  profileTableReady = p
+    .query(
+      `CREATE TABLE IF NOT EXISTS investor_profile (
+         id                  INTEGER PRIMARY KEY CHECK (id = 1),
+         min_purchase_price  DOUBLE PRECISION,
+         max_purchase_price  DOUBLE PRECISION,
+         available_cash      DOUBLE PRECISION,
+         property_types      TEXT,
+         min_beds            INTEGER,
+         min_coc_return      DOUBLE PRECISION,
+         updated_at          TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')
+       )`,
+    )
+    .then(() => undefined);
+  return profileTableReady;
 }

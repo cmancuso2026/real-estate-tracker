@@ -49,11 +49,11 @@ export async function sendWeeklyDigest(
   // investor-profile filter the dashboard and daily digest use, then narrowed
   // to grade A — these are the week's opportunities.
   const properties = filterByProfile(
-    getRecentGradedProperties(sinceHours),
-    getInvestorProfile(),
+    await getRecentGradedProperties(sinceHours),
+    await getInvestorProfile(),
   ).filter((p) => p.overall_grade === 'A');
 
-  const items = properties.map(toNotificationItem);
+  const items = await Promise.all(properties.map(toNotificationItem));
   const date = weekOfLabel();
   const subject = buildWeeklySubject(date, properties.length);
   const html =
@@ -65,7 +65,7 @@ export async function sendWeeklyDigest(
   } else {
     await sendViaSendGrid(subject, html);
     for (const p of properties) {
-      recordAlertSent(p.listing_id, CHANNEL, ALERT_TYPE);
+      await recordAlertSent(p.listing_id, CHANNEL, ALERT_TYPE);
     }
   }
 

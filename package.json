@@ -4,9 +4,12 @@
   "description": "Real estate investment tracker — fetches for-sale listings and rental comps, grades properties A-F, and sends alerts.",
   "type": "module",
   "scripts": {
-    "build": "tsc",
+    "build": "npm run dashboard:install && npm run dashboard:build",
+    "start": "npm run db:migrate && npm --prefix src/dashboard run start",
+    "worker": "tsx src/scheduler/index.ts",
     "typecheck": "tsc --noEmit",
     "db:init": "tsx src/db/init.ts",
+    "db:migrate": "tsx src/db/migrate.ts",
     "fetch:rentals": "tsx src/scripts/fetch-rentals.ts",
     "fetch:listings": "tsx src/scripts/fetch-listings.ts",
     "fetch:all": "tsx src/scripts/fetch-all.ts",
@@ -28,16 +31,16 @@
     "node": ">=20"
   },
   "dependencies": {
-    "better-sqlite3": "^11.8.1",
     "dotenv": "^16.4.7",
     "node-cron": "^3.0.3",
+    "pg": "^8.13.1",
+    "tsx": "^4.19.2",
     "zod": "^3.24.1"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.10.5",
     "@types/node-cron": "^3.0.11",
-    "tsx": "^4.19.2",
+    "@types/pg": "^8.11.10",
     "typescript": "^5.7.3"
   }
 }

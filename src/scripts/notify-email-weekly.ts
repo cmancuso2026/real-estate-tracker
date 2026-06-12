@@ -12,14 +12,14 @@ import { sendWeeklyDigest } from '../notifications/weekly-digest.js';
  *   npm run notify:email:weekly -- --dry # build but don't send
  */
 async function main(): Promise<void> {
-  initDb();
+  await initDb();
   const dryRun = process.argv.includes('--dry');
   const s = await sendWeeklyDigest({ dryRun });
   console.log(
     `${dryRun ? '[dry-run] ' : ''}✓ Weekly digest: "${s.subject}" ` +
       `(${s.aCount} grade A).`,
   );
-  closeDb();
+  await closeDb();
 }
 
 main().catch((err) => {

@@ -1,4 +1,5 @@
-import { getDb } from '../db/index.js';
+import { execute, withTransaction, closeDb, NOW_UTC, nowOffsetText } from '../db/index.js';
+import { initDb } from '../db/init.js';
 import { WEIGHTS, pointsForLetter, letterFromScore } from '../scoring/grades.js';
 import type { ComponentKey, Letter } from '../scoring/types.js';
 
@@ -146,86 +147,80 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
-function clear(): void {
-  const db = getDb();
-  const info = db
-    .prepare(`DELETE FROM listings WHERE source_id LIKE '${DEMO_PREFIX}%'`)
-    .run();
-  console.log(`Removed ${info.changes} demo listing(s) (grades cascade-deleted).`);
+async function clear(): Promise<void> {
+  const info = await execute(
+    `DELETE FROM listings WHERE source_id LIKE '${DEMO_PREFIX}%'`,
+  );
+  console.log(
+    `Removed ${info.rowCount ?? 0} demo listing(s) (grades cascade-deleted).`,
+  );
 }
 
-function seed(): void {
-  const db = getDb();
+const INSERT_LISTING_SQL = `
+  INSERT INTO listings (
+    source, source_id, address, city, state, zip_code, latitude, longitude,
+    price, bedrooms, bathrooms, living_area, lot_size, year_built,
+    property_type, days_on_market, status, listing_url, raw_json
+  ) VALUES (
+    $1, $2, $3, $4, 'FL', $5, $6, $7,
+    $8, $9, $10, $11, $12, $13, $14,
+    $15, 'for_sale', $16, '{}'
+  )
+  ON CONFLICT (source, source_id) DO UPDATE SET price = excluded.price
+  RETURNING id`;
 
+const INSERT_GRADE_SQL = `
+  INSERT INTO grades (
+    property_id, overall_grade, overall_score,
+    coc_grade, cashflow_grade, sqft_grade, crime_grade, rental_grade,
+    coc_return, monthly_cashflow, price_per_sqft, crime_index,
+    rental_prevalence, interest_rate_used, reasoning, assumptions_json, graded_at
+  ) VALUES (
+    $1, $2, $3, $4, $5, $6, $7, $8,
+    $9, $10, $11, $12, $13, $14, $15, $16,
+    ${nowOffsetText('days', '$17')}
+  )`;
+
+async function seed(): Promise<void> {
   // Latest interest rate snapshot (so the summary card shows a rate).
-  db.prepare(
+  await execute(
     `INSERT INTO interest_rates (source, week_date, base_rate, premium, effective_rate)
-     VALUES ('freddie_mac_pmms', @week, @base, @premium, @eff)
+     VALUES ('freddie_mac_pmms', $1, $2, $3, $4)
      ON CONFLICT (source, week_date) DO UPDATE SET
        base_rate = excluded.base_rate, premium = excluded.premium,
-       effective_rate = excluded.effective_rate, fetched_at = datetime('now')`,
-  ).run({ week: '2026-06-04', base: BASE_RATE, premium: PREMIUM, eff: EFF_RATE });
-
-  const insertListing = db.prepare(
-    `INSERT INTO listings (
-       source, source_id, address, city, state, zip_code, latitude, longitude,
-       price, bedrooms, bathrooms, living_area, lot_size, year_built,
-       property_type, days_on_market, status, listing_url, raw_json
-     ) VALUES (
-       @source, @source_id, @address, @city, 'FL', @zip, @lat, @lng,
-       @price, @beds, @baths, @sqft, @lot, @year_built, @property_type,
-       @days, 'for_sale', @url, '{}'
-     )
-     ON CONFLICT (source, source_id) DO UPDATE SET price = excluded.price`,
+       effective_rate = excluded.effective_rate, fetched_at = ${NOW_UTC}`,
+    ['2026-06-04', BASE_RATE, PREMIUM, EFF_RATE],
   );
 
-  const insertGrade = db.prepare(
-    `INSERT INTO grades (
-       property_id, overall_grade, overall_score,
-       coc_grade, cashflow_grade, sqft_grade, crime_grade, rental_grade,
-       coc_return, monthly_cashflow, price_per_sqft, crime_index,
-       rental_prevalence, interest_rate_used, reasoning, assumptions_json, graded_at
-     ) VALUES (
-       @pid, @grade, @score, @coc_g, @cf_g, @sqft_g, @crime_g, @rental_g,
-       @coc, @cf, @ppsf, @crime, @rental, @rate, @reasoning, @assumptions, @graded_at
-     )`,
-  );
-
-  const run = db.transaction(() => {
+  const count = await withTransaction(async (client) => {
     let n = 0;
-    LISTINGS.forEach((l, idx) => {
+    for (let idx = 0; idx < LISTINGS.length; idx++) {
+      const l = LISTINGS[idx]!;
       const sourceId = `${DEMO_PREFIX}${idx + 1}`;
       const url =
         l.source === 'zillow'
           ? `https://www.zillow.com/homedetails/${sourceId}_zpid/`
           : `https://www.realtor.com/realestateandhomes-detail/${sourceId}`;
 
-      const info = insertListing.run({
-        source: l.source,
-        source_id: sourceId,
-        address: l.address,
-        city: l.city,
-        zip: l.zip,
-        lat: l.lat,
-        lng: l.lng,
-        price: l.price,
-        beds: l.beds,
-        baths: l.baths,
-        sqft: l.sqft,
-        lot: l.sqft * 4,
-        year_built: l.yearBuilt,
-        property_type: l.propertyType,
-        days: l.daysOnMarket,
+      const res = await client.query(INSERT_LISTING_SQL, [
+        l.source,
+        sourceId,
+        l.address,
+        l.city,
+        l.zip,
+        l.lat,
+        l.lng,
+        l.price,
+        l.beds,
+        l.baths,
+        l.sqft,
+        l.sqft * 4,
+        l.yearBuilt,
+        l.propertyType,
+        l.daysOnMarket,
         url,
-      });
-
-      const propertyId =
-        Number(info.lastInsertRowid) ||
-        (
-          db
-            .prepare('SELECT id FROM listings WHERE source = ? AND source_id = ?')
-            .get(l.source, sourceId) as { id: number }
-        ).id;
+      ]);
+      const propertyId = Number(res.rows[0]!.id);
 
       const deal = computeDeal(l);
       const cocG = gradeCoc(deal.cocReturn);
@@ -252,49 +247,52 @@ function seed(): void {
 
       // Most properties get one grade; two get a short history for the chart.
       const runs = idx === 0 ? 3 : idx === 8 ? 2 : 1;
-      const gradedAtFor = db.prepare("SELECT datetime('now', ?) AS t");
       for (let k = runs - 1; k >= 0; k--) {
         const daysAgo = k * 14;
-        const gradedAt = (gradedAtFor.get(`-${daysAgo} days`) as { t: string }).t;
         // Earlier runs scored slightly lower (trend up to current).
         const scoreAdj = -0.25 * k;
         const score = round2(Math.max(0, overall.score + scoreAdj));
-        insertGrade.run({
-          pid: propertyId,
-          grade: letterFromScore(score),
+        await client.query(INSERT_GRADE_SQL, [
+          propertyId,
+          letterFromScore(score),
           score,
-          coc_g: cocG,
-          cf_g: cfG,
-          sqft_g: sqftG,
-          crime_g: crimeG,
-          rental_g: rentalG,
-          coc: deal.cocReturn,
-          cf: deal.monthlyCashflow,
-          ppsf: deal.pricePerSqft,
-          crime: crimeIndex,
-          rental: rentalPrevalence,
-          rate: EFF_RATE,
+          cocG,
+          cfG,
+          sqftG,
+          crimeG,
+          rentalG,
+          deal.cocReturn,
+          deal.monthlyCashflow,
+          deal.pricePerSqft,
+          crimeIndex,
+          rentalPrevalence,
+          EFF_RATE,
           reasoning,
-          assumptions: JSON.stringify(deal.assumptions),
-          graded_at: gradedAt,
-        });
+          JSON.stringify(deal.assumptions),
+          daysAgo,
+        ]);
       }
       n++;
-    });
+    }
     return n;
   });
 
-  const count = run();
   console.log(`Seeded ${count} demo listings with grades + an interest rate.`);
   console.log('View at http://localhost:3000 — run `npm run seed:demo -- --clear` to remove.');
 }
 
-function main(): void {
+async function main(): Promise<void> {
+  await initDb();
   if (process.argv.includes('--clear')) {
-    clear();
+    await clear();
   } else {
-    seed();
+    await seed();
   }
 }
 
-main();
+main()
+  .catch((err) => {
+    console.error(err);
+    process.exitCode = 1;
+  })
+  .finally(() => closeDb());

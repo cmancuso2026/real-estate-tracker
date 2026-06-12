@@ -1,4 +1,4 @@
-import { getDb } from '../db/index.js';
+import { queryOne, execute, NOW_UTC, nowOffsetText } from '../db/index.js';
 import type { Letter } from './types.js';
 
 /**
@@ -61,7 +61,7 @@ export async function getCrimeIndex(
 ): Promise<CrimeResult | null> {
   const zip = (zipCode ?? '').trim();
 
-  const cached = readCache(zip);
+  const cached = await readCache(zip);
   if (cached) return cached;
 
   const centroid = ZIP_CENTROIDS[zip];
@@ -79,7 +79,7 @@ export async function getCrimeIndex(
     crimeIndex: round2(crimeIndex),
     baseline: round2(baseline),
   };
-  writeCache(zip, result, local?.count ?? 0);
+  await writeCache(zip, result, local?.count ?? 0);
   return result;
 }
 
@@ -233,34 +233,37 @@ export function isMultiFamily(propertyType: string | null): boolean {
 
 // --- cache (crime_zip_cache, weekly TTL) ------------------------------------
 
-function readCache(zip: string): CrimeResult | null {
-  const row = getDb()
-    .prepare(
-      `SELECT crime_index, baseline FROM crime_zip_cache
-       WHERE zip_code = ? AND fetched_at > datetime('now', ?)`,
-    )
-    .get(zip, `-${REFRESH_DAYS} days`) as
-    | { crime_index: number | null; baseline: number | null }
-    | undefined;
+async function readCache(zip: string): Promise<CrimeResult | null> {
+  const row = await queryOne<{
+    crime_index: number | null;
+    baseline: number | null;
+  }>(
+    `SELECT crime_index, baseline FROM crime_zip_cache
+     WHERE zip_code = $1 AND fetched_at > ${nowOffsetText('days', '$2')}`,
+    [zip, REFRESH_DAYS],
+  );
   if (row && row.crime_index != null && row.baseline != null) {
     return { city: zip, crimeIndex: row.crime_index, baseline: row.baseline };
   }
   return null;
 }
 
-function writeCache(zip: string, result: CrimeResult, neighborhoods: number): void {
-  getDb()
-    .prepare(
-      `INSERT INTO crime_zip_cache (zip_code, crime_index, baseline, neighborhoods, source, fetched_at)
-       VALUES (?, ?, ?, ?, 'miami_dade_open_data', datetime('now'))
-       ON CONFLICT (zip_code) DO UPDATE SET
-         crime_index   = excluded.crime_index,
-         baseline      = excluded.baseline,
-         neighborhoods = excluded.neighborhoods,
-         source        = excluded.source,
-         fetched_at    = datetime('now')`,
-    )
-    .run(zip, result.crimeIndex, result.baseline, neighborhoods);
+async function writeCache(
+  zip: string,
+  result: CrimeResult,
+  neighborhoods: number,
+): Promise<void> {
+  await execute(
+    `INSERT INTO crime_zip_cache (zip_code, crime_index, baseline, neighborhoods, source, fetched_at)
+     VALUES ($1, $2, $3, $4, 'miami_dade_open_data', ${NOW_UTC})
+     ON CONFLICT (zip_code) DO UPDATE SET
+       crime_index   = excluded.crime_index,
+       baseline      = excluded.baseline,
+       neighborhoods = excluded.neighborhoods,
+       source        = excluded.source,
+       fetched_at    = ${NOW_UTC}`,
+    [zip, result.crimeIndex, result.baseline, neighborhoods],
+  );
 }
 
 // --- helpers ----------------------------------------------------------------

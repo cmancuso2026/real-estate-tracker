@@ -1,5 +1,5 @@
 import { config } from '../config.js';
-import { getDb } from '../db/index.js';
+import { queryOne, execute, NOW_UTC } from '../db/index.js';
 
 /**
  * Freddie Mac PMMS 30-year fixed rate.
@@ -91,44 +91,34 @@ export async function refreshInterestRate(): Promise<RateSnapshot> {
   const effectiveRate = round2(baseRate + premium);
 
   const snapshot: RateSnapshot = { baseRate, premium, effectiveRate, weekDate };
-  storeRate(snapshot);
+  await storeRate(snapshot);
   return snapshot;
 }
 
-function storeRate(s: RateSnapshot): void {
-  getDb()
-    .prepare(
-      `INSERT INTO interest_rates (source, week_date, base_rate, premium, effective_rate)
-       VALUES ('freddie_mac_pmms', @weekDate, @baseRate, @premium, @effectiveRate)
-       ON CONFLICT (source, week_date) DO UPDATE SET
-         base_rate = excluded.base_rate,
-         premium = excluded.premium,
-         effective_rate = excluded.effective_rate,
-         fetched_at = datetime('now')`,
-    )
-    .run({
-      weekDate: s.weekDate,
-      baseRate: s.baseRate,
-      premium: s.premium,
-      effectiveRate: s.effectiveRate,
-    });
+async function storeRate(s: RateSnapshot): Promise<void> {
+  await execute(
+    `INSERT INTO interest_rates (source, week_date, base_rate, premium, effective_rate)
+     VALUES ('freddie_mac_pmms', $1, $2, $3, $4)
+     ON CONFLICT (source, week_date) DO UPDATE SET
+       base_rate = excluded.base_rate,
+       premium = excluded.premium,
+       effective_rate = excluded.effective_rate,
+       fetched_at = ${NOW_UTC}`,
+    [s.weekDate, s.baseRate, s.premium, s.effectiveRate],
+  );
 }
 
 /** The most recently stored rate snapshot, or null if none stored yet. */
-export function getStoredRate(): RateSnapshot | null {
-  const row = getDb()
-    .prepare(
-      `SELECT base_rate, premium, effective_rate, week_date
-       FROM interest_rates ORDER BY fetched_at DESC, id DESC LIMIT 1`,
-    )
-    .get() as
-    | {
-        base_rate: number;
-        premium: number;
-        effective_rate: number;
-        week_date: string | null;
-      }
-    | undefined;
+export async function getStoredRate(): Promise<RateSnapshot | null> {
+  const row = await queryOne<{
+    base_rate: number;
+    premium: number;
+    effective_rate: number;
+    week_date: string | null;
+  }>(
+    `SELECT base_rate, premium, effective_rate, week_date
+     FROM interest_rates ORDER BY fetched_at DESC, id DESC LIMIT 1`,
+  );
   if (!row) return null;
   return {
     baseRate: row.base_rate,
@@ -144,7 +134,7 @@ export function getStoredRate(): RateSnapshot | null {
  * so a fresh DB still produces grades.
  */
 export async function getEffectiveRate(): Promise<RateSnapshot> {
-  return getStoredRate() ?? (await refreshInterestRate());
+  return (await getStoredRate()) ?? (await refreshInterestRate());
 }
 
 function round2(n: number): number {

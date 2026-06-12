@@ -2,7 +2,7 @@
 
 A full-stack investment analysis tool that automates property sourcing, scoring, and alerting for Miami-Dade real estate. Built to solve a real problem: evaluating 50+ listings per week across multiple zip codes without a repeatable framework.
 
-**What it does:** Pulls live for-sale listings and rental comps, scores each property A–F using a weighted investment model, and surfaces the best opportunities via Slack alerts and a web dashboard — without requiring manual spreadsheet work.
+**What it does:** Pulls live for-sale listings and rental comps, scores each property A–F using a weighted investment model, and surfaces the best opportunities via Slack alerts and a web dashboard — without requiring manual spreadsheet work. Deploys to [Railway](#deployment-railway) as a web dashboard plus a background worker, backed by PostgreSQL.
 
 ---
 
@@ -24,10 +24,11 @@ The design decisions reflect real investing constraints:
 | Layer | Choice | Rationale |
 |---|---|---|
 | Language | TypeScript / Node.js (ESM) | Type safety for financial calculations; native fetch in Node 20+ removes a dependency |
-| Database | SQLite | Zero-infrastructure for a solo tool; easy to inspect directly; sufficient for ~10k rows |
-| Dashboard | Next.js + Tailwind | Fast to build, easy to extend; reads SQLite directly (no API layer needed for local use) |
-| Scheduling | node-cron | Lightweight; runs as a long-lived process under pm2 or systemd |
+| Database | PostgreSQL (`pg`) | Managed and hosting-friendly (Railway plugin); handles concurrent access from the web dashboard and the worker; one URL, no file to ship |
+| Dashboard | Next.js + Tailwind | Fast to build, easy to extend; reads Postgres directly via server components |
+| Scheduling | node-cron | Lightweight; runs as a long-lived worker process |
 | Notifications | Slack webhooks + SendGrid | Alert fatigue matters — Slack for grade-A urgency, email for weekly digest |
+| Hosting | Railway | Two services (web + worker) from one repo, backed by a managed Postgres |
 
 The project is intentionally phased so each layer is independently useful — data ingestion works without scoring, scoring works without the dashboard.
 
@@ -37,11 +38,12 @@ The project is intentionally phased so each layer is independently useful — da
 
 | Phase | Status | Description |
 |---|---|---|
-| 1 — Data ingestion | ✅ Complete | Zillow (via RapidAPI) + Rentcast; paginated fetching; deduplicated SQLite storage |
+| 1 — Data ingestion | ✅ Complete | Zillow (via RapidAPI) + Rentcast; paginated fetching; deduplicated Postgres storage |
 | 2 — Scoring engine | ✅ Complete | A–F grading across 5 weighted components; plain-English reasoning per grade |
 | 3 — Realtor.com | 🔲 Planned | Second listing source to reduce Zillow API dependency |
 | 4 — Gmail parser | 🔲 Planned | Parse MLS alert emails into structured listings |
 | 5 — Dashboard + alerts | ✅ Complete | Next.js dashboard with investor buy-box filtering; Slack + weekly email digest |
+| 6 — Deployment | ✅ Complete | PostgreSQL migration; Railway web + worker; `/api/health` check |
 
 ---
 
@@ -70,38 +72,41 @@ Each listing is graded A–F across five components:
 
 ## Dashboard
 
-A Next.js + Tailwind app reading SQLite directly at `http://localhost:3000`. No auth — designed for local use.
+A Next.js + Tailwind app reading the same PostgreSQL database (`DATABASE_URL`) at `http://localhost:3000`. No auth — designed for trusted/local use.
 
 **Key screens:**
 - **Main table** — sortable/filterable by zip, type, beds, price range, and grade; color-coded grade badges
 - **Property detail** — full scoring breakdown, step-by-step CoC calculation, grade history chart
 - **Investor Profile** — save a buy-box (max price, available cash, property types, min CoC); dashboard filters all results against it
 
-Dark mode and mobile-responsive layout included.
+Dark mode and mobile-responsive layout included. A health check is exposed at `/api/health` for Railway.
 
 ---
 
 ## Setup
 
-Requires **Node.js >= 20**.
+Requires **Node.js >= 20** and a **PostgreSQL** database (local or hosted).
 
 ```bash
 npm install
-cp .env.example .env   # fill in your keys
-npm run db:init
+cp .env.example .env   # set DATABASE_URL and your API keys
+npm run db:migrate     # create the tables in Postgres (idempotent)
 ```
 
 ### Environment Variables
 
 | Variable | Required | Purpose |
 |---|---|---|
+| `DATABASE_URL` | **yes** | PostgreSQL connection string |
+| `DATABASE_SSL` | no | `true`/`false` to force TLS (auto-detected otherwise) |
 | `RENTCAST_API_KEY` | yes | [Rentcast](https://www.rentcast.io/api) |
 | `RAPIDAPI_KEY` | yes | RapidAPI key for Zillow provider |
 | `TARGET_ZIP_CODES` | yes | Comma-separated zips, e.g. `33012,33016` |
-| `DATABASE_PATH` | no | SQLite path (default: `./data/tracker.db`) |
 | `FBI_API_KEY` | no | [api.data.gov](https://api.data.gov/signup/) — defaults to rate-limited `DEMO_KEY` |
 | `CENSUS_API_KEY` | no | [census.gov](https://api.census.gov/data/key_signup.html) |
 | `MANUAL_PMMS_RATE` | no | Override 30-yr base rate (skips network fetch) |
+
+See `.env.example` for the complete list, including the Slack/SendGrid notification keys.
 
 ---
 
@@ -130,6 +135,69 @@ npm run typecheck                # type-check without emitting
 
 ---
 
+## Deployment (Railway)
+
+The app deploys to [Railway](https://railway.com) as **two services backed by one Postgres database**, both built from this same repo:
+
+- **web** — the Next.js dashboard (`npm run start`), which runs the database migration on boot and then serves the UI. Health-checked at `/api/health`.
+- **worker** — the cron scheduler (`npm run worker`), a long-lived process that fires the weekly A-grade digest (Fridays 8 AM ET).
+
+`railway.json` (web defaults) and `Procfile` (`web` / `worker` process types) are committed at the repo root.
+
+### 1. Create the project and add Postgres
+
+1. Push this repo to GitHub.
+2. In Railway: **New Project → Deploy from GitHub repo**, and pick this repo. Railway creates a first service from it — this is the **web** service.
+3. In the project, click **New → Database → Add PostgreSQL**. This provisions a managed Postgres and exposes `DATABASE_URL` for reference.
+
+### 2. Configure the web service
+
+On the web service's **Variables** tab, reference the database URL (don't paste it — referencing wires Railway's internal, no-SSL connection):
+
+```
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+```
+
+Then add the application variables (all keys from `.env.example`):
+
+| Variable | Required | Notes |
+| --- | --- | --- |
+| `DATABASE_URL` | **yes** | `${{Postgres.DATABASE_URL}}` (reference, set above) |
+| `RENTCAST_API_KEY` | for rentals | Rentcast API key |
+| `RAPIDAPI_KEY` | for listings | RapidAPI key for the Zillow provider |
+| `RAPIDAPI_ZILLOW_HOST` | no | defaults to `us-property-market1.p.rapidapi.com` |
+| `TARGET_ZIP_CODES` | yes | comma-separated, e.g. `33012,33126` |
+| `RENTAL_REFRESH_DAYS` | no | default `7` |
+| `INVESTMENT_RATE_PREMIUM` | no | default `0.75` |
+| `FREDDIE_MAC_PMMS_CSV_URL` | no | defaults to freddiemac.com |
+| `MANUAL_PMMS_RATE` | no | override the base 30-yr rate |
+| `FBI_API_KEY` | no | defaults to rate-limited `DEMO_KEY` |
+| `CENSUS_API_KEY` | no | ACS allows limited keyless use |
+| `SLACK_WEBHOOK_URL` | for Slack alerts | incoming webhook URL |
+| `SENDGRID_API_KEY` | for email | SendGrid API key |
+| `SENDGRID_FROM_EMAIL` | for email | verified sender |
+| `SENDGRID_TO_EMAIL` | for email | recipient(s), comma-separated |
+| `REALTOR_API_KEY`, `ANTHROPIC_API_KEY`, `GMAIL_*` | no | placeholders for later phases |
+| `DATABASE_SSL` | no | leave unset for the internal URL; `true` for an external/public one |
+
+Railway sets `PORT` automatically; the dashboard binds to it. The web service runs `npm run build` then `npm run start`, and `start` applies the schema migration (`db:migrate`) before launching Next.js — so the database is ready on first boot.
+
+### 3. Add the worker service
+
+1. **New → GitHub Repo** and select this same repo again (a second service).
+2. On that service: **Settings → Deploy → Custom Start Command** → `npm run worker`.
+3. On its **Variables** tab, set the same variables as the web service (at minimum `DATABASE_URL=${{Postgres.DATABASE_URL}}` plus whichever API keys the scheduled jobs need — SendGrid for the digest). Railway services don't share variables by default.
+
+(If you prefer Railway's Procfile process types over a custom start command, the committed `Procfile` defines both `web` and `worker`.)
+
+### 4. Deploy
+
+Push to your default branch (or click **Deploy**). The web service builds and serves the dashboard at the generated Railway URL; visit `/api/health` to confirm it reports `{"status":"ok","database":"connected"}`. The worker starts the scheduler and stays running.
+
+To run an ad-hoc tracker command against the deployed database, use the Railway CLI: `railway run npm run fetch:all`, `railway run npm run grade`, or `railway run npm run seed:demo`.
+
+---
+
 ## Database Schema
 
 Records deduplicate on `(source, source_id)` — re-runs update existing rows and bump `last_seen_at` rather than creating duplicates.
@@ -140,12 +208,15 @@ Records deduplicate on `(source, source_id)` — re-runs update existing rows an
 | `rentals` | Rental comps (Rentcast) |
 | `interest_rates` | Weekly Freddie Mac PMMS snapshots + investment premium |
 | `grades` | A–F grades with reasoning, metrics, and full assumptions blob |
-| `crime_cache` | Per-zip crime index (30-day TTL) |
+| `crime_zip_cache` | Per-zip Miami-Dade crime index (7-day TTL) |
+| `crime_cache` | Legacy FBI-agency cache (kept, no longer written) |
 | `census_cache` | Per-zip renter-occupancy (90-day TTL) |
 | `alerts_sent` | Notification log for deduplication |
 | `investor_profile` | Dashboard buy-box settings |
 
+Timestamp columns are stored as TEXT in UTC `YYYY-MM-DD HH:MM:SS` form. See `src/db/schema.sql` for column-level detail.
+
 ```bash
-sqlite3 data/tracker.db
-sqlite> SELECT zip_code, COUNT(*), MIN(price), MAX(price) FROM listings GROUP BY zip_code;
+psql "$DATABASE_URL"
+=> SELECT zip_code, COUNT(*), MIN(price), MAX(price) FROM listings GROUP BY zip_code;
 ```

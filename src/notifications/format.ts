@@ -22,13 +22,15 @@ export interface NotificationItem {
   belowMedianPct: number | null;
 }
 
-export function toNotificationItem(p: GradedProperty): NotificationItem {
+export async function toNotificationItem(
+  p: GradedProperty,
+): Promise<NotificationItem> {
   const links = resolveLinks(p);
   return {
     property: p,
     zillowUrl: links.zillowUrl,
     realtorUrl: links.realtorUrl,
-    belowMedianPct: computeBelowMedianPct(p),
+    belowMedianPct: await computeBelowMedianPct(p),
   };
 }
 
@@ -51,7 +53,7 @@ function resolveLinks(p: GradedProperty): {
  * zip median, so we recompute the comparison from current listing data. Returns
  * a positive percentage when the property is cheaper than the median.
  */
-function computeBelowMedianPct(p: GradedProperty): number | null {
+async function computeBelowMedianPct(p: GradedProperty): Promise<number | null> {
   const row: ListingRow = {
     id: p.listing_id,
     source: p.source,
@@ -68,7 +70,7 @@ function computeBelowMedianPct(p: GradedProperty): number | null {
     living_area: p.living_area,
     property_type: p.property_type,
   };
-  const cmp = pricePerSqftVsZipMedian(row);
+  const cmp = await pricePerSqftVsZipMedian(row);
   if (!cmp) return null;
   // deltaPct is % ABOVE the median; negate so positive means below/cheaper.
   return round1(-cmp.deltaPct);

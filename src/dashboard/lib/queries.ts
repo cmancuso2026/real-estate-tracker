@@ -1,4 +1,4 @@
-import { getDb } from './db';
+import { getPool, query, queryOne } from './db';
 import type { Letter } from './format';
 import { matchesProfileTypes } from './format';
 import type { InvestorProfile } from './profile';
@@ -269,12 +269,12 @@ export function filterByProfile(rows: GradedRow[], p: InvestorProfile): GradedRo
  * Every property at its latest grade, best first. Powers the main table. When a
  * profile is supplied, results are filtered to the investor's buy-box.
  */
-export function getGradedProperties(profile?: InvestorProfile): GradedRow[] {
-  const db = getDb();
-  if (!db) return [];
-  const rows = db
-    .prepare(`${LATEST_GRADE_JOIN} ORDER BY g.overall_score DESC, g.coc_return DESC`)
-    .all();
+export async function getGradedProperties(
+  profile?: InvestorProfile,
+): Promise<GradedRow[]> {
+  const rows = await query(
+    `${LATEST_GRADE_JOIN} ORDER BY g.overall_score DESC, g.coc_return DESC`,
+  );
   const mapped = rows.map(toGradedRow);
   return profile ? filterByProfile(mapped, profile) : mapped;
 }
@@ -284,8 +284,7 @@ export function getGradedProperties(profile?: InvestorProfile): GradedRow[] {
  * distribution, average CoC and best opportunity reflect only the matching
  * properties; totalProperties remains the full count of tracked listings.
  */
-export function getSummary(profile?: InvestorProfile): Summary {
-  const db = getDb();
+export async function getSummary(profile?: InvestorProfile): Promise<Summary> {
   const empty: Summary = {
     totalProperties: 0,
     totalGraded: 0,
@@ -294,17 +293,14 @@ export function getSummary(profile?: InvestorProfile): Summary {
     best: null,
     rate: null,
   };
-  if (!db) return empty;
+  if (!getPool()) return empty;
 
-  const totalProperties = (
-    db
-      .prepare(
-        `SELECT COUNT(*) AS n FROM listings WHERE ${investableTypesOnly('property_type')}`,
-      )
-      .get() as { n: number }
-  ).n;
+  const totalRow = await queryOne<{ n: string }>(
+    `SELECT COUNT(*) AS n FROM listings WHERE ${investableTypesOnly('property_type')}`,
+  );
+  const totalProperties = Number(totalRow?.n ?? 0);
 
-  const graded = getGradedProperties(profile);
+  const graded = await getGradedProperties(profile);
   const gradeCounts: Record<Letter, number> = { A: 0, B: 0, C: 0, D: 0, F: 0 };
   let cocSum = 0;
   let cocCount = 0;
@@ -316,14 +312,15 @@ export function getSummary(profile?: InvestorProfile): Summary {
     }
   }
 
-  const rateRow = db
-    .prepare(
-      `SELECT base_rate, premium, effective_rate, week_date
-       FROM interest_rates ORDER BY fetched_at DESC, id DESC LIMIT 1`,
-    )
-    .get() as
-    | { base_rate: number; premium: number; effective_rate: number; week_date: string | null }
-    | undefined;
+  const rateRow = await queryOne<{
+    base_rate: number;
+    premium: number;
+    effective_rate: number;
+    week_date: string | null;
+  }>(
+    `SELECT base_rate, premium, effective_rate, week_date
+     FROM interest_rates ORDER BY fetched_at DESC, id DESC LIMIT 1`,
+  );
 
   return {
     totalProperties,
@@ -343,13 +340,10 @@ export function getSummary(profile?: InvestorProfile): Summary {
 }
 
 /** Full detail for one property, or null if it has no grade. */
-export function getPropertyDetail(id: number): PropertyDetail | null {
-  const db = getDb();
-  if (!db) return null;
-
-  const r = db
-    .prepare(`${LATEST_GRADE_JOIN} AND l.id = ?`)
-    .get(id) as any;
+export async function getPropertyDetail(
+  id: number,
+): Promise<PropertyDetail | null> {
+  const r = (await queryOne(`${LATEST_GRADE_JOIN} AND l.id = $1`, [id])) as any;
   if (!r) return null;
 
   const base = toGradedRow(r);
@@ -378,23 +372,20 @@ export function getPropertyDetail(id: number): PropertyDetail | null {
     reasoning: r.reasoning,
     components,
     assumptions,
-    priceVsMedian: priceSqftVsZipMedian(r),
+    priceVsMedian: await priceSqftVsZipMedian(r),
     zillowUrl,
     realtorUrl,
-    history: getGradeHistory(id),
+    history: await getGradeHistory(id),
   };
 }
 
 /** Every grading run for a property, oldest first. Powers the history chart. */
-export function getGradeHistory(id: number): HistoryPoint[] {
-  const db = getDb();
-  if (!db) return [];
-  return db
-    .prepare(
-      `SELECT graded_at, overall_grade, overall_score, coc_return
-       FROM grades WHERE property_id = ? ORDER BY graded_at ASC, id ASC`,
-    )
-    .all(id) as HistoryPoint[];
+export async function getGradeHistory(id: number): Promise<HistoryPoint[]> {
+  return query<HistoryPoint>(
+    `SELECT graded_at, overall_grade, overall_score, coc_return
+     FROM grades WHERE property_id = $1 ORDER BY graded_at ASC, id ASC`,
+    [id],
+  );
 }
 
 /**
@@ -403,9 +394,9 @@ export function getGradeHistory(id: number): HistoryPoint[] {
  * scoring/comps.ts. `r` is a row exposing zip_code/bedrooms/bathrooms/price/
  * living_area.
  */
-function priceSqftVsZipMedian(r: any): PriceSqftComparison | null {
-  const db = getDb();
-  if (!db) return null;
+async function priceSqftVsZipMedian(
+  r: any,
+): Promise<PriceSqftComparison | null> {
   if (
     r.zip_code == null ||
     r.bedrooms == null ||
@@ -420,25 +411,22 @@ function priceSqftVsZipMedian(r: any): PriceSqftComparison | null {
   const beds = Math.round(r.bedrooms);
   const baths = Math.round(r.bathrooms);
 
-  const query = (requireBaths: boolean): number[] => {
+  const compQuery = async (requireBaths: boolean): Promise<number[]> => {
     const sql = `
       SELECT price, living_area FROM listings
-      WHERE zip_code = ? AND bedrooms = ?
-        ${requireBaths ? 'AND bathrooms = ?' : ''}
+      WHERE zip_code = $1 AND bedrooms = $2
+        ${requireBaths ? 'AND bathrooms = $3' : ''}
         AND price IS NOT NULL AND price > 0
         AND living_area IS NOT NULL AND living_area > 0
         AND ${investableTypesOnly('property_type')}`;
-    const rows = (
-      requireBaths
-        ? db.prepare(sql).all(r.zip_code, beds, baths)
-        : db.prepare(sql).all(r.zip_code, beds)
-    ) as Array<{ price: number; living_area: number }>;
+    const params = requireBaths ? [r.zip_code, beds, baths] : [r.zip_code, beds];
+    const rows = await query<{ price: number; living_area: number }>(sql, params);
     return rows.map((x) => x.price / x.living_area);
   };
 
   const MIN_COMPS = 3;
-  let comps = query(true);
-  if (comps.length < MIN_COMPS) comps = query(false);
+  let comps = await compQuery(true);
+  if (comps.length < MIN_COMPS) comps = await compQuery(false);
 
   const zipMedian = median(comps);
   if (zipMedian == null || zipMedian <= 0) return null;

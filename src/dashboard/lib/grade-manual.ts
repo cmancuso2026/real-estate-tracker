@@ -1,4 +1,4 @@
-import { getDb } from './db';
+import { getPool, query, queryOne } from './db';
 import type { Letter } from './format';
 
 /**
@@ -137,13 +137,12 @@ const INVESTABLE_TYPES_SQL = (() => {
 
 // --- public entry point ----------------------------------------------------
 
-export function gradeManualProperty(
+export async function gradeManualProperty(
   input: ManualGradeInput,
-): ManualGradeResult | ManualGradeError {
-  const db = getDb();
-  if (!db) return { ok: false, error: 'Tracker database not found.' };
+): Promise<ManualGradeResult | ManualGradeError> {
+  if (!getPool()) return { ok: false, error: 'Database not configured.' };
 
-  const rentEst = estimateMonthlyRent(db, input);
+  const rentEst = await estimateMonthlyRent(input);
   if (rentEst == null) {
     return {
       ok: false,
@@ -151,15 +150,15 @@ export function gradeManualProperty(
     };
   }
 
-  const rate = getEffectiveRate(db);
+  const rate = await getEffectiveRate();
   const fin = computeFinancials(input, rentEst.monthlyRent, rentEst.comps, rate);
   const isMulti = MULTI_TYPES.includes(input.propertyType);
 
   // Compute every component, then assemble in weight-descending order so the
   // breakdown reads top-to-bottom by importance (matches the dashboard).
-  const sqftCmp = priceSqftVsZipMedian(db, input); // price/sqft vs zip median
-  const crime = lookupCrime(db, input.zip, isMulti); // reuse stored per-zip signal
-  const rental = lookupRental(db, input.zip); // reuse stored per-zip signal
+  const sqftCmp = await priceSqftVsZipMedian(input); // price/sqft vs zip median
+  const crime = await lookupCrime(input.zip, isMulti); // reuse stored per-zip signal
+  const rental = await lookupRental(input.zip); // reuse stored per-zip signal
 
   const components: ManualComponent[] = [
     {
@@ -252,29 +251,25 @@ interface RentEstimate {
   comps: number;
 }
 
-function estimateMonthlyRent(
-  db: NonNullable<ReturnType<typeof getDb>>,
+async function estimateMonthlyRent(
   input: ManualGradeInput,
-): RentEstimate | null {
+): Promise<RentEstimate | null> {
   const beds = Math.round(input.beds);
 
-  const query = (propertyType?: string): number[] => {
+  const rentQuery = async (propertyType?: string): Promise<number[]> => {
     const sql = `
       SELECT rent FROM rentals
-      WHERE zip_code = ? AND bedrooms = ?
-        ${propertyType ? 'AND property_type = ?' : ''}
+      WHERE zip_code = $1 AND bedrooms = $2
+        ${propertyType ? 'AND property_type = $3' : ''}
         AND rent IS NOT NULL AND rent > 0`;
-    const rows = (
-      propertyType
-        ? db.prepare(sql).all(input.zip, beds, propertyType)
-        : db.prepare(sql).all(input.zip, beds)
-    ) as Array<{ rent: number }>;
+    const params = propertyType ? [input.zip, beds, propertyType] : [input.zip, beds];
+    const rows = await query<{ rent: number }>(sql, params);
     return rows.map((r) => r.rent);
   };
 
   // Prefer same-type comps; fall back to any type if too thin.
-  const typed = query(rentcastType(input.propertyType));
-  const rents = typed.length >= MIN_COMPS ? typed : query();
+  const typed = await rentQuery(rentcastType(input.propertyType));
+  const rents = typed.length >= MIN_COMPS ? typed : await rentQuery();
 
   const m = median(rents);
   if (m == null) return null;
@@ -365,32 +360,28 @@ interface SqftComparison {
   comps: number;
 }
 
-function priceSqftVsZipMedian(
-  db: NonNullable<ReturnType<typeof getDb>>,
+async function priceSqftVsZipMedian(
   input: ManualGradeInput,
-): SqftComparison | null {
+): Promise<SqftComparison | null> {
   if (input.sqft <= 0 || input.price <= 0) return null;
   const beds = Math.round(input.beds);
   const baths = Math.round(input.baths);
 
-  const query = (requireBaths: boolean): number[] => {
+  const compQuery = async (requireBaths: boolean): Promise<number[]> => {
     const sql = `
       SELECT price, living_area FROM listings
-      WHERE zip_code = ? AND bedrooms = ?
-        ${requireBaths ? 'AND bathrooms = ?' : ''}
+      WHERE zip_code = $1 AND bedrooms = $2
+        ${requireBaths ? 'AND bathrooms = $3' : ''}
         AND price IS NOT NULL AND price > 0
         AND living_area IS NOT NULL AND living_area > 0
         AND ${INVESTABLE_TYPES_SQL}`;
-    const rows = (
-      requireBaths
-        ? db.prepare(sql).all(input.zip, beds, baths)
-        : db.prepare(sql).all(input.zip, beds)
-    ) as Array<{ price: number; living_area: number }>;
+    const params = requireBaths ? [input.zip, beds, baths] : [input.zip, beds];
+    const rows = await query<{ price: number; living_area: number }>(sql, params);
     return rows.map((x) => x.price / x.living_area);
   };
 
-  let comps = query(true);
-  if (comps.length < MIN_COMPS) comps = query(false);
+  let comps = await compQuery(true);
+  if (comps.length < MIN_COMPS) comps = await compQuery(false);
 
   const zipMedian = median(comps);
   if (zipMedian == null || zipMedian <= 0) return null;
@@ -422,57 +413,59 @@ const MULTI_SQL = `(
  * stored grade whose listing matches this property's multi/single classification
  * — and fall back to any same-zip grade if none matches.
  */
-function lookupCrime(
-  db: NonNullable<ReturnType<typeof getDb>>,
+async function lookupCrime(
   zip: string,
   isMulti: boolean,
-): { grade: Letter; index: number } | null {
-  const pick = (matchType: boolean): { crime_grade: Letter; crime_index: number } | undefined => {
+): Promise<{ grade: Letter; index: number } | null> {
+  const pick = (
+    matchType: boolean,
+  ): Promise<{ crime_grade: Letter; crime_index: number } | null> => {
     const typeClause = matchType ? `AND ${isMulti ? MULTI_SQL : `NOT ${MULTI_SQL}`}` : '';
-    return db
-      .prepare(
-        `SELECT g.crime_grade, g.crime_index
-         FROM grades g JOIN listings l ON l.id = g.property_id
-         WHERE l.zip_code = ? AND g.crime_grade IS NOT NULL AND g.crime_index IS NOT NULL
-           ${typeClause}
-         ORDER BY g.id DESC LIMIT 1`,
-      )
-      .get(zip) as { crime_grade: Letter; crime_index: number } | undefined;
+    return queryOne<{ crime_grade: Letter; crime_index: number }>(
+      `SELECT g.crime_grade, g.crime_index
+       FROM grades g JOIN listings l ON l.id = g.property_id
+       WHERE l.zip_code = $1 AND g.crime_grade IS NOT NULL AND g.crime_index IS NOT NULL
+         ${typeClause}
+       ORDER BY g.id DESC LIMIT 1`,
+      [zip],
+    );
   };
 
-  const row = pick(true) ?? pick(false);
+  const row = (await pick(true)) ?? (await pick(false));
   if (!row) return null;
   return { grade: row.crime_grade, index: row.crime_index };
 }
 
 /** Rental-prevalence grade for the zip (zip-level, type-independent). */
-function lookupRental(
-  db: NonNullable<ReturnType<typeof getDb>>,
+async function lookupRental(
   zip: string,
-): { grade: Letter; prevalence: number } | null {
-  const row = db
-    .prepare(
-      `SELECT g.rental_grade, g.rental_prevalence
-       FROM grades g JOIN listings l ON l.id = g.property_id
-       WHERE l.zip_code = ? AND g.rental_grade IS NOT NULL AND g.rental_prevalence IS NOT NULL
-       ORDER BY g.id DESC LIMIT 1`,
-    )
-    .get(zip) as { rental_grade: Letter; rental_prevalence: number } | undefined;
+): Promise<{ grade: Letter; prevalence: number } | null> {
+  const row = await queryOne<{ rental_grade: Letter; rental_prevalence: number }>(
+    `SELECT g.rental_grade, g.rental_prevalence
+     FROM grades g JOIN listings l ON l.id = g.property_id
+     WHERE l.zip_code = $1 AND g.rental_grade IS NOT NULL AND g.rental_prevalence IS NOT NULL
+     ORDER BY g.id DESC LIMIT 1`,
+    [zip],
+  );
   if (!row) return null;
   return { grade: row.rental_grade, prevalence: row.rental_prevalence };
 }
 
 // --- interest rate ---------------------------------------------------------
 
-function getEffectiveRate(
-  db: NonNullable<ReturnType<typeof getDb>>,
-): { effectiveRate: number; baseRate: number; premium: number } {
-  const row = db
-    .prepare(
-      `SELECT base_rate, premium, effective_rate
-       FROM interest_rates ORDER BY fetched_at DESC, id DESC LIMIT 1`,
-    )
-    .get() as { base_rate: number; premium: number; effective_rate: number } | undefined;
+async function getEffectiveRate(): Promise<{
+  effectiveRate: number;
+  baseRate: number;
+  premium: number;
+}> {
+  const row = await queryOne<{
+    base_rate: number;
+    premium: number;
+    effective_rate: number;
+  }>(
+    `SELECT base_rate, premium, effective_rate
+     FROM interest_rates ORDER BY fetched_at DESC, id DESC LIMIT 1`,
+  );
   if (!row) return { ...FALLBACK_RATE };
   return { effectiveRate: row.effective_rate, baseRate: row.base_rate, premium: row.premium };
 }

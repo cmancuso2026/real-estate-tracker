@@ -1,30 +1,27 @@
-import { getDb } from './index.js';
+import { query, queryOne, withTransaction, NOW_UTC } from './index.js';
 import type { ListingRecord, UpsertResult } from './types.js';
 
 /**
  * Insert listings, deduplicating on (source, source_id). On conflict we refresh
  * the mutable fields (price, status, days_on_market, ...) and bump last_seen_at,
- * preserving the original first_seen_at. SQLite's `changes` can't distinguish
- * insert vs. update on an upsert, so we probe existence first inside a txn.
+ * preserving the original first_seen_at. The upsert can't itself report whether
+ * each row was new vs. refreshed, so we probe existence first inside the txn
+ * (mirroring the original SQLite behavior).
  */
-export function upsertListings(records: ListingRecord[]): UpsertResult {
-  const db = getDb();
-
-  const exists = db.prepare<[string, string]>(
-    'SELECT 1 FROM listings WHERE source = ? AND source_id = ?',
-  );
-
-  const stmt = db.prepare(`
+export async function upsertListings(
+  records: ListingRecord[],
+): Promise<UpsertResult> {
+  const sql = `
     INSERT INTO listings (
       source, source_id, address, city, state, zip_code,
       latitude, longitude, price, bedrooms, bathrooms, living_area,
       lot_size, year_built, property_type, days_on_market, status,
       listing_url, raw_json
     ) VALUES (
-      @source, @source_id, @address, @city, @state, @zip_code,
-      @latitude, @longitude, @price, @bedrooms, @bathrooms, @living_area,
-      @lot_size, @year_built, @property_type, @days_on_market, @status,
-      @listing_url, @raw_json
+      $1, $2, $3, $4, $5, $6,
+      $7, $8, $9, $10, $11, $12,
+      $13, $14, $15, $16, $17,
+      $18, $19
     )
     ON CONFLICT (source, source_id) DO UPDATE SET
       address        = excluded.address,
@@ -44,23 +41,45 @@ export function upsertListings(records: ListingRecord[]): UpsertResult {
       status         = excluded.status,
       listing_url    = excluded.listing_url,
       raw_json       = excluded.raw_json,
-      last_seen_at   = datetime('now'),
-      updated_at     = datetime('now')
-  `);
+      last_seen_at   = ${NOW_UTC},
+      updated_at     = ${NOW_UTC}
+  `;
 
-  const run = db.transaction((rows: ListingRecord[]): UpsertResult => {
+  return withTransaction(async (client) => {
     let inserted = 0;
     let updated = 0;
-    for (const row of rows) {
-      const isUpdate = exists.get(row.source, row.source_id) !== undefined;
-      stmt.run(row);
+    for (const row of records) {
+      const existing = await client.query(
+        'SELECT 1 FROM listings WHERE source = $1 AND source_id = $2',
+        [row.source, row.source_id],
+      );
+      const isUpdate = (existing.rowCount ?? 0) > 0;
+      await client.query(sql, [
+        row.source,
+        row.source_id,
+        row.address,
+        row.city,
+        row.state,
+        row.zip_code,
+        row.latitude,
+        row.longitude,
+        row.price,
+        row.bedrooms,
+        row.bathrooms,
+        row.living_area,
+        row.lot_size,
+        row.year_built,
+        row.property_type,
+        row.days_on_market,
+        row.status,
+        row.listing_url,
+        row.raw_json,
+      ]);
       if (isUpdate) updated++;
       else inserted++;
     }
     return { inserted, updated };
   });
-
-  return run(records);
 }
 
 /**
@@ -88,11 +107,11 @@ export function investableTypesOnly(col = 'property_type'): string {
   );
 }
 
-export function countListings(): number {
-  const row = getDb().prepare('SELECT COUNT(*) AS n FROM listings').get() as {
-    n: number;
-  };
-  return row.n;
+export async function countListings(): Promise<number> {
+  const row = await queryOne<{ n: string }>(
+    'SELECT COUNT(*) AS n FROM listings',
+  );
+  return Number(row?.n ?? 0);
 }
 
 /** A listing row as read back from the DB (subset used by the scorer). */
@@ -118,31 +137,27 @@ const LISTING_COLUMNS = `
   latitude, longitude, price, bedrooms, bathrooms, living_area, property_type
 `;
 
-export function getListingById(id: number): ListingRow | null {
-  const row = getDb()
-    .prepare(`SELECT ${LISTING_COLUMNS} FROM listings WHERE id = ?`)
-    .get(id) as ListingRow | undefined;
-  return row ?? null;
+export async function getListingById(id: number): Promise<ListingRow | null> {
+  return queryOne<ListingRow>(
+    `SELECT ${LISTING_COLUMNS} FROM listings WHERE id = $1`,
+    [id],
+  );
 }
 
 /** All listings (optionally filtered to a zip) — used for batch grading.
  * Only SFH / Duplex / Triplex / Quad are returned; all other types are excluded
  * so they're never graded. */
-export function getListings(zipCode?: string): ListingRow[] {
-  const db = getDb();
+export async function getListings(zipCode?: string): Promise<ListingRow[]> {
   if (zipCode) {
-    return db
-      .prepare(
-        `SELECT ${LISTING_COLUMNS} FROM listings
-         WHERE zip_code = ? AND ${investableTypesOnly()}`,
-      )
-      .all(zipCode) as ListingRow[];
+    return query<ListingRow>(
+      `SELECT ${LISTING_COLUMNS} FROM listings
+       WHERE zip_code = $1 AND ${investableTypesOnly()}`,
+      [zipCode],
+    );
   }
-  return db
-    .prepare(
-      `SELECT ${LISTING_COLUMNS} FROM listings WHERE ${investableTypesOnly()}`,
-    )
-    .all() as ListingRow[];
+  return query<ListingRow>(
+    `SELECT ${LISTING_COLUMNS} FROM listings WHERE ${investableTypesOnly()}`,
+  );
 }
 
 /**
@@ -150,25 +165,21 @@ export function getListings(zipCode?: string): ListingRow[] {
  * bath count (and a valid price + living area). Used to compute the zip median.
  * When `requireBaths` is false, matches on bedrooms only (fallback for thin data).
  */
-export function comparablePricePerSqft(
+export async function comparablePricePerSqft(
   zipCode: string,
   bedrooms: number,
   bathrooms: number,
   requireBaths = true,
-): number[] {
-  const db = getDb();
+): Promise<number[]> {
   const sql = `
     SELECT price, living_area FROM listings
-    WHERE zip_code = ? AND bedrooms = ?
-      ${requireBaths ? 'AND bathrooms = ?' : ''}
+    WHERE zip_code = $1 AND bedrooms = $2
+      ${requireBaths ? 'AND bathrooms = $3' : ''}
       AND price IS NOT NULL AND price > 0
       AND living_area IS NOT NULL AND living_area > 0
       AND ${investableTypesOnly()}
   `;
-  const rows = (
-    requireBaths
-      ? db.prepare(sql).all(zipCode, bedrooms, bathrooms)
-      : db.prepare(sql).all(zipCode, bedrooms)
-  ) as Array<{ price: number; living_area: number }>;
+  const params = requireBaths ? [zipCode, bedrooms, bathrooms] : [zipCode, bedrooms];
+  const rows = await query<{ price: number; living_area: number }>(sql, params);
   return rows.map((r) => r.price / r.living_area);
 }

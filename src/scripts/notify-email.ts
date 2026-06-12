@@ -10,14 +10,14 @@ import { sendEmailDigest } from '../notifications/email.js';
  *   npm run notify:email
  */
 async function main(): Promise<void> {
-  initDb();
+  await initDb();
   const dryRun = process.argv.includes('--dry');
   const s = await sendEmailDigest({ dryRun });
   console.log(
     `${dryRun ? '[dry-run] ' : ''}✓ Email digest: "${s.subject}" ` +
       `(${s.total} propert${s.total === 1 ? 'y' : 'ies'}, ${s.aCount} grade A).`,
   );
-  closeDb();
+  await closeDb();
 }
 
 main().catch((err) => {

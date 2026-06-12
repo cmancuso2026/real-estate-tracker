@@ -10,14 +10,14 @@ import { sendSlackAlerts } from '../notifications/slack.js';
  *   npm run notify:slack -- --dry   # preview without sending
  */
 async function main(): Promise<void> {
-  initDb();
+  await initDb();
   const dryRun = process.argv.includes('--dry');
   const s = await sendSlackAlerts({ dryRun });
   console.log(
     `${dryRun ? '[dry-run] ' : ''}✓ Slack: ${s.sent} sent, ${s.skipped} already alerted ` +
       `(${s.candidates} grade-A propert${s.candidates === 1 ? 'y' : 'ies'}).`,
   );
-  closeDb();
+  await closeDb();
 }
 
 main().catch((err) => {

@@ -20,13 +20,13 @@ function profileChips(p: InvestorProfile): string[] {
   return chips;
 }
 
-export default function HomePage() {
-  const profile = getProfile();
+export default async function HomePage() {
+  const profile = await getProfile();
   const active = isProfileActive(profile);
 
-  const allGraded = getGradedProperties();
-  const properties = active ? getGradedProperties(profile) : allGraded;
-  const summary = getSummary(active ? profile : undefined);
+  const allGraded = await getGradedProperties();
+  const properties = active ? await getGradedProperties(profile) : allGraded;
+  const summary = await getSummary(active ? profile : undefined);
 
   return (
     <>

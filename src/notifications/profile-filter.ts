@@ -1,4 +1,4 @@
-import { getDb } from '../db/index.js';
+import { queryOne } from '../db/index.js';
 import type { GradedProperty } from '../db/grades.js';
 
 /**
@@ -37,7 +37,7 @@ export interface InvestorProfile {
 const PROFILE_PROPERTY_TYPES = ['SFH', 'Duplex', 'Triplex', 'Quad'];
 
 /** The saved investor profile, or null if none/unavailable. */
-export function getInvestorProfile(): InvestorProfile | null {
+export async function getInvestorProfile(): Promise<InvestorProfile | null> {
   let row:
     | {
         min_purchase_price: number | null;
@@ -47,15 +47,13 @@ export function getInvestorProfile(): InvestorProfile | null {
         min_beds: number | null;
         min_coc_return: number | null;
       }
-    | undefined;
+    | null;
   try {
-    row = getDb()
-      .prepare(
-        `SELECT min_purchase_price, max_purchase_price, available_cash,
-                property_types, min_beds, min_coc_return
-         FROM investor_profile WHERE id = 1`,
-      )
-      .get() as typeof row;
+    row = await queryOne(
+      `SELECT min_purchase_price, max_purchase_price, available_cash,
+              property_types, min_beds, min_coc_return
+       FROM investor_profile WHERE id = 1`,
+    );
   } catch {
     // Table or columns may not exist (profile never saved). No constraints.
     return null;

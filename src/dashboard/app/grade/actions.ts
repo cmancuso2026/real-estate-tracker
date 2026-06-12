@@ -60,7 +60,7 @@ export async function gradeManualAction(
     hoaMonthly: hoa,
   };
 
-  const result = gradeManualProperty(input);
+  const result = await gradeManualProperty(input);
   if (!result.ok) {
     return { result: null, error: result.error, values };
   }

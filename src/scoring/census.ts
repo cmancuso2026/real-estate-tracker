@@ -1,5 +1,5 @@
 import { config } from '../config.js';
-import { getDb } from '../db/index.js';
+import { queryOne, execute, NOW_UTC, nowOffsetText } from '../db/index.js';
 import type { Letter } from './types.js';
 
 /**
@@ -16,13 +16,13 @@ const ACS_YEAR = '2022';
 export async function getRenterOccupiedPct(
   zipCode: string,
 ): Promise<number | null> {
-  const cached = readCache(zipCode);
+  const cached = await readCache(zipCode);
   if (cached != null) return cached;
 
   const result = await fetchAcsTenure(zipCode);
   if (result == null) return null;
 
-  writeCache(zipCode, result.renterPct, result.totalOccupied);
+  await writeCache(zipCode, result.renterPct, result.totalOccupied);
   return result.renterPct;
 }
 
@@ -67,33 +67,29 @@ export function gradeRentalPrevalence(renterPct: number): Letter {
   return 'F';
 }
 
-function readCache(zipCode: string): number | null {
-  const row = getDb()
-    .prepare(
-      `SELECT renter_occupied_pct FROM census_cache
-       WHERE zip_code = ? AND fetched_at > datetime('now', ?)`,
-    )
-    .get(zipCode, `-${CACHE_TTL_DAYS} days`) as
-    | { renter_occupied_pct: number | null }
-    | undefined;
+async function readCache(zipCode: string): Promise<number | null> {
+  const row = await queryOne<{ renter_occupied_pct: number | null }>(
+    `SELECT renter_occupied_pct FROM census_cache
+     WHERE zip_code = $1 AND fetched_at > ${nowOffsetText('days', '$2')}`,
+    [zipCode, CACHE_TTL_DAYS],
+  );
   return row && row.renter_occupied_pct != null ? row.renter_occupied_pct : null;
 }
 
-function writeCache(
+async function writeCache(
   zipCode: string,
   renterPct: number,
   totalOccupied: number,
-): void {
-  getDb()
-    .prepare(
-      `INSERT INTO census_cache (zip_code, renter_occupied_pct, total_occupied, fetched_at)
-       VALUES (?, ?, ?, datetime('now'))
-       ON CONFLICT (zip_code) DO UPDATE SET
-         renter_occupied_pct = excluded.renter_occupied_pct,
-         total_occupied = excluded.total_occupied,
-         fetched_at = datetime('now')`,
-    )
-    .run(zipCode, renterPct, totalOccupied);
+): Promise<void> {
+  await execute(
+    `INSERT INTO census_cache (zip_code, renter_occupied_pct, total_occupied, fetched_at)
+     VALUES ($1, $2, $3, ${NOW_UTC})
+     ON CONFLICT (zip_code) DO UPDATE SET
+       renter_occupied_pct = excluded.renter_occupied_pct,
+       total_occupied = excluded.total_occupied,
+       fetched_at = ${NOW_UTC}`,
+    [zipCode, renterPct, totalOccupied],
+  );
 }
 
 function round2(n: number): number {

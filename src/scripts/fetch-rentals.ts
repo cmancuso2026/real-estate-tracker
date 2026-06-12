@@ -12,7 +12,7 @@ import { fetchRentalsByZip } from '../api/rentcast.js';
  *   npm run fetch:rentals 78704 78745
  */
 async function main(): Promise<void> {
-  initDb();
+  await initDb();
 
   const zips = argZips() ?? config.targetZipCodes;
   if (zips.length === 0) {
@@ -28,7 +28,7 @@ async function main(): Promise<void> {
     process.stdout.write(`Rentcast: fetching rentals for ${zip} … `);
     try {
       const rentals = await fetchRentalsByZip(zip);
-      const { inserted, updated } = upsertRentals(rentals);
+      const { inserted, updated } = await upsertRentals(rentals);
       totalInserted += inserted;
       totalUpdated += updated;
       console.log(`${rentals.length} comps (${inserted} new, ${updated} updated)`);
@@ -40,9 +40,9 @@ async function main(): Promise<void> {
 
   console.log(
     `\n✓ Rentals: ${totalInserted} new, ${totalUpdated} updated. ` +
-      `Total in DB: ${countRentals()}.`,
+      `Total in DB: ${await countRentals()}.`,
   );
-  closeDb();
+  await closeDb();
 }
 
 function argZips(): string[] | null {

@@ -30,7 +30,7 @@ export async function gradeListing(
   if (listing.price == null || listing.price <= 0) return null;
   if (listing.zip_code == null) return null;
 
-  const rentEst = estimateMonthlyRent(listing);
+  const rentEst = await estimateMonthlyRent(listing);
   if (rentEst == null) return null; // no rent -> can't grade the investment
 
   const rate = await getEffectiveRate();
@@ -59,7 +59,7 @@ export async function gradeListing(
   };
 
   // --- Price/sqft vs zip median (15%) --------------------------------------
-  const sqftCmp = pricePerSqftVsZipMedian(listing);
+  const sqftCmp = await pricePerSqftVsZipMedian(listing);
   let pricePerSqft: number | null = null;
   if (sqftCmp) {
     pricePerSqft = sqftCmp.pricePerSqft;

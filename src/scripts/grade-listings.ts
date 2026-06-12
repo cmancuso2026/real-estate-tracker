@@ -14,7 +14,7 @@ import type { Letter } from '../scoring/types.js';
  *   npm run grade 78704      # grade listings in one zip
  */
 async function main(): Promise<void> {
-  initDb();
+  await initDb();
 
   // Resolve the rate once up front so we can surface it (and fail fast if the
   // PMMS source is unreachable and no rate is stored / overridden).
@@ -26,12 +26,12 @@ async function main(): Promise<void> {
 
   const zips = process.argv.slice(2).filter((a) => /^\d{5}$/.test(a));
   const listings = zips.length
-    ? zips.flatMap((z) => getListings(z))
-    : getListings();
+    ? (await Promise.all(zips.map((z) => getListings(z)))).flat()
+    : await getListings();
 
   if (listings.length === 0) {
     console.log('No listings to grade. Run `npm run fetch:listings` first.');
-    closeDb();
+    await closeDb();
     return;
   }
 
@@ -45,7 +45,7 @@ async function main(): Promise<void> {
       skipped++;
       continue;
     }
-    saveGrade(result);
+    await saveGrade(result);
     dist[result.overallGrade]++;
     graded++;
   }
@@ -54,8 +54,8 @@ async function main(): Promise<void> {
   console.log(
     `  Distribution — A:${dist.A} B:${dist.B} C:${dist.C} D:${dist.D} F:${dist.F}`,
   );
-  console.log(`  Total grade rows in DB: ${countGrades()}.`);
-  closeDb();
+  console.log(`  Total grade rows in DB: ${await countGrades()}.`);
+  await closeDb();
 }
 
 main().catch((err) => {
