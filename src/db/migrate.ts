@@ -25,9 +25,22 @@ async function main(): Promise<void> {
   );
 }
 
+/**
+ * On the web service this runs first in the `start` script
+ * (`db:migrate && dashboard start`). If it fails or hangs, the dashboard never
+ * boots, Railway's healthcheck never goes green, and the platform SIGTERM-kills
+ * the container in a restart loop. So we make failure LOUD and explicit: log
+ * the full error and exit with a non-zero code so the `&&` chain stops here and
+ * the cause is visible in the deploy logs (rather than a silent restart loop).
+ */
 main()
-  .catch((err) => {
-    console.error('Migration failed:', err);
-    process.exitCode = 1;
-  })
-  .finally(() => closeDb());
+  .then(() => closeDb())
+  .then(() => process.exit(0))
+  .catch(async (err) => {
+    console.error(
+      '✗ Migration failed — aborting before the dashboard starts:',
+    );
+    console.error(err instanceof Error ? (err.stack ?? err.message) : err);
+    await closeDb().catch(() => {});
+    process.exit(1);
+  });

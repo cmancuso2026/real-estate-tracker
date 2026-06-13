@@ -42,6 +42,10 @@ export function getPool(): pg.Pool {
     connectionString,
     ssl: sslConfig(connectionString),
     max: Number(process.env.PG_POOL_MAX ?? 10),
+    // Fail fast on an unreachable/misconfigured host instead of hanging the
+    // boot-time migration until the OS-level TCP timeout — a silent hang here
+    // is what gets the web service SIGTERM-killed by Railway's healthcheck.
+    connectionTimeoutMillis: Number(process.env.PG_CONNECT_TIMEOUT_MS ?? 10_000),
   });
   return pool;
 }
