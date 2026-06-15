@@ -1,62 +1,90 @@
 import cron from 'node-cron';
+import { spawn } from 'node:child_process';
 import { initDb } from '../db/init.js';
 import { closeDb } from '../db/index.js';
-import { sendWeeklyDigest } from '../notifications/weekly-digest.js';
 
 /**
  * Long-running cron scheduler for the tracker's recurring jobs. Start it with
  * `npm run scheduler` and keep the process alive (e.g. under pm2, systemd, or a
  * container) — node-cron fires each job on its schedule in-process.
  *
- * Times are interpreted in America/New_York (the tracker targets Miami-Dade),
- * so "8 AM" means 8 AM Eastern regardless of the host's timezone.
+ * ───────────────────────────────────────────────────────────────────────────
+ * ⚠️  TEMPORARY TEST SCHEDULE — NOT PRODUCTION  ⚠️
+ *
+ * Everything below is wired to fire ONCE at 19:25 UTC for an end-to-end test on
+ * Railway. To make "25 19 * * *" mean 19:25 *UTC*, the timezone is set to UTC
+ * (production uses America/New_York). The full pipeline runs in sequence so
+ * grading sees freshly-fetched listings and notifications see fresh grades.
+ *
+ * RESTORE AFTER TESTING: revert to the single weekly-a-grade-digest job
+ * ("0 8 * * 5", America/New_York) that was the only production job before this.
+ * ───────────────────────────────────────────────────────────────────────────
  */
 
-const TIMEZONE = 'America/New_York';
+// TEMPORARY: test schedule is expressed in UTC (prod is 'America/New_York').
+const TIMEZONE = 'UTC';
 
-interface Job {
+// TEMPORARY: fire once at 19:25 UTC. 25 19 * * * = 19:25 every day in UTC.
+const TEST_SCHEDULE = '25 19 * * *';
+
+/** One step of the test pipeline, reusing the exact production npm scripts. */
+interface Step {
   name: string;
-  /** Standard 5-field cron expression (min hour dom mon dow). */
-  schedule: string;
-  run: () => Promise<void>;
+  npmScript: string;
 }
 
-const JOBS: Job[] = [
-  {
-    name: 'weekly-a-grade-digest',
-    // Every Friday at 8:00 AM Eastern.
-    schedule: '0 8 * * 5',
-    run: async () => {
-      const s = await sendWeeklyDigest();
-      console.log(
-        `✓ Weekly digest sent: "${s.subject}" (${s.aCount} grade A).`,
-      );
-    },
-  },
+// Ordered: fetch → grade → notify. Each reuses the same script used in prod.
+const STEPS: Step[] = [
+  { name: 'fetch', npmScript: 'fetch:all' },
+  { name: 'grade', npmScript: 'grade' },
+  { name: 'notify-slack', npmScript: 'notify:slack' },
+  { name: 'email-digest', npmScript: 'notify:email' },
+  { name: 'weekly-digest', npmScript: 'notify:email:weekly' },
 ];
+
+/** Run an npm script as a child process; resolve with its exit code. */
+function runScript(npmScript: string): Promise<number> {
+  return new Promise((resolve) => {
+    const child = spawn('npm', ['run', npmScript], {
+      stdio: 'inherit',
+      env: process.env,
+    });
+    child.on('error', (err) => {
+      console.error(`  spawn failed for "${npmScript}":`, err);
+      resolve(1);
+    });
+    child.on('close', (code) => resolve(code ?? 1));
+  });
+}
+
+/** Run the whole pipeline in order, continuing past failures so we learn which steps work. */
+async function runPipeline(): Promise<void> {
+  const at = new Date().toISOString();
+  console.log(`\n[${at}] === TEST PIPELINE START (${TEST_SCHEDULE} ${TIMEZONE}) ===`);
+  for (const step of STEPS) {
+    console.log(`\n--- ${step.name} (npm run ${step.npmScript}) ---`);
+    const code = await runScript(step.npmScript);
+    if (code === 0) {
+      console.log(`✓ ${step.name} succeeded`);
+    } else {
+      console.error(`✗ ${step.name} exited ${code} — continuing to next step`);
+    }
+  }
+  console.log(`\n=== TEST PIPELINE DONE ===`);
+}
 
 async function start(): Promise<void> {
   await initDb();
 
-  for (const job of JOBS) {
-    if (!cron.validate(job.schedule)) {
-      throw new Error(`Invalid cron expression for ${job.name}: ${job.schedule}`);
-    }
-    cron.schedule(
-      job.schedule,
-      () => {
-        const at = new Date().toISOString();
-        console.log(`[${at}] running ${job.name} (${job.schedule})`);
-        job.run().catch((err) => {
-          console.error(`[${job.name}] failed:`, err);
-        });
-      },
-      { timezone: TIMEZONE },
-    );
-    console.log(`Scheduled ${job.name}: "${job.schedule}" (${TIMEZONE})`);
+  if (!cron.validate(TEST_SCHEDULE)) {
+    throw new Error(`Invalid cron expression: ${TEST_SCHEDULE}`);
   }
-
-  console.log(`Scheduler running — ${JOBS.length} job(s). Press Ctrl-C to stop.`);
+  cron.schedule(TEST_SCHEDULE, () => void runPipeline(), { timezone: TIMEZONE });
+  console.log(
+    `⚠️  TEMPORARY TEST SCHEDULE active: full pipeline at "${TEST_SCHEDULE}" (${TIMEZONE}).`,
+  );
+  console.log(`Steps: ${STEPS.map((s) => s.name).join(' → ')}`);
+  console.log('Scheduler running. Press Ctrl-C to stop.');
 }
 
 async function shutdown(): Promise<void> {
