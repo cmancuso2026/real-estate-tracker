@@ -1,2 +1,2 @@
-web: npm run start
-worker: npm run worker
+web: npm run db:migrate && npm --prefix src/dashboard run start
+worker: npm run db:migrate && npm run scheduler
