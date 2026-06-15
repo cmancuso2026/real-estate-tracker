@@ -11,8 +11,8 @@ import { closeDb } from '../db/index.js';
  * ───────────────────────────────────────────────────────────────────────────
  * ⚠️  TEMPORARY TEST SCHEDULE — NOT PRODUCTION  ⚠️
  *
- * Everything below is wired to fire ONCE at 19:25 UTC for an end-to-end test on
- * Railway. To make "25 19 * * *" mean 19:25 *UTC*, the timezone is set to UTC
+ * Everything below is wired to fire ONCE at 11:30 UTC for an end-to-end test on
+ * Railway. To make "30 11 * * *" mean 11:30 *UTC*, the timezone is set to UTC
  * (production uses America/New_York). The full pipeline runs in sequence so
  * grading sees freshly-fetched listings and notifications see fresh grades.
  *
@@ -24,8 +24,8 @@ import { closeDb } from '../db/index.js';
 // TEMPORARY: test schedule is expressed in UTC (prod is 'America/New_York').
 const TIMEZONE = 'UTC';
 
-// TEMPORARY: fire once at 19:25 UTC. 25 19 * * * = 19:25 every day in UTC.
-const TEST_SCHEDULE = '25 19 * * *';
+// TEMPORARY: fire once at 11:30 UTC. 30 11 * * * = 11:30 every day in UTC.
+const TEST_SCHEDULE = '30 11 * * *';
 
 /** One step of the test pipeline, reusing the exact production npm scripts. */
 interface Step {
