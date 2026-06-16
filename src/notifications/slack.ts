@@ -74,7 +74,10 @@ export async function sendSlackAlerts(
 }
 
 /** Build the Slack mrkdwn message body for one property. */
-export function buildSlackText(item: NotificationItem): string {
+export function buildSlackText(
+  item: NotificationItem,
+  dashboardUrl: string = config.dashboardUrl,
+): string {
   const p = item.property;
   const address = p.address ?? p.city ?? `Listing ${p.listing_id}`;
   const lines = [
@@ -87,6 +90,7 @@ export function buildSlackText(item: NotificationItem): string {
     `Type: ${fmtType(p.property_type)}`,
     linkLine(item),
   ];
+  if (dashboardUrl) lines.push(`📊 View Dashboard: ${dashboardUrl}`);
   return lines.join('\n');
 }
 

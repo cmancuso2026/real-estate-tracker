@@ -131,6 +131,20 @@ export const config = {
       .map((e) => e.trim())
       .filter(Boolean);
   },
+
+  /**
+   * Public URL of the dashboard web service, used for "View Dashboard" links in
+   * Slack alerts and the email digest. Prefer an explicit DASHBOARD_URL; fall
+   * back to Railway's RAILWAY_PUBLIC_DOMAIN (a bare host, so we prepend https://).
+   * Returns '' when neither is set, and callers omit the link in that case.
+   */
+  get dashboardUrl(): string {
+    const explicit = optional('DASHBOARD_URL');
+    if (explicit) return explicit.replace(/\/+$/, '');
+    const domain = optional('RAILWAY_PUBLIC_DOMAIN');
+    if (domain) return `https://${domain.replace(/^https?:\/\//, '').replace(/\/+$/, '')}`;
+    return '';
+  },
 };
 
 function numberFromEnv(name: string, fallback: number): number {
