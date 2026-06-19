@@ -25,7 +25,9 @@
     "notify:email:weekly": "tsx src/scripts/notify-email-weekly.ts",
     "scheduler": "tsx src/scheduler/index.ts",
     "test:slack": "tsx src/scripts/test-slack.ts",
-    "test:email": "tsx src/scripts/test-email.ts"
+    "test:email": "tsx src/scripts/test-email.ts",
+    "v2:recap": "tsx src/scripts/v2-recap.ts",
+    "v2:alerts": "tsx src/scripts/v2-alerts.ts"
   },
   "engines": {
     "node": ">=20"

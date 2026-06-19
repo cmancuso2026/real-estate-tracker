@@ -55,6 +55,18 @@ const JOBS: Job[] = [
     schedule: '0 11 * * 5',
     steps: ['notify:email:weekly'],
   },
+  {
+    name: 'v2-daily-alerts',
+    // 12:00 UTC daily — 8:00 AM Miami (EDT). Lease expiry, unrated WOs, insurance.
+    schedule: '0 12 * * *',
+    steps: ['v2:alerts'],
+  },
+  {
+    name: 'v2-monthly-recap',
+    // 13:00 UTC on the 1st of each month — 9:00 AM Miami (EDT).
+    schedule: '0 13 1 * *',
+    steps: ['v2:recap'],
+  },
 ];
 
 /** Run an npm script as a child process; resolve with its exit code. */
