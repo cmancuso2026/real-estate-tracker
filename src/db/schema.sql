@@ -450,3 +450,7 @@ CREATE TABLE IF NOT EXISTS insurance_policies (
 
 CREATE INDEX IF NOT EXISTS idx_insurance_property   ON insurance_policies (property_id);
 CREATE INDEX IF NOT EXISTS idx_insurance_expiration ON insurance_policies (expiration_date);  -- for renewal alerts
+
+-- Prevent duplicate lease submissions: same tenant + unit + start date = same lease
+CREATE UNIQUE INDEX IF NOT EXISTS idx_leases_unique_term
+  ON leases (tenant_id, unit_id, start_date);

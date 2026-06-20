@@ -245,49 +245,41 @@ export default function PropertyDetailPage() {
   }
 
   async function confirmLease() {
-    if (!leaseExtracted || leaseSavingRef.current) return;
-    leaseSavingRef.current = true;
+    if (!leaseExtracted || leaseSaving) return;
     setLeaseSaving(true);
+    setLeaseExtracted(null); // hide panel immediately
 
-    // Snapshot all values immediately and clear the panel — prevents any re-render
-    // from allowing a second submission while awaits are in flight
     const snapshot = { ...leaseExtracted };
     const unitId = leaseSelectedUnit;
-    const tenantMode = leaseTenantMode;
-    const firstName = leaseTenantFirst;
-    const lastName = leaseTenantLast;
-    const existingTenantId = leaseSelectedTenant;
-    setLeaseExtracted(null);  // hide the panel immediately
 
-    let tenantId = existingTenantId ? parseInt(existingTenantId) : null;
+    let tenantId = leaseSelectedTenant ? parseInt(leaseSelectedTenant) : null;
 
-    // Create new tenant if needed
-    if (tenantMode === 'new' && firstName && lastName && unitId) {
+    if (leaseTenantMode === 'new' && leaseTenantFirst && leaseTenantLast && unitId) {
       const res = await fetch('/api/v2/tenants', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ unit_id: parseInt(unitId), first_name: firstName, last_name: lastName, payment_method: 'zelle', is_active: true }),
+        body: JSON.stringify({ unit_id: parseInt(unitId), first_name: leaseTenantFirst, last_name: leaseTenantLast, payment_method: 'zelle', is_active: true }),
       });
       const tenant = await res.json();
       tenantId = tenant.id;
     }
 
-    if (!tenantId || !unitId) { setLeaseSaving(false); leaseSavingRef.current = false; return; }
+    if (tenantId && unitId) {
+      await fetch('/api/v2/leases', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_id: tenantId, unit_id: parseInt(unitId),
+          start_date: snapshot.start_date, end_date: snapshot.end_date,
+          rent_amount: snapshot.rent_amount, security_deposit: snapshot.security_deposit,
+          late_fee_amount: snapshot.late_fee_amount, late_fee_grace_days: snapshot.late_fee_grace_days,
+          utilities_landlord: snapshot.utilities_landlord ?? [],
+          utilities_tenant: snapshot.utilities_tenant ?? [],
+          equipment_included: snapshot.equipment_included ?? [],
+          extracted_by_ai: true, ai_confidence_notes: snapshot.confidence_notes,
+        }),
+      });
+    }
 
-    await fetch('/api/v2/leases', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        tenant_id: tenantId, unit_id: parseInt(unitId),
-        start_date: snapshot.start_date, end_date: snapshot.end_date,
-        rent_amount: snapshot.rent_amount, security_deposit: snapshot.security_deposit,
-        late_fee_amount: snapshot.late_fee_amount, late_fee_grace_days: snapshot.late_fee_grace_days,
-        utilities_landlord: snapshot.utilities_landlord ?? [],
-        utilities_tenant: snapshot.utilities_tenant ?? [],
-        equipment_included: snapshot.equipment_included ?? [],
-        extracted_by_ai: true, ai_confidence_notes: snapshot.confidence_notes,
-      }),
-    });
-
-    setLeaseSaving(false); leaseSavingRef.current = false;
+    setLeaseSaving(false);
     await load();
     await loadTab('leases');
   }

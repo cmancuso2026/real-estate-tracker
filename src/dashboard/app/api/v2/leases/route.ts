@@ -49,6 +49,7 @@ export async function POST(req: NextRequest) {
         late_fee_amount, late_fee_grace_days, utilities_landlord, utilities_tenant,
         equipment_included, pdf_url, extracted_by_ai, ai_confidence_notes)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+     ON CONFLICT (tenant_id, unit_id, start_date) DO NOTHING
      RETURNING *`,
     [
       tenant_id, unit_id, start_date, end_date, rent_amount,
