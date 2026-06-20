@@ -15,12 +15,24 @@ export async function GET(req: NextRequest) {
             t.first_name || ' ' || t.last_name AS tenant_name,
             t.id AS tenant_id,
             l.rent_amount,
-            l.end_date AS lease_end_date
+            l.start_date AS lease_start_date,
+            l.end_date AS lease_end_date,
+            rc.amount_due,
+            rc.amount_paid,
+            rc.is_late
      FROM units u
      LEFT JOIN tenants t ON t.unit_id = u.id AND t.is_active = TRUE
-     LEFT JOIN leases l  ON l.unit_id = u.id
-       AND l.start_date <= to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD')
-       AND l.end_date   >= to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD')
+     -- Most recent lease regardless of active status
+     LEFT JOIN LATERAL (
+       SELECT * FROM leases
+       WHERE unit_id = u.id
+       ORDER BY start_date DESC
+       LIMIT 1
+     ) l ON TRUE
+     -- This month's rent collection
+     LEFT JOIN rent_collections rc
+       ON rc.unit_id = u.id
+       AND rc.due_date LIKE to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM') || '%'
      WHERE u.property_id = $1
      ORDER BY u.unit_label`,
     [propertyId]

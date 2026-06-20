@@ -4,16 +4,16 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 
-type Tab = 'overview' | 'rent' | 'leases' | 'work-orders' | 'escrow' | 'insurance';
+type Tab = 'overview' | 'tenants' | 'rent' | 'leases' | 'work-orders' | 'escrow' | 'insurance';
 
 interface Property { id: number; address: string; city: string; state: string; property_type: string; unit_count: number; }
-interface Unit { id: number; unit_label: string; tenant_name: string | null; tenant_id: number | null; rent_amount: number | null; lease_end_date: string | null; amount_due: number | null; amount_paid: number | null; is_late: boolean | null; }
+interface Unit { id: number; unit_label: string; tenant_name: string | null; tenant_id: number | null; rent_amount: number | null; lease_start_date: string | null; lease_end_date: string | null; amount_due: number | null; amount_paid: number | null; is_late: boolean | null; }
 interface RentRow { id: number; unit_label: string; due_date: string; amount_due: number; paid_date: string | null; amount_paid: number | null; is_partial: boolean; is_late: boolean; late_fee_charged: number | null; source: string; }
 interface WorkOrder { id: number; vendor_name: string; vendor_trade: string; category: string; description: string; status: string; date_received: string; date_completed: string | null; quoted_cost: number | null; actual_cost: number | null; rating: number | null; unit_label: string | null; }
 interface Lease { id: number; unit_label: string; tenant_name: string; start_date: string; end_date: string; rent_amount: number; security_deposit: number | null; late_fee_amount: number | null; late_fee_grace_days: number | null; utilities_landlord: string | null; utilities_tenant: string | null; equipment_included: string | null; extracted_by_ai: boolean; }
 interface EscrowAccount { id: number; lender_name: string; loan_number: string | null; statement_date: string | null; projected_requirement: number | null; actual_disbursements: number | null; shortage_surplus_amount: number | null; new_monthly_escrow: number | null; }
 interface InsurancePolicy { id: number; carrier: string; policy_type: string | null; effective_date: string; expiration_date: string; annual_premium: number | null; deductible: number | null; coverage_notes: string | null; extracted_by_ai: boolean; }
-interface ExistingTenant { id: number; first_name: string; last_name: string; unit_id: number; unit_label: string; }
+interface ExistingTenant { id: number; first_name: string; last_name: string; unit_id: number; unit_label: string; phone: string | null; email: string | null; is_active: boolean; notes: string | null; }
 
 interface LeaseExtracted {
   tenant_first_name: string | null; tenant_last_name: string | null;
@@ -53,7 +53,7 @@ function Input({ label, value, onChange, type='text', placeholder='' }: { label:
   return <div><label className="mb-1 block text-xs font-medium text-gray-500">{label}</label><input type={type} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800" /></div>;
 }
 
-const TABS: {id:Tab;label:string}[] = [{id:'overview',label:'Overview'},{id:'rent',label:'Rent'},{id:'leases',label:'Leases'},{id:'work-orders',label:'Work Orders'},{id:'escrow',label:'Escrow'},{id:'insurance',label:'Insurance'}];
+const TABS: {id:Tab;label:string}[] = [{id:'overview',label:'Overview'},{id:'tenants',label:'Tenants'},{id:'rent',label:'Rent'},{id:'leases',label:'Leases'},{id:'tenants',label:'Tenants'},{id:'work-orders',label:'Work Orders'},{id:'escrow',label:'Escrow'},{id:'insurance',label:'Insurance'}];
 
 // Lease edit form — shared between "review extracted" and "edit existing"
 function LeaseForm({
@@ -159,7 +159,14 @@ export default function PropertyDetailPage() {
   const [escrow, setEscrow] = useState<EscrowAccount[]>([]);
   const [insurance, setInsurance] = useState<InsurancePolicy[]>([]);
   const [existingTenants, setExistingTenants] = useState<ExistingTenant[]>([]);
+  const [editingTenant, setEditingTenant] = useState<ExistingTenant | null>(null);
+  const [deletingTenantId, setDeletingTenantId] = useState<number|null>(null);
+  const [tenantSaving, setTenantSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [deletingTenantId, setDeletingTenantId] = useState<number|null>(null);
+  const [editingTenant, setEditingTenant] = useState<ExistingTenant|null>(null);
+  const [editTenantForm, setEditTenantForm] = useState({first_name:'',last_name:'',email:'',phone:'',notes:''});
+  const [tenantSaving, setTenantSaving] = useState(false);
   const [uploadingLease, setUploadingLease] = useState(false);
   const [uploadingWO, setUploadingWO] = useState(false);
   const [uploadingEscrow, setUploadingEscrow] = useState(false);
@@ -315,6 +322,30 @@ export default function PropertyDetailPage() {
     loadTab('leases');
   }
 
+  async function deleteTenant(tenantId: number) {
+    if (!confirm('Delete this tenant and all their leases? This cannot be undone.')) return;
+    setDeletingTenantId(tenantId);
+    await fetch(`/api/v2/tenants/${tenantId}`, { method: 'DELETE' });
+    setDeletingTenantId(null);
+    await load();
+  }
+
+  function startEditTenant(t: ExistingTenant) {
+    setEditingTenant(t);
+    setEditTenantForm({ first_name: t.first_name, last_name: t.last_name, email: '', phone: '', notes: '' });
+  }
+
+  async function saveEditTenant() {
+    if (!editingTenant || tenantSaving) return;
+    setTenantSaving(true);
+    await fetch(`/api/v2/tenants/${editingTenant.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(editTenantForm),
+    });
+    setEditingTenant(null); setTenantSaving(false);
+    await load();
+  }
+
   async function confirmEscrow() {
     if (!escrowExtracted) return;
     setEscrowSaving(true);
@@ -374,17 +405,37 @@ export default function PropertyDetailPage() {
           </div>
           <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 dark:bg-gray-900"><tr>{['Unit','Tenant','Rent/mo','This Month','Lease Ends'].map(h=><th key={h} className="px-5 py-3 text-left text-xs font-medium text-gray-500">{h}</th>)}</tr></thead>
+              <thead className="bg-gray-50 dark:bg-gray-900"><tr>{['Unit','Tenant','Rent/mo','This Month','Lease Status'].map(h=><th key={h} className="px-5 py-3 text-left text-xs font-medium text-gray-500">{h}</th>)}</tr></thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {units.map(u=>(
+                {units.map(u=>{
+                  const today = new Date().toISOString().slice(0,10);
+                  const isActive = u.lease_start_date && u.lease_end_date && u.lease_start_date <= today && u.lease_end_date >= today;
+                  const isExpired = u.lease_end_date && u.lease_end_date < today;
+                  const daysLeft = u.lease_end_date ? Math.ceil((new Date(u.lease_end_date).getTime()-Date.now())/86400000) : null;
+                  return (
                   <tr key={u.id}>
                     <td className="px-5 py-3 font-medium">{u.unit_label}</td>
                     <td className="px-5 py-3">{u.tenant_name??<span className="italic text-gray-400">Vacant</span>}</td>
                     <td className="px-5 py-3 tabular">{fmt$(u.rent_amount)}</td>
-                    <td className="px-5 py-3">{u.amount_due?u.amount_paid?<span className={u.amount_paid<u.amount_due?'text-amber-600':'text-green-600'}>{fmt$(u.amount_paid)} {u.amount_paid<u.amount_due?'(partial)':'✓'}</span>:<span className="text-red-600">Unpaid {fmt$(u.amount_due)}</span>:<span className="text-gray-400">—</span>}</td>
-                    <td className="px-5 py-3 text-gray-500">{u.lease_end_date??'—'}</td>
+                    <td className="px-5 py-3">{u.amount_due?u.amount_paid?<span className={u.amount_paid<u.amount_due?'text-amber-600':'text-green-600'}>{fmt$(u.amount_paid)} {u.amount_paid<u.amount_due?'(partial)':'✓'}</span>:<span className="text-red-600">Unpaid {fmt$(u.amount_due)}</span>:<span className="text-gray-400">No record</span>}</td>
+                    <td className="px-5 py-3">
+                      {!u.lease_end_date ? <span className="text-gray-400 italic">No lease</span> : (
+                        <div className="flex items-center gap-2">
+                          {isActive && daysLeft !== null && daysLeft <= 60
+                            ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">Expires in {daysLeft}d</span>
+                            : isActive
+                            ? <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">Active</span>
+                            : isExpired
+                            ? <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-600">Expired</span>
+                            : <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-600">Upcoming</span>
+                          }
+                          <span className="text-gray-500 text-xs">{u.lease_start_date} → {u.lease_end_date}</span>
+                        </div>
+                      )}
+                    </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -539,6 +590,56 @@ export default function PropertyDetailPage() {
                   )}
                 </div>
               ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── TENANTS ── */}
+      {tab==='tenants' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="font-semibold text-gray-700 dark:text-gray-300">Tenants</h2>
+            <Link href={`/properties/${id}/tenants/new`} className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700">+ Add Tenant</Link>
+          </div>
+          <div className="space-y-3">
+            {existingTenants.length === 0
+              ? <div className="rounded-xl border border-dashed border-gray-300 p-8 text-center text-gray-400 dark:border-gray-700">No tenants yet.</div>
+              : existingTenants.map(t => (
+                <div key={t.id} className="rounded-xl border border-gray-200 dark:border-gray-800">
+                  {editingTenant?.id === t.id ? (
+                    <div className="p-5 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h3 className="font-semibold">Editing Tenant</h3>
+                        <button onClick={()=>setEditingTenant(null)} className="text-xs text-gray-400 hover:text-gray-600">Cancel</button>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <Input label="First Name" value={editTenantForm.first_name} onChange={v=>setEditTenantForm(p=>({...p,first_name:v}))} />
+                        <Input label="Last Name" value={editTenantForm.last_name} onChange={v=>setEditTenantForm(p=>({...p,last_name:v}))} />
+                        <Input label="Phone" value={editTenantForm.phone} onChange={v=>setEditTenantForm(p=>({...p,phone:v}))} type="tel" />
+                        <Input label="Email" value={editTenantForm.email} onChange={v=>setEditTenantForm(p=>({...p,email:v}))} type="email" />
+                      </div>
+                      <Input label="Notes" value={editTenantForm.notes} onChange={v=>setEditTenantForm(p=>({...p,notes:v}))} />
+                      <button onClick={saveEditTenant} disabled={tenantSaving} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
+                        {tenantSaving?'Saving…':'Save Changes'}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between p-4">
+                      <div>
+                        <p className="font-medium">{t.first_name} {t.last_name}</p>
+                        <p className="text-sm text-gray-500">Unit {t.unit_label}</p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <button onClick={()=>startEditTenant(t)} className="text-xs text-blue-600 hover:underline dark:text-blue-400">Edit</button>
+                        <button onClick={()=>deleteTenant(t.id)} disabled={deletingTenantId===t.id} className="text-xs text-red-400 hover:text-red-600 disabled:opacity-50">
+                          {deletingTenantId===t.id?'Deleting…':'Delete'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))
+            }
           </div>
         </div>
       )}
