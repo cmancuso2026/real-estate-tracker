@@ -217,12 +217,8 @@ export default function PropertyDetailPage() {
       const res = await fetch(`/api/v2/work-orders?propertyId=${id}`);
       setWorkOrders(await res.json());
     } else if (t === 'leases') {
-      const all: Lease[] = [];
-      for (const u of units) {
-        const res = await fetch(`/api/v2/leases?unitId=${u.id}`);
-        all.push(...(await res.json() as Lease[]));
-      }
-      setLeases(all);
+      const res = await fetch(`/api/v2/leases?propertyId=${id}`);
+      setLeases(await res.json());
     } else if (t === 'escrow') {
       const res = await fetch(`/api/v2/escrow?propertyId=${id}`);
       setEscrow(await res.json());
@@ -230,7 +226,7 @@ export default function PropertyDetailPage() {
       const res = await fetch(`/api/v2/insurance?propertyId=${id}`);
       setInsurance(await res.json());
     }
-  }, [id, units]);
+  }, [id]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { if (!loading) loadTab(tab); }, [tab, loading, loadTab]);

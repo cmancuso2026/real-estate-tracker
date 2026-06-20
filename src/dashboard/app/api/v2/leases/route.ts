@@ -3,30 +3,36 @@ import { query } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
-// GET /api/v2/leases?unitId=1
+// GET /api/v2/leases?propertyId=1  OR  ?unitId=1
 export async function GET(req: NextRequest) {
-  const unitId = req.nextUrl.searchParams.get('unitId');
-  if (!unitId) {
-    return NextResponse.json({ error: 'unitId query param required' }, { status: 400 });
-  }
+  const propertyId = req.nextUrl.searchParams.get('propertyId');
+  const unitId     = req.nextUrl.searchParams.get('unitId');
+
+  const conditions: string[] = [];
+  const values: unknown[] = [];
+  let idx = 1;
+
+  if (propertyId) { conditions.push(`p.id = $${idx++}`);    values.push(propertyId); }
+  if (unitId)     { conditions.push(`l.unit_id = $${idx++}`); values.push(unitId); }
+
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
   const rows = await query(
     `SELECT l.*,
-            t.first_name || ' ' || t.last_name AS tenant_name,
+            (t.first_name || ' ' || t.last_name) AS tenant_name,
             u.unit_label,
             p.address AS property_address
      FROM leases l
      JOIN tenants t          ON t.id = l.tenant_id
      JOIN units u            ON u.id = l.unit_id
      JOIN owned_properties p ON p.id = u.property_id
-     WHERE l.unit_id = $1
+     ${where}
      ORDER BY l.start_date DESC`,
-    [unitId]
+    values
   );
   return NextResponse.json(rows);
 }
 
-// POST /api/v2/leases — create a lease (manually entered or from AI extraction)
 export async function POST(req: NextRequest) {
   console.log('[leases POST] called at', new Date().toISOString());
   const body = await req.json();
@@ -34,7 +40,7 @@ export async function POST(req: NextRequest) {
     tenant_id, unit_id, start_date, end_date, rent_amount,
     security_deposit, late_fee_amount, late_fee_grace_days,
     utilities_landlord, utilities_tenant, equipment_included,
-    pdf_url, extracted_by_ai, ai_confidence_notes,
+    extracted_by_ai, ai_confidence_notes,
   } = body;
 
   if (!tenant_id || !unit_id || !start_date || !end_date || !rent_amount) {
@@ -48,8 +54,8 @@ export async function POST(req: NextRequest) {
     `INSERT INTO leases
        (tenant_id, unit_id, start_date, end_date, rent_amount, security_deposit,
         late_fee_amount, late_fee_grace_days, utilities_landlord, utilities_tenant,
-        equipment_included, pdf_url, extracted_by_ai, ai_confidence_notes)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+        equipment_included, extracted_by_ai, ai_confidence_notes)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
      ON CONFLICT (tenant_id, unit_id, start_date) DO NOTHING
      RETURNING *`,
     [
@@ -58,10 +64,8 @@ export async function POST(req: NextRequest) {
       utilities_landlord ? JSON.stringify(utilities_landlord) : null,
       utilities_tenant   ? JSON.stringify(utilities_tenant)   : null,
       equipment_included ? JSON.stringify(equipment_included) : null,
-      pdf_url ?? null,
-      extracted_by_ai ?? false,
-      ai_confidence_notes ?? null,
+      extracted_by_ai ?? false, ai_confidence_notes ?? null,
     ]
   );
-  return NextResponse.json(rows[0], { status: 201 });
+  return NextResponse.json(rows[0] ?? { ok: true }, { status: 201 });
 }
