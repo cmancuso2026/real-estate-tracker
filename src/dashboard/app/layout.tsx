@@ -5,17 +5,12 @@ import { ThemeToggle } from '@/components/ThemeToggle';
 
 export const metadata: Metadata = {
   title: 'Real Estate Tracker',
-  description: 'Graded investment-property dashboard',
+  description: 'Property management and investment dashboard',
 };
 
-// Applied before paint so dark mode doesn't flash on load.
 const THEME_INIT = `(function(){try{var t=localStorage.getItem('theme');if(t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.documentElement.classList.add('dark')}}catch(e){}})();`;
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -28,21 +23,21 @@ export default function RootLayout({
               <span>🏠</span>
               <span>Real Estate Tracker</span>
             </Link>
-            <div className="flex items-center gap-4">
-              <Link
-                href="/grade"
-                className="text-sm font-medium text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
-              >
+            <nav className="flex items-center gap-4">
+              <Link href="/properties" className="text-sm font-medium text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white">
+                My Properties
+              </Link>
+              <Link href="/vendors" className="text-sm font-medium text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white">
+                Vendors
+              </Link>
+              <Link href="/grade" className="text-sm font-medium text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white">
                 Grade a Property
               </Link>
-              <Link
-                href="/settings"
-                className="text-sm font-medium text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
-              >
+              <Link href="/settings" className="text-sm font-medium text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white">
                 Investor Profile
               </Link>
               <ThemeToggle />
-            </div>
+            </nav>
           </div>
         </header>
         <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6">{children}</main>

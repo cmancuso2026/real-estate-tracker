@@ -4,17 +4,20 @@ import { randomUUID } from 'node:crypto';
 
 export const dynamic = 'force-dynamic';
 
-// GET /api/v2/rent?unitId=1&month=2025-06
+// GET /api/v2/rent?unitId=1&month=2025-06&propertyId=1
 export async function GET(req: NextRequest) {
-  const unitId = req.nextUrl.searchParams.get('unitId');
-  const month  = req.nextUrl.searchParams.get('month');   // YYYY-MM
+  const p = req.nextUrl.searchParams;
+  const unitId     = p.get('unitId');
+  const month      = p.get('month');
+  const propertyId = p.get('propertyId');
 
   const conditions: string[] = [];
   const values: unknown[] = [];
   let idx = 1;
 
-  if (unitId) { conditions.push(`rc.unit_id = $${idx++}`);          values.push(unitId); }
-  if (month)  { conditions.push(`rc.due_date LIKE $${idx++}`);      values.push(month + '%'); }
+  if (unitId)     { conditions.push(`rc.unit_id = $${idx++}`);   values.push(unitId); }
+  if (month)      { conditions.push(`rc.due_date LIKE $${idx++}`); values.push(month + '%'); }
+  if (propertyId) { conditions.push(`p.id = $${idx++}`);          values.push(propertyId); }
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
@@ -63,7 +66,7 @@ export async function POST(req: NextRequest) {
   return NextResponse.json(rows[0], { status: 201 });
 }
 
-// POST /api/v2/rent/csv — multipart form with BofA CSV
+// PUT /api/v2/rent — BofA CSV import
 export async function PUT(req: NextRequest) {
   let formData: FormData;
   try {
@@ -77,8 +80,6 @@ export async function PUT(req: NextRequest) {
 
   const csvText = await file.text();
   const batchId = randomUUID();
-
-  // Parse BofA CSV: Date, Description, Amount, Running Bal.
   const lines = csvText.trim().split('\n');
   const headerIdx = lines.findIndex(l =>
     l.toLowerCase().includes('date') && l.toLowerCase().includes('amount')
@@ -98,7 +99,7 @@ export async function PUT(req: NextRequest) {
     if (!line.trim()) continue;
     const cols = line.split(',').map(c => c.replace(/"/g, '').trim());
     const amount = parseFloat(cols[amtIdx] ?? '0');
-    if (isNaN(amount) || amount <= 0) continue;  // only credits
+    if (isNaN(amount) || amount <= 0) continue;
     creditRows.push({
       date: cols[dateIdx] ?? '',
       description: cols[descIdx] ?? '',
@@ -106,11 +107,10 @@ export async function PUT(req: NextRequest) {
     });
   }
 
-  // Return the parsed rows for the user to match to units before saving
   return NextResponse.json({
     batch_id: batchId,
     rows: creditRows,
     count: creditRows.length,
-    message: 'Review and match these transactions to units, then POST to /api/v2/rent/import',
+    message: 'Review and match these transactions to units, then POST to /api/v2/rent to record payments.',
   });
 }
