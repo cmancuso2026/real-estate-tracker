@@ -437,7 +437,7 @@ export default function PropertyDetailPage() {
             <div className="flex gap-2">
               <label className={`cursor-pointer rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800 ${uploadingLease?'opacity-50':''}`}>
                 {uploadingLease?'Parsing…':'Upload Lease PDF'}
-                <input type="file" accept=".pdf" className="hidden" disabled={uploading} onClick={e=>{(e.target as HTMLInputElement).value='';}} onChange={async e=>{
+                <input type="file" accept=".pdf" className="hidden" disabled={uploadingLease} onClick={e=>{(e.target as HTMLInputElement).value='';}} onChange={async e=>{
                   const file=e.target.files?.[0];if(!file||uploadingLease)return;
                   e.target.value='';
                   const extracted=await uploadPdf(file,'lease',setUploadingLease);
