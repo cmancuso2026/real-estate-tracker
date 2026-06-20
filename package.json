@@ -27,7 +27,8 @@
     "test:slack": "tsx src/scripts/test-slack.ts",
     "test:email": "tsx src/scripts/test-email.ts",
     "v2:recap": "tsx src/scripts/v2-recap.ts",
-    "v2:alerts": "tsx src/scripts/v2-alerts.ts"
+    "v2:alerts": "tsx src/scripts/v2-alerts.ts",
+    "seed:properties": "tsx src/scripts/seed-properties.ts"
   },
   "engines": {
     "node": ">=20"
