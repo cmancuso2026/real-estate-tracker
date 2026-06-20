@@ -30,6 +30,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  console.log('[tenants POST] called at', new Date().toISOString());
   const body = await req.json();
   const { unit_id, first_name, last_name, email, phone, payment_method, is_active, notes } = body;
 

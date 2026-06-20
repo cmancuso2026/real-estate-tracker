@@ -28,6 +28,7 @@ export async function GET(req: NextRequest) {
 
 // POST /api/v2/leases — create a lease (manually entered or from AI extraction)
 export async function POST(req: NextRequest) {
+  console.log('[leases POST] called at', new Date().toISOString());
   const body = await req.json();
   const {
     tenant_id, unit_id, start_date, end_date, rent_amount,
