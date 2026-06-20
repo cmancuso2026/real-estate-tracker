@@ -170,7 +170,17 @@ export default function PropertyDetailPage() {
       {/* OVERVIEW TAB */}
       {tab === 'overview' && (
         <div className="space-y-4">
-          <h2 className="font-semibold text-gray-700 dark:text-gray-300">Units</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="font-semibold text-gray-700 dark:text-gray-300">Units</h2>
+            <div className="flex gap-2">
+              <Link href={`/properties/${id}/tenants/new`} className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">
+                + Add Tenant
+              </Link>
+              <Link href={`/properties/${id}/leases/new`} className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700">
+                + Add Lease
+              </Link>
+            </div>
+          </div>
           <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 dark:bg-gray-900">
