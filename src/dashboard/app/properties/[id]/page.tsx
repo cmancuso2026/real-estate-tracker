@@ -160,7 +160,10 @@ export default function PropertyDetailPage() {
   const [insurance, setInsurance] = useState<InsurancePolicy[]>([]);
   const [existingTenants, setExistingTenants] = useState<ExistingTenant[]>([]);
   const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
+  const [uploadingLease, setUploadingLease] = useState(false);
+  const [uploadingWO, setUploadingWO] = useState(false);
+  const [uploadingEscrow, setUploadingEscrow] = useState(false);
+  const [uploadingInsurance, setUploadingInsurance] = useState(false);
   const [uploadError, setUploadError] = useState('');
 
   // Lease extraction state
@@ -234,12 +237,12 @@ export default function PropertyDetailPage() {
 
   const switchTab = (t: Tab) => { setTab(t); router.replace(`/properties/${id}?tab=${t}`, { scroll: false }); };
 
-  async function uploadPdf(file: File, type: string) {
-    setUploading(true); setUploadError('');
+  async function uploadPdf(file: File, type: string, setFlag: (v:boolean)=>void) {
+    setFlag(true); setUploadError('');
     const form = new FormData(); form.append('file', file); form.append('type', type);
     const res = await fetch('/api/v2/upload', { method: 'POST', body: form });
     const data = await res.json();
-    setUploading(false);
+    setFlag(false);
     if (!res.ok) { setUploadError('Upload failed: ' + (data.error ?? 'unknown')); return null; }
     return data.extracted;
   }
@@ -432,11 +435,12 @@ export default function PropertyDetailPage() {
           <div className="flex items-center justify-between">
             <h2 className="font-semibold text-gray-700 dark:text-gray-300">Lease History</h2>
             <div className="flex gap-2">
-              <label className={`cursor-pointer rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800 ${uploading?'opacity-50':''}`}>
-                {uploading?'Parsing…':'Upload Lease PDF'}
-                <input type="file" accept=".pdf" className="hidden" disabled={uploading} onChange={async e=>{
-                  const file=e.target.files?.[0];if(!file)return;
-                  const extracted=await uploadPdf(file,'lease');
+              <label className={`cursor-pointer rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800 ${uploadingLease?'opacity-50':''}`}>
+                {uploadingLease?'Parsing…':'Upload Lease PDF'}
+                <input type="file" accept=".pdf" className="hidden" disabled={uploading} onClick={e=>{(e.target as HTMLInputElement).value='';}} onChange={async e=>{
+                  const file=e.target.files?.[0];if(!file||uploadingLease)return;
+                  e.target.value='';
+                  const extracted=await uploadPdf(file,'lease',setUploadingLease);
                   if(extracted){
                     setLeaseExtracted(extracted);
                     setLeaseTenantFirst(extracted.tenant_first_name??'');
@@ -444,7 +448,6 @@ export default function PropertyDetailPage() {
                     setLeaseTenantMode('new');
                     setLeaseSelectedTenant(''); setLeaseSelectedUnit('');
                   }
-                  e.target.value='';
                 }} />
               </label>
               <Link href={`/properties/${id}/leases/new`} className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700">+ Add Manually</Link>
@@ -550,9 +553,9 @@ export default function PropertyDetailPage() {
           <div className="flex items-center justify-between">
             <h2 className="font-semibold text-gray-700 dark:text-gray-300">Work Orders</h2>
             <div className="flex gap-2">
-              <label className={`cursor-pointer rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800 ${uploading?'opacity-50':''}`}>
-                {uploading?'Parsing…':'Upload PDF/Invoice'}
-                <input type="file" accept=".pdf" className="hidden" disabled={uploading} onChange={async e=>{const file=e.target.files?.[0];if(!file)return;const extracted=await uploadPdf(file,'work_order');if(extracted)setWoExtracted(extracted);e.target.value='';}} />
+              <label className={`cursor-pointer rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800 ${uploadingWO?'opacity-50':''}`}>
+                {uploadingWO?'Parsing…':'Upload PDF/Invoice'}
+                <input type="file" accept=".pdf" className="hidden" disabled={uploadingWO} onChange={async e=>{const file=e.target.files?.[0];if(!file||uploadingWO)return;const extracted=await uploadPdf(file,'work_order',setUploadingWO);if(extracted)setWoExtracted(extracted);e.target.value='';}} />
               </label>
               <Link href={`/properties/${id}/work-orders/new`} className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700">+ New Work Order</Link>
             </div>
@@ -608,9 +611,9 @@ export default function PropertyDetailPage() {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="font-semibold text-gray-700 dark:text-gray-300">Escrow</h2>
-            <label className={`cursor-pointer rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 ${uploading?'opacity-50':''}`}>
-              {uploading?'Parsing…':'Upload Escrow Statement'}
-              <input type="file" accept=".pdf" className="hidden" disabled={uploading} onChange={async e=>{const file=e.target.files?.[0];if(!file)return;const extracted=await uploadPdf(file,'escrow');if(extracted){setEscrowExtracted(extracted);setEscrowLender('');}e.target.value='';}} />
+            <label className={`cursor-pointer rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 ${uploadingEscrow?'opacity-50':''}`}>
+              {uploadingEscrow?'Parsing…':'Upload Escrow Statement'}
+              <input type="file" accept=".pdf" className="hidden" disabled={uploadingEscrow} onChange={async e=>{const file=e.target.files?.[0];if(!file||uploadingEscrow)return;const extracted=await uploadPdf(file,'escrow',setUploadingEscrow);if(extracted){setEscrowExtracted(extracted);setEscrowLender('');}e.target.value='';}} />
             </label>
           </div>
           {escrowExtracted&&(
@@ -658,9 +661,9 @@ export default function PropertyDetailPage() {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="font-semibold text-gray-700 dark:text-gray-300">Insurance Policies</h2>
-            <label className={`cursor-pointer rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 ${uploading?'opacity-50':''}`}>
-              {uploading?'Parsing…':'Upload Policy PDF'}
-              <input type="file" accept=".pdf" className="hidden" disabled={uploading} onChange={async e=>{const file=e.target.files?.[0];if(!file)return;const extracted=await uploadPdf(file,'insurance');if(extracted)setInsuranceExtracted(extracted);e.target.value='';}} />
+            <label className={`cursor-pointer rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 ${uploadingInsurance?'opacity-50':''}`}>
+              {uploadingInsurance?'Parsing…':'Upload Policy PDF'}
+              <input type="file" accept=".pdf" className="hidden" disabled={uploadingInsurance} onChange={async e=>{const file=e.target.files?.[0];if(!file||uploadingInsurance)return;const extracted=await uploadPdf(file,'insurance',setUploadingInsurance);if(extracted)setInsuranceExtracted(extracted);e.target.value='';}} />
             </label>
           </div>
           {insuranceExtracted&&(

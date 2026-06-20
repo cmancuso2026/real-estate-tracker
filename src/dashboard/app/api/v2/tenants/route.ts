@@ -40,6 +40,7 @@ export async function POST(req: NextRequest) {
   const rows = await query(
     `INSERT INTO tenants (unit_id, first_name, last_name, email, phone, payment_method, is_active, notes)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+     ON CONFLICT (unit_id, lower(first_name), lower(last_name)) DO UPDATE SET is_active=TRUE
      RETURNING *`,
     [
       unit_id, first_name, last_name,

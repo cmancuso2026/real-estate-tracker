@@ -454,3 +454,7 @@ CREATE INDEX IF NOT EXISTS idx_insurance_expiration ON insurance_policies (expir
 -- Prevent duplicate lease submissions: same tenant + unit + start date = same lease
 CREATE UNIQUE INDEX IF NOT EXISTS idx_leases_unique_term
   ON leases (tenant_id, unit_id, start_date);
+
+-- Prevent duplicate tenants: same name in same unit
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tenants_unique_name_unit
+  ON tenants (unit_id, lower(first_name), lower(last_name));
