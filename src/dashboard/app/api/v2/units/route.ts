@@ -14,27 +14,35 @@ export async function GET(req: NextRequest) {
             t.first_name || ' ' || t.last_name AS tenant_name,
             t.id AS tenant_id,
             l.rent_amount,
-            l.start_date AS lease_start_date,
-            l.end_date   AS lease_end_date,
+            l.start_date  AS lease_start_date,
+            l.end_date    AS lease_end_date,
+            first_l.start_date AS first_lease_start_date,
             rc.amount_due,
             rc.amount_paid,
             rc.is_late
      FROM units u
-     -- Only the single most recent active tenant per unit
+     -- Most recent active tenant
      LEFT JOIN LATERAL (
        SELECT * FROM tenants
        WHERE unit_id = u.id AND is_active = TRUE
        ORDER BY created_at DESC
        LIMIT 1
      ) t ON TRUE
-     -- Most recent lease for that unit regardless of active status
+     -- Most recent lease
      LEFT JOIN LATERAL (
        SELECT * FROM leases
        WHERE unit_id = u.id
        ORDER BY start_date DESC
        LIMIT 1
      ) l ON TRUE
-     -- This month's rent collection
+     -- Earliest ever lease (for years-in-unit)
+     LEFT JOIN LATERAL (
+       SELECT * FROM leases
+       WHERE unit_id = u.id
+       ORDER BY start_date ASC
+       LIMIT 1
+     ) first_l ON TRUE
+     -- This month's rent
      LEFT JOIN LATERAL (
        SELECT * FROM rent_collections
        WHERE unit_id = u.id
@@ -51,11 +59,9 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const body = await req.json();
   const { property_id, unit_label, bedrooms, bathrooms, sqft, notes } = body;
-
   if (!property_id || !unit_label) {
     return NextResponse.json({ error: 'property_id and unit_label are required' }, { status: 400 });
   }
-
   const rows = await query(
     `INSERT INTO units (property_id, unit_label, bedrooms, bathrooms, sqft, notes)
      VALUES ($1,$2,$3,$4,$5,$6)

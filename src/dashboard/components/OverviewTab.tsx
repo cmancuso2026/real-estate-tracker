@@ -1,0 +1,159 @@
+'use client';
+
+import { useState } from 'react';
+import Link from 'next/link';
+
+interface Unit {
+  id: number;
+  unit_label: string;
+  tenant_name: string | null;
+  tenant_id: number | null;
+  rent_amount: number | null;
+  lease_start_date: string | null;
+  lease_end_date: string | null;
+  first_lease_start_date: string | null;
+  amount_due: number | null;
+  amount_paid: number | null;
+  is_late: boolean | null;
+}
+
+function fmt$(n: number | null | undefined) {
+  if (n == null) return '—';
+  return '$' + n.toLocaleString();
+}
+
+function yearsInUnit(firstLeaseStart: string | null): string {
+  if (!firstLeaseStart) return '—';
+  const start = new Date(firstLeaseStart).getTime();
+  const now = Date.now();
+  const years = (now - start) / (1000 * 60 * 60 * 24 * 365.25);
+  if (years < 0) return '—';
+  return years.toFixed(1) + ' yrs';
+}
+
+function LeaseStatusBadge({ startDate, endDate }: { startDate: string | null; endDate: string | null }) {
+  if (!endDate) return <span className="italic text-gray-400 text-xs">No lease</span>;
+  const today = new Date().toISOString().slice(0, 10);
+  const daysLeft = Math.ceil((new Date(endDate).getTime() - Date.now()) / 86400000);
+  const isActive = startDate && startDate <= today && endDate >= today;
+  const isExpired = endDate < today;
+
+  if (isExpired) return <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-600 dark:bg-red-900/30 dark:text-red-400">Expired</span>;
+  if (isActive && daysLeft <= 60) return <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">Expiring soon</span>;
+  if (isActive) return <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">Active</span>;
+  return <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">Upcoming</span>;
+}
+
+function daysUntilExpiry(endDate: string | null): string {
+  if (!endDate) return '—';
+  const days = Math.ceil((new Date(endDate).getTime() - Date.now()) / 86400000);
+  if (days < 0) return `${Math.abs(days)}d ago`;
+  if (days === 0) return 'Today';
+  return `${days}d`;
+}
+
+export function OverviewTab({ id, units }: { id: string; units: Unit[] }) {
+  const [selectedUnit, setSelectedUnit] = useState<string>('all');
+
+  const filtered = selectedUnit === 'all'
+    ? units
+    : units.filter(u => u.unit_label === selectedUnit);
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <h2 className="font-semibold text-gray-700 dark:text-gray-300">Units</h2>
+        <div className="flex gap-2">
+          <Link href={`/properties/${id}/tenants/new`} className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">
+            + Add Tenant
+          </Link>
+          <Link href={`/properties/${id}/leases/new`} className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700">
+            + Add Lease
+          </Link>
+        </div>
+      </div>
+
+      {/* Unit slicers */}
+      <div className="flex flex-wrap gap-2">
+        <button
+          onClick={() => setSelectedUnit('all')}
+          className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+            selectedUnit === 'all'
+              ? 'bg-blue-600 text-white'
+              : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
+          }`}
+        >
+          All Units
+        </button>
+        {units.map(u => (
+          <button
+            key={u.id}
+            onClick={() => setSelectedUnit(u.unit_label)}
+            className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+              selectedUnit === u.unit_label
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
+            }`}
+          >
+            Unit {u.unit_label}
+          </button>
+        ))}
+      </div>
+
+      {/* Table */}
+      <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 dark:bg-gray-900">
+            <tr>
+              {['Unit', 'Tenant', 'Rent/mo', 'Lease Status', 'Lease Expiration', 'Days Until Exp.', 'Years in Unit'].map(h => (
+                <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+            {filtered.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="px-4 py-8 text-center text-gray-400">No units</td>
+              </tr>
+            ) : filtered.map(u => (
+              <tr key={u.id} className="hover:bg-gray-50 dark:hover:bg-gray-900/50">
+                <td className="px-4 py-3 font-semibold">{u.unit_label}</td>
+                <td className="px-4 py-3">
+                  {u.tenant_name
+                    ? <span>{u.tenant_name}</span>
+                    : <span className="italic text-gray-400">Vacant</span>
+                  }
+                </td>
+                <td className="px-4 py-3 tabular font-medium">{fmt$(u.rent_amount)}</td>
+                <td className="px-4 py-3">
+                  <LeaseStatusBadge startDate={u.lease_start_date} endDate={u.lease_end_date} />
+                </td>
+                <td className="px-4 py-3 tabular text-gray-600 dark:text-gray-400">
+                  {u.lease_end_date ?? <span className="text-gray-400">—</span>}
+                </td>
+                <td className="px-4 py-3 tabular">
+                  {u.lease_end_date ? (
+                    <span className={
+                      Math.ceil((new Date(u.lease_end_date).getTime() - Date.now()) / 86400000) <= 60 &&
+                      Math.ceil((new Date(u.lease_end_date).getTime() - Date.now()) / 86400000) >= 0
+                        ? 'text-amber-600 font-medium'
+                        : Math.ceil((new Date(u.lease_end_date).getTime() - Date.now()) / 86400000) < 0
+                        ? 'text-red-500'
+                        : 'text-gray-600 dark:text-gray-400'
+                    }>
+                      {daysUntilExpiry(u.lease_end_date)}
+                    </span>
+                  ) : <span className="text-gray-400">—</span>}
+                </td>
+                <td className="px-4 py-3 tabular text-gray-600 dark:text-gray-400">
+                  {yearsInUnit(u.first_lease_start_date)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
