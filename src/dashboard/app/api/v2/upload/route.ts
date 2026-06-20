@@ -24,6 +24,8 @@ Always respond with valid JSON only — no preamble, no markdown fences.
 Dates must be YYYY-MM-DD. Dollar amounts must be integers. Arrays must be present (use [] if empty).`,
     user: `Extract and return this JSON from the lease:
 {
+  "tenant_first_name": "tenant first name or null",
+  "tenant_last_name": "tenant last name or null",
   "start_date": "YYYY-MM-DD or null",
   "end_date": "YYYY-MM-DD or null",
   "rent_amount": integer_or_null,
