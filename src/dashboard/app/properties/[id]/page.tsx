@@ -162,11 +162,8 @@ export default function PropertyDetailPage() {
   const [editingTenant, setEditingTenant] = useState<ExistingTenant | null>(null);
   const [deletingTenantId, setDeletingTenantId] = useState<number|null>(null);
   const [tenantSaving, setTenantSaving] = useState(false);
+  const [editTenantForm, setEditTenantForm] = useState({first_name:"",last_name:"",email:"",phone:"",notes:""});
   const [loading, setLoading] = useState(true);
-  const [deletingTenantId, setDeletingTenantId] = useState<number|null>(null);
-  const [editingTenant, setEditingTenant] = useState<ExistingTenant|null>(null);
-  const [editTenantForm, setEditTenantForm] = useState({first_name:'',last_name:'',email:'',phone:'',notes:''});
-  const [tenantSaving, setTenantSaving] = useState(false);
   const [uploadingLease, setUploadingLease] = useState(false);
   const [uploadingWO, setUploadingWO] = useState(false);
   const [uploadingEscrow, setUploadingEscrow] = useState(false);
