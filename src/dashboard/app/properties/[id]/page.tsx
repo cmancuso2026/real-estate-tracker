@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 
@@ -171,11 +171,13 @@ export default function PropertyDetailPage() {
   const [leaseSelectedTenant, setLeaseSelectedTenant] = useState('');
   const [leaseSelectedUnit, setLeaseSelectedUnit] = useState('');
   const [leaseSaving, setLeaseSaving] = useState(false);
+  const leaseSavingRef = useRef(false);
 
   // Lease edit state
   const [editingLease, setEditingLease] = useState<Lease | null>(null);
   const [editLeaseData, setEditLeaseData] = useState<Partial<LeaseExtracted>>({});
   const [editSaving, setEditSaving] = useState(false);
+  const editSavingRef = useRef(false);
   const [deletingLeaseId, setDeletingLeaseId] = useState<number|null>(null);
 
   // Escrow state
@@ -243,7 +245,8 @@ export default function PropertyDetailPage() {
   }
 
   async function confirmLease() {
-    if (!leaseExtracted) return;
+    if (!leaseExtracted || leaseSavingRef.current) return;
+    leaseSavingRef.current = true;
     setLeaseSaving(true);
 
     let tenantId = leaseSelectedTenant ? parseInt(leaseSelectedTenant) : null;
@@ -258,7 +261,7 @@ export default function PropertyDetailPage() {
       tenantId = tenant.id;
     }
 
-    if (!tenantId || !leaseSelectedUnit) { setLeaseSaving(false); return; }
+    if (!tenantId || !leaseSelectedUnit) { setLeaseSaving(false); leaseSavingRef.current = false; return; }
 
     await fetch('/api/v2/leases', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -274,9 +277,9 @@ export default function PropertyDetailPage() {
       }),
     });
 
-    setLeaseExtracted(null); setLeaseSaving(false);
-    await load(); // refresh tenants list
-    loadTab('leases');
+    setLeaseExtracted(null); setLeaseSaving(false); leaseSavingRef.current = false;
+    await load();
+    await loadTab('leases');
   }
 
   function startEditLease(lease: Lease) {
@@ -292,13 +295,14 @@ export default function PropertyDetailPage() {
   }
 
   async function saveEditLease() {
-    if (!editingLease) return;
+    if (!editingLease || editSavingRef.current) return;
+    editSavingRef.current = true;
     setEditSaving(true);
     await fetch(`/api/v2/leases/${editingLease.id}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(editLeaseData),
     });
-    setEditingLease(null); setEditSaving(false);
+    setEditingLease(null); setEditSaving(false); editSavingRef.current = false;
     loadTab('leases');
   }
 
