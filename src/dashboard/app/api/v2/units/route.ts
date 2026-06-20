@@ -3,7 +3,6 @@ import { query } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
-// GET /api/v2/units?propertyId=1
 export async function GET(req: NextRequest) {
   const propertyId = req.nextUrl.searchParams.get('propertyId');
   if (!propertyId) {
@@ -16,13 +15,19 @@ export async function GET(req: NextRequest) {
             t.id AS tenant_id,
             l.rent_amount,
             l.start_date AS lease_start_date,
-            l.end_date AS lease_end_date,
+            l.end_date   AS lease_end_date,
             rc.amount_due,
             rc.amount_paid,
             rc.is_late
      FROM units u
-     LEFT JOIN tenants t ON t.unit_id = u.id AND t.is_active = TRUE
-     -- Most recent lease regardless of active status
+     -- Only the single most recent active tenant per unit
+     LEFT JOIN LATERAL (
+       SELECT * FROM tenants
+       WHERE unit_id = u.id AND is_active = TRUE
+       ORDER BY created_at DESC
+       LIMIT 1
+     ) t ON TRUE
+     -- Most recent lease for that unit regardless of active status
      LEFT JOIN LATERAL (
        SELECT * FROM leases
        WHERE unit_id = u.id
@@ -30,9 +35,12 @@ export async function GET(req: NextRequest) {
        LIMIT 1
      ) l ON TRUE
      -- This month's rent collection
-     LEFT JOIN rent_collections rc
-       ON rc.unit_id = u.id
-       AND rc.due_date LIKE to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM') || '%'
+     LEFT JOIN LATERAL (
+       SELECT * FROM rent_collections
+       WHERE unit_id = u.id
+         AND due_date LIKE to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM') || '%'
+       LIMIT 1
+     ) rc ON TRUE
      WHERE u.property_id = $1
      ORDER BY u.unit_label`,
     [propertyId]
