@@ -176,6 +176,7 @@ export default function PropertyDetailPage() {
   const [editingLease, setEditingLease] = useState<Lease | null>(null);
   const [editLeaseData, setEditLeaseData] = useState<Partial<LeaseExtracted>>({});
   const [editSaving, setEditSaving] = useState(false);
+  const [deletingLeaseId, setDeletingLeaseId] = useState<number|null>(null);
 
   // Escrow state
   const [escrowExtracted, setEscrowExtracted] = useState<EscrowExtracted | null>(null);
@@ -298,6 +299,14 @@ export default function PropertyDetailPage() {
       body: JSON.stringify(editLeaseData),
     });
     setEditingLease(null); setEditSaving(false);
+    loadTab('leases');
+  }
+
+  async function deleteLease(leaseId: number) {
+    if (!confirm('Delete this lease? This cannot be undone.')) return;
+    setDeletingLeaseId(leaseId);
+    await fetch(`/api/v2/leases/${leaseId}`, { method: 'DELETE' });
+    setDeletingLeaseId(null);
     loadTab('leases');
   }
 
@@ -476,7 +485,10 @@ export default function PropertyDetailPage() {
                     <div className="p-5 space-y-4">
                       <div className="flex items-center justify-between">
                         <h3 className="font-semibold">Editing — {l.tenant_name} · Unit {l.unit_label}</h3>
-                        <button onClick={()=>setEditingLease(null)} className="text-xs text-gray-400 hover:text-gray-600">Cancel</button>
+                        <div className="flex gap-3">
+                          <button onClick={()=>deleteLease(l.id)} disabled={deletingLeaseId===l.id} className="text-xs text-red-400 hover:text-red-600 disabled:opacity-50">{deletingLeaseId===l.id?'Deleting…':'Delete'}</button>
+                          <button onClick={()=>setEditingLease(null)} className="text-xs text-gray-400 hover:text-gray-600">Cancel</button>
+                        </div>
                       </div>
                       <LeaseForm
                         data={editLeaseData} onChange={patch=>setEditLeaseData(prev=>({...prev,...patch}))}
@@ -505,6 +517,7 @@ export default function PropertyDetailPage() {
                         <div className="flex items-center gap-3">
                           <span className="text-sm font-medium tabular">{fmt$(l.rent_amount)}/mo</span>
                           <button onClick={()=>startEditLease(l)} className="text-xs text-blue-600 hover:underline dark:text-blue-400">Edit</button>
+                          <button onClick={()=>deleteLease(l.id)} disabled={deletingLeaseId===l.id} className="text-xs text-red-400 hover:text-red-600 disabled:opacity-50">{deletingLeaseId===l.id?'Deleting…':'Delete'}</button>
                         </div>
                       </div>
                       <div className="mt-2 flex flex-wrap gap-4 text-sm text-gray-500">

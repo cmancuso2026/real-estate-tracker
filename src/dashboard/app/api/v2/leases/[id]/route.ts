@@ -38,3 +38,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!rows.length) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   return NextResponse.json(rows[0]);
 }
+
+export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  await query(`DELETE FROM leases WHERE id = $1`, [id]);
+  return NextResponse.json({ ok: true });
+}
