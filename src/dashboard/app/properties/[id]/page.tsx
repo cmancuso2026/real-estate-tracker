@@ -372,14 +372,6 @@ export default function PropertyDetailPage() {
     loadTab('escrow');
   }
 
-  async function deleteEscrow(escrowId: number) {
-    if (!confirm('Delete this escrow account and all its statements?')) return;
-    setDeletingEscrowId(escrowId);
-    await fetch(`/api/v2/escrow/${escrowId}`, { method: 'DELETE' });
-    setDeletingEscrowId(null);
-    loadTab('escrow');
-  }
-
   async function confirmInsurance() {
     if (!insuranceExtracted) return;
     setInsuranceSaving(true);
