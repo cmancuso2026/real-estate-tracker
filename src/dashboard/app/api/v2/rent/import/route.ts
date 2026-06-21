@@ -1,9 +1,12 @@
 /**
  * POST /api/v2/rent/import
- * Accepts a BofA CSV, matches Zelle transactions to tenants across all properties,
- * handles early payment detection, and returns a preview for confirmation.
+ * BofA CSV parser — handles the specific BofA format:
+ *   Rows 1-5: summary block (skip)
+ *   Row 7: actual headers (Date, Description, Amount, Running Bal.)
+ *   Row 8+: transactions
  *
- * POST with { confirmed: true, rows: [...] } to actually save.
+ * Preview mode: POST multipart/form-data with file
+ * Confirm mode: POST JSON with { rows: [...] }
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -20,136 +23,217 @@ interface TenantRow {
   property_id: number;
   property_address: string;
   rent_amount: number | null;
-  lease_end_date: string | null;
   late_fee_grace_days: number | null;
   late_fee_amount: number | null;
+  lease_id: number | null;
 }
 
-interface ParsedTransaction {
+export interface ParsedRow {
   raw_date: string;
   description: string;
   amount: number;
+  // Matching
   matched_tenant_id: number | null;
   matched_tenant_name: string | null;
   matched_unit_id: number | null;
   matched_unit_label: string | null;
   matched_property_address: string | null;
-  assigned_month: string;         // YYYY-MM
-  due_date: string;               // YYYY-MM-01
+  matched_lease_id: number | null;
+  // Assignment
+  assigned_month: string;   // YYYY-MM
+  due_date: string;         // YYYY-MM-01
+  // Flags
   is_early: boolean;
   is_late: boolean;
   late_fee_applicable: boolean;
   late_fee_amount: number | null;
   confidence: 'high' | 'low' | 'none';
+  category: 'rent' | 'non_rent';
   note: string;
 }
 
-function parseBofaCsv(csvText: string): Array<{ date: string; description: string; amount: number }> {
-  const lines = csvText.trim().split('\n');
-  const headerIdx = lines.findIndex(l =>
-    l.toLowerCase().includes('date') && l.toLowerCase().includes('amount')
-  );
+// ---------------------------------------------------------------------------
+// CSV parsing — handles BofA's specific multi-block format
+// ---------------------------------------------------------------------------
+function parseBofaCsv(text: string): Array<{ date: string; description: string; amount: number }> {
+  const lines = text.trim().split(/\r?\n/);
+
+  // Find the real header row — look for a row containing "Date" AND "Amount"
+  let headerIdx = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const low = (lines[i] ?? '').toLowerCase();
+    if (low.includes('date') && low.includes('amount') && low.includes('description')) {
+      headerIdx = i;
+      break;
+    }
+  }
   if (headerIdx === -1) return [];
 
-  const headers = (lines[headerIdx] ?? '').split(',').map(h => h.replace(/"/g, '').trim().toLowerCase());
+  // Parse the header to find column positions
+  const headers = splitCsvLine(lines[headerIdx] ?? '').map(h => h.toLowerCase().trim());
   const dateIdx = headers.findIndex(h => h === 'date');
   const descIdx = headers.findIndex(h => h.includes('description'));
   const amtIdx  = headers.findIndex(h => h === 'amount');
 
+  if (dateIdx === -1 || amtIdx === -1) return [];
+
   const results: Array<{ date: string; description: string; amount: number }> = [];
+
   for (const line of lines.slice(headerIdx + 1)) {
     if (!line.trim()) continue;
-    const cols = line.split(',').map(c => c.replace(/"/g, '').trim());
-    const amount = parseFloat(cols[amtIdx] ?? '0');
+    const cols = splitCsvLine(line);
+
+    const rawAmt = (cols[amtIdx] ?? '').replace(/[$,\s]/g, '');
+    const amount = parseFloat(rawAmt);
+
+    // Only include positive amounts (credits = money coming IN)
     if (isNaN(amount) || amount <= 0) continue;
-    results.push({ date: cols[dateIdx] ?? '', description: cols[descIdx] ?? '', amount });
+
+    const date = (cols[dateIdx] ?? '').trim();
+    const desc = (cols[descIdx] ?? '').trim();
+    if (!date || !desc) continue;
+
+    results.push({ date, description: desc, amount });
   }
+
   return results;
 }
 
-/** Normalize a name for fuzzy matching: lowercase, no punctuation */
+/** Properly split a CSV line respecting quoted fields */
+function splitCsvLine(line: string): string[] {
+  const result: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      inQuotes = !inQuotes;
+    } else if (ch === ',' && !inQuotes) {
+      result.push(current.trim().replace(/^"|"$/g, ''));
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  result.push(current.trim().replace(/^"|"$/g, ''));
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// Name extraction from BofA Zelle description
+// "Zelle payment from SAMUEL PEREZ MARTINEZ Conf# xe14ougde"
+// ---------------------------------------------------------------------------
+function extractZelleName(description: string): string | null {
+  // Match "from NAME Conf#" or "from NAME" patterns
+  const match = description.match(/zelle\s+payment\s+from\s+(.+?)(?:\s+conf#|\s+confirmation|\s*$)/i);
+  if (match?.[1]) return match[1].trim();
+  // Fallback: "from NAME"
+  const match2 = description.match(/from\s+([A-Z][A-Z\s]+?)(?:\s+Conf#|\s*$)/i);
+  if (match2?.[1]) return match2[1].trim();
+  return null;
+}
+
+function isZelle(description: string): boolean {
+  return /zelle/i.test(description);
+}
+
+// ---------------------------------------------------------------------------
+// Tenant name matching
+// ---------------------------------------------------------------------------
 function normalizeName(s: string): string {
   return s.toLowerCase().replace(/[^a-z\s]/g, '').replace(/\s+/g, ' ').trim();
 }
 
-/** Score how well a tenant name matches a transaction description */
-function matchScore(description: string, tenant: TenantRow): number {
-  const desc = normalizeName(description);
-  const full = normalizeName(`${tenant.first_name} ${tenant.last_name}`);
+function matchScore(extractedName: string | null, tenant: TenantRow): number {
+  if (!extractedName) return 0;
+  const name = normalizeName(extractedName);
+  const full  = normalizeName(`${tenant.first_name} ${tenant.last_name}`);
+  const last  = normalizeName(tenant.last_name);
   const first = normalizeName(tenant.first_name);
-  const last = normalizeName(tenant.last_name);
 
-  if (desc.includes(full)) return 100;
-  if (desc.includes(last) && desc.includes(first)) return 90;
-  if (desc.includes(last)) return 60;
-  if (desc.includes(first) && first.length > 3) return 40;
+  if (name === full) return 100;
+  if (name.includes(full) || full.includes(name)) return 95;
+  // Check all words of extracted name against tenant name words
+  const nameWords = name.split(' ');
+  const fullWords = full.split(' ');
+  const overlap = nameWords.filter(w => w.length > 2 && fullWords.includes(w)).length;
+  if (overlap >= 2) return 85;
+  if (name.includes(last) && last.length > 2) return 70;
+  if (overlap === 1 && first.length > 3 && name.includes(first)) return 50;
   return 0;
 }
 
-/** Given a raw date string, determine the assigned month and whether it's early */
-function assignMonth(rawDate: string, isEarlyThresholdDays = 5): {
-  assignedMonth: string;
-  dueDate: string;
-  isEarly: boolean;
-} {
-  // Parse MM/DD/YYYY or YYYY-MM-DD
+// ---------------------------------------------------------------------------
+// Month assignment — if paid in last 5 days of month, assign to next month
+// ---------------------------------------------------------------------------
+function assignMonth(rawDate: string): { assignedMonth: string; dueDate: string; isEarly: boolean } {
+  // Parse MM/DD/YYYY
   let d: Date;
   if (rawDate.includes('/')) {
-    const [m, day, y] = rawDate.split('/');
-    d = new Date(`${y}-${m?.padStart(2,'0')}-${day?.padStart(2,'0')}`);
+    const parts = rawDate.split('/');
+    d = new Date(`${parts[2]}-${parts[0]?.padStart(2,'0')}-${parts[1]?.padStart(2,'0')}`);
   } else {
     d = new Date(rawDate);
   }
-  if (isNaN(d.getTime())) {
-    return { assignedMonth: '', dueDate: '', isEarly: false };
-  }
+  if (isNaN(d.getTime())) return { assignedMonth: '', dueDate: '', isEarly: false };
 
-  const dayOfMonth = d.getDate();
-  const month = d.getMonth(); // 0-indexed
+  const day = d.getDate();
+  const month = d.getMonth();
   const year = d.getFullYear();
-
-  // If paid in the last N days of the month, assign to NEXT month
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const isEarly = dayOfMonth >= (daysInMonth - isEarlyThresholdDays + 1);
+  const isEarly = day >= daysInMonth - 4; // last 5 days
 
-  let assignedYear = year;
-  let assignedMonth = month + 1; // 1-indexed
-  if (isEarly) {
-    assignedMonth = month + 2;
-    if (assignedMonth > 12) { assignedMonth = 1; assignedYear++; }
-  }
+  let am = month + 1;
+  let ay = year;
+  if (isEarly) { am++; if (am > 12) { am = 1; ay++; } }
 
-  const monthStr = `${assignedYear}-${String(assignedMonth).padStart(2, '0')}`;
-  const dueDate = `${monthStr}-01`;
-  return { assignedMonth: monthStr, dueDate, isEarly };
+  const assignedMonth = `${ay}-${String(am).padStart(2,'0')}`;
+  return { assignedMonth, dueDate: `${assignedMonth}-01`, isEarly };
 }
 
+// ---------------------------------------------------------------------------
+// Late detection
+// ---------------------------------------------------------------------------
+function checkLate(rawDate: string, dueDate: string, graceDays: number): boolean {
+  if (!rawDate || !dueDate) return false;
+  let paid: Date;
+  if (rawDate.includes('/')) {
+    const p = rawDate.split('/');
+    paid = new Date(`${p[2]}-${p[0]?.padStart(2,'0')}-${p[1]?.padStart(2,'0')}`);
+  } else {
+    paid = new Date(rawDate);
+  }
+  const due = new Date(dueDate);
+  return Math.ceil((paid.getTime() - due.getTime()) / 86400000) > graceDays;
+}
+
+// ---------------------------------------------------------------------------
+// Main handler
+// ---------------------------------------------------------------------------
 export async function POST(req: NextRequest) {
   const contentType = req.headers.get('content-type') ?? '';
 
-  // ── PREVIEW mode: parse CSV and return matched transactions ──
+  // ── PREVIEW ──
   if (contentType.includes('multipart/form-data')) {
     let formData: FormData;
-    try { formData = await req.formData(); } catch {
-      return NextResponse.json({ error: 'Expected multipart/form-data' }, { status: 400 });
-    }
+    try { formData = await req.formData(); }
+    catch { return NextResponse.json({ error: 'Expected multipart/form-data' }, { status: 400 }); }
 
     const file = formData.get('file') as File | null;
     if (!file) return NextResponse.json({ error: 'file required' }, { status: 400 });
 
     const csvText = await file.text();
     const transactions = parseBofaCsv(csvText);
+
     if (!transactions.length) {
-      return NextResponse.json({ error: 'No credit transactions found in CSV' }, { status: 400 });
+      return NextResponse.json({ error: 'No credit transactions found. Make sure this is a BofA CSV export.' }, { status: 400 });
     }
 
-    // Load all active tenants with their lease details
+    // Load all active tenants
     const tenants = await query<TenantRow>(`
       SELECT t.id, t.first_name, t.last_name, t.unit_id,
-             u.unit_label, u.property_id,
-             p.address AS property_address,
-             l.rent_amount, l.end_date AS lease_end_date,
-             l.late_fee_grace_days, l.late_fee_amount
+             u.unit_label, u.property_id, p.address AS property_address,
+             l.rent_amount, l.late_fee_grace_days, l.late_fee_amount, l.id AS lease_id
       FROM tenants t
       JOIN units u ON u.id = t.unit_id
       JOIN owned_properties p ON p.id = u.property_id
@@ -159,76 +243,122 @@ export async function POST(req: NextRequest) {
       WHERE t.is_active = TRUE
     `);
 
-    const preview: ParsedTransaction[] = transactions.map(tx => {
-      // Find best matching tenant
+    const preview: ParsedRow[] = transactions.map(tx => {
+      const zellePayment = isZelle(tx.description);
+      const extractedName = extractZelleName(tx.description);
+
+      // Non-Zelle = non_rent immediately
+      if (!zellePayment) {
+        const { assignedMonth, dueDate, isEarly } = assignMonth(tx.date);
+        return {
+          raw_date: tx.date, description: tx.description, amount: tx.amount,
+          matched_tenant_id: null, matched_tenant_name: null,
+          matched_unit_id: null, matched_unit_label: null,
+          matched_property_address: null, matched_lease_id: null,
+          assigned_month: assignedMonth, due_date: dueDate,
+          is_early: isEarly, is_late: false,
+          late_fee_applicable: false, late_fee_amount: null,
+          confidence: 'none', category: 'non_rent',
+          note: 'Not a Zelle payment',
+        };
+      }
+
+      // Try to match to a tenant
       let bestTenant: TenantRow | null = null;
       let bestScore = 0;
       for (const t of tenants) {
-        const score = matchScore(tx.description, t);
+        const score = matchScore(extractedName, t);
         if (score > bestScore) { bestScore = score; bestTenant = t; }
       }
 
-      const { assignedMonth, dueDate, isEarly } = assignMonth(tx.date);
-
-      // Determine if late — parse the transaction date
-      let isLate = false;
-      let lateFeeApplicable = false;
-      const graceDays = bestTenant?.late_fee_grace_days ?? 5;
-      if (dueDate && tx.date) {
-        let txDate: Date;
-        if (tx.date.includes('/')) {
-          const [m, day, y] = tx.date.split('/');
-          txDate = new Date(`${y}-${m?.padStart(2,'0')}-${day?.padStart(2,'0')}`);
-        } else {
-          txDate = new Date(tx.date);
-        }
-        const due = new Date(dueDate);
-        const diffDays = Math.ceil((txDate.getTime() - due.getTime()) / 86400000);
-        if (diffDays > graceDays && !isEarly) {
-          isLate = true;
-          lateFeeApplicable = true;
-        }
+      // No name found in description = non_rent
+      if (!extractedName) {
+        const { assignedMonth, dueDate, isEarly } = assignMonth(tx.date);
+        return {
+          raw_date: tx.date, description: tx.description, amount: tx.amount,
+          matched_tenant_id: null, matched_tenant_name: null,
+          matched_unit_id: null, matched_unit_label: null,
+          matched_property_address: null, matched_lease_id: null,
+          assigned_month: assignedMonth, due_date: dueDate,
+          is_early: isEarly, is_late: false,
+          late_fee_applicable: false, late_fee_amount: null,
+          confidence: 'none', category: 'non_rent',
+          note: 'Zelle — no name found',
+        };
       }
+
+      // Score < 50 = no match = non_rent (don't hallucinate)
+      if (bestScore < 50 || !bestTenant) {
+        const { assignedMonth, dueDate, isEarly } = assignMonth(tx.date);
+        return {
+          raw_date: tx.date, description: tx.description, amount: tx.amount,
+          matched_tenant_id: null, matched_tenant_name: extractedName,
+          matched_unit_id: null, matched_unit_label: null,
+          matched_property_address: null, matched_lease_id: null,
+          assigned_month: assignedMonth, due_date: dueDate,
+          is_early: isEarly, is_late: false,
+          late_fee_applicable: false, late_fee_amount: null,
+          confidence: 'none', category: 'non_rent',
+          note: `Zelle from "${extractedName}" — no tenant match found`,
+        };
+      }
+
+      const { assignedMonth, dueDate, isEarly } = assignMonth(tx.date);
+      const graceDays = bestTenant.late_fee_grace_days ?? 5;
+      const isLate = !isEarly && checkLate(tx.date, dueDate, graceDays);
+      const lateFeeApplicable = isLate;
+      const confidence: 'high' | 'low' = bestScore >= 85 ? 'high' : 'low';
 
       return {
         raw_date: tx.date,
         description: tx.description,
         amount: tx.amount,
-        matched_tenant_id: bestTenant?.id ?? null,
-        matched_tenant_name: bestTenant ? `${bestTenant.first_name} ${bestTenant.last_name}` : null,
-        matched_unit_id: bestTenant?.unit_id ?? null,
-        matched_unit_label: bestTenant?.unit_label ?? null,
-        matched_property_address: bestTenant?.property_address ?? null,
+        matched_tenant_id: bestTenant.id,
+        matched_tenant_name: `${bestTenant.first_name} ${bestTenant.last_name}`,
+        matched_unit_id: bestTenant.unit_id,
+        matched_unit_label: bestTenant.unit_label,
+        matched_property_address: bestTenant.property_address,
+        matched_lease_id: bestTenant.lease_id,
         assigned_month: assignedMonth,
         due_date: dueDate,
         is_early: isEarly,
         is_late: isLate,
         late_fee_applicable: lateFeeApplicable,
-        late_fee_amount: lateFeeApplicable ? (bestTenant?.late_fee_amount ?? null) : null,
-        confidence: bestScore >= 90 ? 'high' : bestScore >= 40 ? 'low' : 'none',
+        late_fee_amount: lateFeeApplicable ? (bestTenant.late_fee_amount ?? null) : null,
+        confidence,
+        category: 'rent',
         note: isEarly
           ? `Paid early — assigned to ${assignedMonth}`
           : isLate
-          ? `Paid late — late fee may apply`
+          ? `Paid late — grace period ${graceDays} days`
           : '',
       };
     });
 
-    return NextResponse.json({ preview, tenant_count: tenants.length });
+    return NextResponse.json({
+      preview,
+      tenants: tenants.map(t => ({ id: t.id, name: `${t.first_name} ${t.last_name}`, unit_label: t.unit_label })),
+    });
   }
 
-  // ── CONFIRM mode: save the approved rows ──
+  // ── CONFIRM ──
   const body = await req.json();
-  const { rows } = body as { rows: ParsedTransaction[] };
+  const { rows } = body as { rows: ParsedRow[] };
   if (!rows?.length) return NextResponse.json({ error: 'No rows to save' }, { status: 400 });
 
   const saved: number[] = [];
   const batchId = `csv-${Date.now()}`;
 
   for (const row of rows) {
-    if (!row.matched_unit_id || !row.due_date || !row.amount) continue;
+    if (row.category !== 'rent' || !row.matched_unit_id || !row.due_date) continue;
 
-    // Get expected amount from active lease
+    // Skip if already recorded for this unit+month
+    const existing = await query<{ id: number }>(
+      `SELECT id FROM rent_collections WHERE unit_id = $1 AND due_date = $2`,
+      [row.matched_unit_id, row.due_date]
+    );
+    if (existing.length > 0) continue;
+
     const leaseRows = await query<{ rent_amount: number; id: number }>(
       `SELECT rent_amount, id FROM leases WHERE unit_id = $1 ORDER BY start_date DESC LIMIT 1`,
       [row.matched_unit_id]
@@ -237,14 +367,6 @@ export async function POST(req: NextRequest) {
     const amountDue = lease?.rent_amount ?? row.amount;
     const isPartial = row.amount < amountDue;
 
-    // Upsert — don't duplicate if already recorded for this unit/month
-    const existing = await query<{ id: number }>(
-      `SELECT id FROM rent_collections WHERE unit_id = $1 AND due_date = $2`,
-      [row.matched_unit_id, row.due_date]
-    );
-
-    if (existing.length > 0) continue; // already recorded
-
     const result = await query<{ id: number }>(
       `INSERT INTO rent_collections
          (unit_id, lease_id, due_date, amount_due, paid_date, amount_paid,
@@ -252,17 +374,10 @@ export async function POST(req: NextRequest) {
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'csv_import',$10,$11)
        RETURNING id`,
       [
-        row.matched_unit_id,
-        lease?.id ?? null,
-        row.due_date,
-        amountDue,
-        row.raw_date,
-        row.amount,
-        isPartial,
-        row.is_late,
-        row.late_fee_applicable,
-        batchId,
-        row.note || null,
+        row.matched_unit_id, lease?.id ?? null, row.due_date,
+        amountDue, row.raw_date, row.amount,
+        isPartial, row.is_late, row.late_fee_applicable,
+        batchId, row.note || null,
       ]
     );
     if (result[0]) saved.push(result[0].id);
