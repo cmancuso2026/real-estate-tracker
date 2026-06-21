@@ -13,7 +13,17 @@ interface RentRow { id: number; unit_label: string; due_date: string; amount_due
 interface WorkOrder { id: number; vendor_name: string; vendor_trade: string; category: string; description: string; status: string; date_received: string; date_completed: string | null; quoted_cost: number | null; actual_cost: number | null; rating: number | null; unit_label: string | null; }
 interface Lease { id: number; unit_label: string; tenant_name: string; start_date: string; end_date: string; rent_amount: number; security_deposit: number | null; late_fee_amount: number | null; late_fee_grace_days: number | null; utilities_landlord: string | null; utilities_tenant: string | null; equipment_included: string | null; extracted_by_ai: boolean; }
 interface EscrowAccount { id: number; lender_name: string; loan_number: string | null; statement_date: string | null; analysis_period_start: string | null; analysis_period_end: string | null; projected_requirement: number | null; actual_disbursements: number | null; shortage_surplus_amount: number | null; new_monthly_escrow: number | null; }
-interface InsurancePolicy { id: number; carrier: string; policy_type: string | null; effective_date: string; expiration_date: string; annual_premium: number | null; deductible: number | null; coverage_notes: string | null; extracted_by_ai: boolean; }
+interface InsurancePolicy {
+  id: number; carrier: string; policy_number: string | null; policy_type: string | null;
+  effective_date: string; expiration_date: string; annual_premium: number | null;
+  deductible: number | null; coverage_limit: number | null; coverage_notes: string | null;
+  dwelling_coverage: number | null; other_structures_coverage: number | null;
+  personal_property_coverage: number | null; loss_of_use_coverage: number | null;
+  liability_coverage: number | null; medical_payments_coverage: number | null;
+  hurricane_deductible: number | null; wind_hail_deductible: number | null;
+  flood_coverage: number | null; loss_of_rent_coverage: number | null; loss_of_rent_months: number | null;
+  extracted_by_ai: boolean;
+}
 interface ExistingTenant { id: number; first_name: string; last_name: string; unit_id: number; unit_label: string; phone: string | null; email: string | null; is_active: boolean; notes: string | null; }
 
 interface LeaseExtracted {
@@ -25,7 +35,17 @@ interface LeaseExtracted {
 }
 interface EscrowOption { label: string; new_monthly_escrow: number | null; total_payment: number | null; }
 interface EscrowExtracted { statement_date: string | null; analysis_period_start: string | null; analysis_period_end: string | null; projected_requirement: number | null; actual_disbursements: number | null; shortage_surplus_amount: number | null; new_monthly_escrow: number | null; options?: EscrowOption[]; confidence_notes: string | null; }
-interface InsuranceExtracted { carrier: string | null; policy_number: string | null; policy_type: string | null; effective_date: string | null; expiration_date: string | null; renewal_period_days: number | null; annual_premium: number | null; deductible: number | null; coverage_limit: number | null; coverage_notes: string | null; confidence_notes: string | null; }
+interface InsuranceExtracted {
+  carrier: string | null; policy_number: string | null; policy_type: string | null;
+  effective_date: string | null; expiration_date: string | null; renewal_period_days: number | null;
+  annual_premium: number | null; deductible: number | null; coverage_limit: number | null;
+  dwelling_coverage: number | null; other_structures_coverage: number | null;
+  personal_property_coverage: number | null; loss_of_use_coverage: number | null;
+  liability_coverage: number | null; medical_payments_coverage: number | null;
+  hurricane_deductible: number | null; wind_hail_deductible: number | null;
+  flood_coverage: number | null; loss_of_rent_coverage: number | null; loss_of_rent_months: number | null;
+  coverage_notes: string | null; confidence_notes: string | null;
+}
 interface WorkOrderExtracted { vendor_name: string | null; category: string | null; description: string | null; date_received: string | null; quoted_cost: number | null; actual_cost: number | null; confidence_notes: string | null; }
 
 const UTILITIES = ['electric','gas','water','trash','sewer','internet'];
@@ -146,6 +166,94 @@ function LeaseForm({
   );
 }
 
+
+// Reusable insurance form for both extraction review and editing
+function InsuranceForm({
+  data, onChange, onSave, onDiscard, saving, title
+}: {
+  data: Partial<InsuranceExtracted>;
+  onChange: (patch: Partial<InsuranceExtracted>) => void;
+  onSave: () => void;
+  onDiscard: () => void;
+  saving: boolean;
+  title: string;
+}) {
+  const num = (key: keyof InsuranceExtracted) => (data[key] as number|null|undefined)?.toString() ?? '';
+  const upd = (key: keyof InsuranceExtracted, v: string) => onChange({ [key]: v ? parseInt(v) : null });
+  const str = (key: keyof InsuranceExtracted) => (data[key] as string|null|undefined) ?? '';
+  const updStr = (key: keyof InsuranceExtracted, v: string) => onChange({ [key]: v || null });
+
+  return (
+    <div className="rounded-xl border-2 border-blue-300 bg-blue-50 p-5 space-y-4 dark:border-blue-700 dark:bg-blue-950/20">
+      <div className="flex items-center justify-between">
+        <h3 className="font-semibold text-blue-800 dark:text-blue-300">{title}</h3>
+        <button onClick={onDiscard} className="text-xs text-gray-400 hover:text-gray-600">Discard</button>
+      </div>
+      {data.confidence_notes && (
+        <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">⚠ {data.confidence_notes}</p>
+      )}
+
+      {/* Policy info */}
+      <div>
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Policy Details</p>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <Input label="Carrier *" value={str('carrier')} onChange={v=>updStr('carrier',v)} />
+          <Input label="Policy Number" value={str('policy_number')} onChange={v=>updStr('policy_number',v)} />
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-500">Policy Type</label>
+            <select value={str('policy_type')} onChange={e=>updStr('policy_type',e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800">
+              {['homeowners','landlord','liability','flood','umbrella','other'].map(t=><option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+          <Input label="Effective Date" type="date" value={str('effective_date')} onChange={v=>updStr('effective_date',v)} />
+          <Input label="Expiration Date" type="date" value={str('expiration_date')} onChange={v=>updStr('expiration_date',v)} />
+          <Input label="Annual Premium ($)" type="number" value={num('annual_premium')} onChange={v=>upd('annual_premium',v)} placeholder="0" />
+        </div>
+      </div>
+
+      {/* Coverage limits */}
+      <div>
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Coverage Limits</p>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <Input label="Dwelling ($)" type="number" value={num('dwelling_coverage')} onChange={v=>upd('dwelling_coverage',v)} placeholder="0" />
+          <Input label="Other Structures ($)" type="number" value={num('other_structures_coverage')} onChange={v=>upd('other_structures_coverage',v)} placeholder="0" />
+          <Input label="Personal Property ($)" type="number" value={num('personal_property_coverage')} onChange={v=>upd('personal_property_coverage',v)} placeholder="0" />
+          <Input label="Loss of Use ($)" type="number" value={num('loss_of_use_coverage')} onChange={v=>upd('loss_of_use_coverage',v)} placeholder="0" />
+          <Input label="Liability ($)" type="number" value={num('liability_coverage')} onChange={v=>upd('liability_coverage',v)} placeholder="0" />
+          <Input label="Medical Payments ($)" type="number" value={num('medical_payments_coverage')} onChange={v=>upd('medical_payments_coverage',v)} placeholder="0" />
+          <Input label="Loss of Rent ($)" type="number" value={num('loss_of_rent_coverage')} onChange={v=>upd('loss_of_rent_coverage',v)} placeholder="0" />
+          <Input label="Loss of Rent (months)" type="number" value={num('loss_of_rent_months')} onChange={v=>upd('loss_of_rent_months',v)} placeholder="0" />
+          <Input label="Flood Coverage ($)" type="number" value={num('flood_coverage')} onChange={v=>upd('flood_coverage',v)} placeholder="0" />
+          <Input label="Total Coverage Limit ($)" type="number" value={num('coverage_limit')} onChange={v=>upd('coverage_limit',v)} placeholder="0" />
+        </div>
+      </div>
+
+      {/* Deductibles */}
+      <div>
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Deductibles</p>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <Input label="Standard Deductible ($)" type="number" value={num('deductible')} onChange={v=>upd('deductible',v)} placeholder="0" />
+          <Input label="Hurricane Deductible ($)" type="number" value={num('hurricane_deductible')} onChange={v=>upd('hurricane_deductible',v)} placeholder="0" />
+          <Input label="Wind/Hail Deductible ($)" type="number" value={num('wind_hail_deductible')} onChange={v=>upd('wind_hail_deductible',v)} placeholder="0" />
+        </div>
+      </div>
+
+      {/* Coverage notes */}
+      <div>
+        <label className="mb-1 block text-xs font-medium text-gray-500">Additional Coverage Notes</label>
+        <textarea value={str('coverage_notes')} onChange={e=>updStr('coverage_notes',e.target.value)} rows={3}
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800" />
+      </div>
+
+      <button onClick={onSave} disabled={saving || !data.carrier || !data.effective_date || !data.expiration_date}
+        className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
+        {saving ? 'Saving…' : 'Confirm & Save Policy'}
+      </button>
+    </div>
+  );
+}
+
 export default function PropertyDetailPage() {
   const params = useParams();
   const searchParams = useSearchParams();
@@ -201,6 +309,10 @@ export default function PropertyDetailPage() {
   // Insurance state
   const [insuranceExtracted, setInsuranceExtracted] = useState<InsuranceExtracted | null>(null);
   const [insuranceSaving, setInsuranceSaving] = useState(false);
+  const [deletingInsuranceId, setDeletingInsuranceId] = useState<number|null>(null);
+  const [editingInsurance, setEditingInsurance] = useState<InsurancePolicy|null>(null);
+  const [editInsuranceData, setEditInsuranceData] = useState<Partial<InsuranceExtracted>>({});
+  const [editInsuranceSaving, setEditInsuranceSaving] = useState(false);
 
   // Work order state
   const [woExtracted, setWoExtracted] = useState<WorkOrderExtracted | null>(null);
@@ -362,6 +474,40 @@ export default function PropertyDetailPage() {
       body: JSON.stringify({ ...escrowExtracted, escrow_account_id: acc.id, extracted_by_ai: true }),
     });
     setEscrowExtracted(null); setEscrowSaving(false); loadTab('escrow');
+  }
+
+  async function deleteInsurance(policyId: number) {
+    if (!confirm('Delete this insurance policy?')) return;
+    setDeletingInsuranceId(policyId);
+    await fetch(`/api/v2/insurance/${policyId}`, { method: 'DELETE' });
+    setDeletingInsuranceId(null);
+    loadTab('insurance');
+  }
+
+  function startEditInsurance(p: InsurancePolicy) {
+    setEditingInsurance(p);
+    setEditInsuranceData({
+      carrier: p.carrier, policy_number: p.policy_number, policy_type: p.policy_type,
+      effective_date: p.effective_date, expiration_date: p.expiration_date,
+      annual_premium: p.annual_premium, deductible: p.deductible, coverage_limit: p.coverage_limit,
+      dwelling_coverage: p.dwelling_coverage, other_structures_coverage: p.other_structures_coverage,
+      personal_property_coverage: p.personal_property_coverage, loss_of_use_coverage: p.loss_of_use_coverage,
+      liability_coverage: p.liability_coverage, medical_payments_coverage: p.medical_payments_coverage,
+      hurricane_deductible: p.hurricane_deductible, wind_hail_deductible: p.wind_hail_deductible,
+      flood_coverage: p.flood_coverage, loss_of_rent_coverage: p.loss_of_rent_coverage,
+      loss_of_rent_months: p.loss_of_rent_months, coverage_notes: p.coverage_notes ?? '',
+    });
+  }
+
+  async function saveEditInsurance() {
+    if (!editingInsurance || editInsuranceSaving) return;
+    setEditInsuranceSaving(true);
+    await fetch(`/api/v2/insurance/${editingInsurance.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(editInsuranceData),
+    });
+    setEditingInsurance(null); setEditInsuranceSaving(false);
+    loadTab('insurance');
   }
 
   async function deleteEscrow(escrowId: number) {
@@ -807,46 +953,82 @@ export default function PropertyDetailPage() {
               <input type="file" accept=".pdf" className="hidden" disabled={uploadingInsurance} onChange={async e=>{const file=e.target.files?.[0];if(!file||uploadingInsurance)return;const extracted=await uploadPdf(file,'insurance',setUploadingInsurance);if(extracted)setInsuranceExtracted(extracted);e.target.value='';}} />
             </label>
           </div>
+
+          {/* Extraction review panel */}
           {insuranceExtracted&&(
-            <div className="rounded-xl border-2 border-blue-300 bg-blue-50 p-5 dark:border-blue-700 dark:bg-blue-950/20">
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className="font-semibold text-blue-800 dark:text-blue-300">✦ AI Extracted — Review & Confirm</h3>
-                <button onClick={()=>setInsuranceExtracted(null)} className="text-xs text-gray-400 hover:text-gray-600">Discard</button>
-              </div>
-              {insuranceExtracted.confidence_notes&&<p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">⚠ {insuranceExtracted.confidence_notes}</p>}
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                <Field label="Carrier" value={insuranceExtracted.carrier} />
-                <Field label="Policy Type" value={insuranceExtracted.policy_type} />
-                <Field label="Policy #" value={insuranceExtracted.policy_number} />
-                <Field label="Effective" value={insuranceExtracted.effective_date} />
-                <Field label="Expiration" value={insuranceExtracted.expiration_date} />
-                <Field label="Annual Premium" value={insuranceExtracted.annual_premium?fmt$(insuranceExtracted.annual_premium):null} />
-                <Field label="Deductible" value={insuranceExtracted.deductible?fmt$(insuranceExtracted.deductible):null} />
-                <Field label="Coverage Limit" value={insuranceExtracted.coverage_limit?fmt$(insuranceExtracted.coverage_limit):null} />
-              </div>
-              {insuranceExtracted.coverage_notes&&<p className="mt-3 text-sm text-gray-600 dark:text-gray-400">{insuranceExtracted.coverage_notes}</p>}
-              <button onClick={confirmInsurance} disabled={insuranceSaving} className="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">{insuranceSaving?'Saving…':'Confirm & Save Policy'}</button>
-            </div>
+            <InsuranceForm
+              data={insuranceExtracted}
+              onChange={patch=>setInsuranceExtracted(prev=>prev?{...prev,...patch}:prev)}
+              onSave={confirmInsurance}
+              onDiscard={()=>setInsuranceExtracted(null)}
+              saving={insuranceSaving}
+              title="✦ AI Extracted — Review & Edit Before Saving"
+            />
           )}
+
+          {/* Edit panel */}
+          {editingInsurance&&(
+            <InsuranceForm
+              data={editInsuranceData}
+              onChange={patch=>setEditInsuranceData(prev=>({...prev,...patch}))}
+              onSave={saveEditInsurance}
+              onDiscard={()=>setEditingInsurance(null)}
+              saving={editInsuranceSaving}
+              title={`Editing — ${editingInsurance.carrier}`}
+            />
+          )}
+
           <div className="space-y-3">
-            {insurance.length===0&&!insuranceExtracted?<div className="rounded-xl border border-dashed border-gray-300 p-8 text-center text-gray-400 dark:border-gray-700">No insurance policies yet.</div>:insurance.map(p=>{
+            {insurance.length===0&&!insuranceExtracted?<div className="rounded-xl border border-dashed border-gray-300 p-8 text-center text-gray-400 dark:border-gray-700">No insurance policies yet.</div>:insurance.filter(p=>!editingInsurance||editingInsurance.id!==p.id).map(p=>{
               const daysLeft=Math.ceil((new Date(p.expiration_date).getTime()-Date.now())/86400000);
+              const coverageFields = [
+                {label:'Dwelling', val:p.dwelling_coverage},
+                {label:'Other Structures', val:p.other_structures_coverage},
+                {label:'Personal Property', val:p.personal_property_coverage},
+                {label:'Loss of Use', val:p.loss_of_use_coverage},
+                {label:'Liability', val:p.liability_coverage},
+                {label:'Medical Payments', val:p.medical_payments_coverage},
+                {label:'Loss of Rent', val:p.loss_of_rent_coverage},
+                {label:'Flood', val:p.flood_coverage},
+              ].filter(f=>f.val!=null);
+              const deductibleFields = [
+                {label:'Standard Deductible', val:p.deductible},
+                {label:'Hurricane Deductible', val:p.hurricane_deductible},
+                {label:'Wind/Hail Deductible', val:p.wind_hail_deductible},
+              ].filter(f=>f.val!=null);
               return(
                 <div key={p.id} className="rounded-xl border border-gray-200 p-5 dark:border-gray-800">
                   <div className="flex items-start justify-between">
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <p className="font-medium">{p.carrier}</p>
                         {p.policy_type&&<span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-400">{p.policy_type}</span>}
+                        {p.policy_number&&<span className="text-xs text-gray-400">#{p.policy_number}</span>}
                         {p.extracted_by_ai&&<span className="rounded-full bg-purple-100 px-2 py-0.5 text-xs text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">AI parsed</span>}
                       </div>
                       <p className="mt-1 text-sm text-gray-500">{p.effective_date} → {p.expiration_date}</p>
                     </div>
-                    <p className={`text-sm font-medium ${daysLeft<=60?'text-amber-600':'text-gray-500'}`}>{daysLeft<=0?'Expired':daysLeft<=60?`Expires in ${daysLeft}d`:`${daysLeft}d remaining`}</p>
+                    <div className="flex items-center gap-3">
+                      <p className={`text-sm font-medium ${daysLeft<=60?'text-amber-600':'text-gray-500'}`}>{daysLeft<=0?'Expired':daysLeft<=60?`Expires in ${daysLeft}d`:`${daysLeft}d remaining`}</p>
+                      <button onClick={()=>startEditInsurance(p)} className="text-xs text-blue-600 hover:underline dark:text-blue-400">Edit</button>
+                      <button onClick={()=>deleteInsurance(p.id)} disabled={deletingInsuranceId===p.id} className="text-xs text-red-400 hover:text-red-600 disabled:opacity-50">{deletingInsuranceId===p.id?'Deleting…':'Delete'}</button>
+                    </div>
                   </div>
-                  <div className="mt-3 flex flex-wrap gap-6 text-sm">
-                    {p.annual_premium&&<div><span className="text-xs text-gray-500">Premium</span><p className="font-medium tabular">{fmt$(p.annual_premium)}/yr</p></div>}
-                    {p.deductible&&<div><span className="text-xs text-gray-500">Deductible</span><p className="font-medium tabular">{fmt$(p.deductible)}</p></div>}
+                  <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                    {p.annual_premium!=null&&<div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-900"><p className="text-xs text-gray-500">Annual Premium</p><p className="font-semibold tabular">{fmt$(p.annual_premium)}/yr</p></div>}
+                    {coverageFields.map(f=>(
+                      <div key={f.label} className="rounded-lg bg-gray-50 p-3 dark:bg-gray-900">
+                        <p className="text-xs text-gray-500">{f.label}</p>
+                        <p className="font-medium tabular">{fmt$(f.val)}</p>
+                      </div>
+                    ))}
+                    {deductibleFields.map(f=>(
+                      <div key={f.label} className="rounded-lg bg-amber-50 p-3 dark:bg-amber-900/20">
+                        <p className="text-xs text-amber-600 dark:text-amber-400">{f.label}</p>
+                        <p className="font-medium tabular text-amber-700 dark:text-amber-300">{fmt$(f.val)}</p>
+                      </div>
+                    ))}
+                    {p.loss_of_rent_months!=null&&<div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-900"><p className="text-xs text-gray-500">Loss of Rent Period</p><p className="font-medium">{p.loss_of_rent_months} months</p></div>}
                   </div>
                   {p.coverage_notes&&<p className="mt-3 text-sm text-gray-500 dark:text-gray-400">{p.coverage_notes}</p>}
                 </div>

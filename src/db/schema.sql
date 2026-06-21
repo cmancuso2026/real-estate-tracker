@@ -461,3 +461,16 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_tenants_unique_name_unit
 
 -- Owner-occupied unit flag
 ALTER TABLE units ADD COLUMN IF NOT EXISTS is_owner_unit BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- Expanded insurance coverage fields
+ALTER TABLE insurance_policies ADD COLUMN IF NOT EXISTS dwelling_coverage INTEGER;
+ALTER TABLE insurance_policies ADD COLUMN IF NOT EXISTS other_structures_coverage INTEGER;
+ALTER TABLE insurance_policies ADD COLUMN IF NOT EXISTS personal_property_coverage INTEGER;
+ALTER TABLE insurance_policies ADD COLUMN IF NOT EXISTS loss_of_use_coverage INTEGER;
+ALTER TABLE insurance_policies ADD COLUMN IF NOT EXISTS liability_coverage INTEGER;
+ALTER TABLE insurance_policies ADD COLUMN IF NOT EXISTS medical_payments_coverage INTEGER;
+ALTER TABLE insurance_policies ADD COLUMN IF NOT EXISTS hurricane_deductible INTEGER;
+ALTER TABLE insurance_policies ADD COLUMN IF NOT EXISTS wind_hail_deductible INTEGER;
+ALTER TABLE insurance_policies ADD COLUMN IF NOT EXISTS flood_coverage INTEGER;
+ALTER TABLE insurance_policies ADD COLUMN IF NOT EXISTS loss_of_rent_coverage INTEGER;
+ALTER TABLE insurance_policies ADD COLUMN IF NOT EXISTS loss_of_rent_months INTEGER;

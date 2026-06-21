@@ -93,21 +93,33 @@ IMPORTANT: shortage_surplus_amount is typically between -$2,000 and +$2,000. new
 
   insurance: {
     system: `You are an insurance document parser for residential and landlord policies.
-Always respond with valid JSON only. Dates must be YYYY-MM-DD. Amounts must be integers.
-For policy_type choose from: homeowners | landlord | liability | flood | umbrella | other`,
+Always respond with valid JSON only. No markdown, no explanation. Dates must be YYYY-MM-DD. All dollar amounts must be integers (whole dollars).
+For policy_type choose from: homeowners | landlord | liability | flood | umbrella | other.
+Extract every individual coverage limit and deductible you can find — dwelling, other structures, personal property, loss of use, liability, medical payments, hurricane deductible, wind/hail deductible, flood, loss of rent. These are typically listed in a coverage summary table.`,
     user: `Extract and return this JSON from the insurance policy:
 {
-  "carrier": "string or null",
-  "policy_number": "string or null",
+  "carrier": "insurance company name or null",
+  "policy_number": "policy number or null",
   "policy_type": "homeowners|landlord|liability|flood|umbrella|other",
   "effective_date": "YYYY-MM-DD or null",
   "expiration_date": "YYYY-MM-DD or null",
-  "renewal_period_days": integer_or_null,
-  "annual_premium": integer_or_null,
-  "deductible": integer_or_null,
-  "coverage_limit": integer_or_null,
-  "coverage_notes": "plain English summary of key coverage details",
-  "confidence_notes": "string or null"
+  "renewal_period_days": 365,
+  "annual_premium": integer_total_annual_premium_or_null,
+  "deductible": integer_standard_deductible_or_null,
+  "coverage_limit": integer_total_dwelling_coverage_or_null,
+  "dwelling_coverage": integer_or_null,
+  "other_structures_coverage": integer_or_null,
+  "personal_property_coverage": integer_or_null,
+  "loss_of_use_coverage": integer_or_null,
+  "liability_coverage": integer_or_null,
+  "medical_payments_coverage": integer_or_null,
+  "hurricane_deductible": integer_or_null,
+  "wind_hail_deductible": integer_or_null,
+  "flood_coverage": integer_or_null,
+  "loss_of_rent_coverage": integer_or_null,
+  "loss_of_rent_months": integer_number_of_months_loss_of_rent_covered_or_null,
+  "coverage_notes": "any other notable coverage details, exclusions, or endorsements not captured above",
+  "confidence_notes": "anything you were uncertain about or null"
 }`,
   },
 };
