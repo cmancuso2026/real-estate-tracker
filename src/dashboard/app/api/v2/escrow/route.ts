@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
      LEFT JOIN LATERAL (
        SELECT * FROM escrow_statements
        WHERE escrow_account_id = ea.id
-       ORDER BY statement_date DESC
+       ORDER BY statement_date DESC NULLS LAST, created_at DESC
        LIMIT 1
      ) es ON TRUE
      ${where}
@@ -47,10 +47,35 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'property_id and lender_name are required' }, { status: 400 });
   }
 
+  // Try to find existing account for this property + lender
+  const existing = await query<{ id: number }>(
+    `SELECT id FROM escrow_accounts
+     WHERE property_id = $1 AND LOWER(lender_name) = LOWER($2)
+     LIMIT 1`,
+    [property_id, lender_name]
+  );
+
+  if (existing.length > 0) {
+    return NextResponse.json(existing[0]);
+  }
+
+  // Also check if there's one with a null loan_number for this property (catch-all)
+  const fallback = await query<{ id: number }>(
+    `SELECT id FROM escrow_accounts WHERE property_id = $1 LIMIT 1`,
+    [property_id]
+  );
+  if (fallback.length > 0 && !loan_number) {
+    // Update the lender name on the existing account instead of creating a new one
+    await query(
+      `UPDATE escrow_accounts SET lender_name = $1 WHERE id = $2`,
+      [lender_name, fallback[0]!.id]
+    );
+    return NextResponse.json(fallback[0]);
+  }
+
   const rows = await query(
     `INSERT INTO escrow_accounts (property_id, lender_name, loan_number, notes)
      VALUES ($1,$2,$3,$4)
-     ON CONFLICT (property_id, loan_number) DO UPDATE SET lender_name=EXCLUDED.lender_name
      RETURNING *`,
     [property_id, lender_name, loan_number ?? null, notes ?? null]
   );
