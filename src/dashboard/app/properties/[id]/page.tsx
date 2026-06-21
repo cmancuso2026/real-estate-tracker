@@ -164,6 +164,7 @@ export default function PropertyDetailPage() {
   const [deletingTenantId, setDeletingTenantId] = useState<number|null>(null);
   const [tenantSaving, setTenantSaving] = useState(false);
   const [expandedTenantId, setExpandedTenantId] = useState<number|null>(null);
+  const [tenantUnitFilter, setTenantUnitFilter] = useState<string>('all');
   const [leaseUnitFilter, setLeaseUnitFilter] = useState<string>('all');
   const [editTenantForm, setEditTenantForm] = useState({first_name:"",last_name:"",email:"",phone:"",notes:""});
   const [loading, setLoading] = useState(true);
@@ -567,10 +568,20 @@ export default function PropertyDetailPage() {
             <h2 className="font-semibold text-gray-700 dark:text-gray-300">Tenants</h2>
             <Link href={`/properties/${id}/tenants/new`} className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700">+ Add Tenant</Link>
           </div>
+          {/* Unit filter */}
+          <div className="flex flex-wrap gap-2">
+            <button onClick={()=>setTenantUnitFilter('all')} className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${tenantUnitFilter==='all'?'bg-blue-600 text-white':'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400'}`}>All Units</button>
+            {units.filter(u=>!u.is_owner_unit).map(u=>(
+              <button key={u.id} onClick={()=>setTenantUnitFilter(u.unit_label)} className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${tenantUnitFilter===u.unit_label?'bg-blue-600 text-white':'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400'}`}>
+                Unit {u.unit_label}
+              </button>
+            ))}
+          </div>
+
           <div className="space-y-3">
             {existingTenants.length === 0
               ? <div className="rounded-xl border border-dashed border-gray-300 p-8 text-center text-gray-400 dark:border-gray-700">No tenants yet.</div>
-              : existingTenants.map(t => (
+              : existingTenants.filter(t => tenantUnitFilter === 'all' || t.unit_label === tenantUnitFilter).map(t => (
                 <div key={t.id} className="rounded-xl border border-gray-200 dark:border-gray-800">
                   {editingTenant?.id === t.id ? (
                     <div className="p-5 space-y-3">

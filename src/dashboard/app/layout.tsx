@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import './globals.css';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { NavLinks } from '@/components/NavLinks';
 
 export const metadata: Metadata = {
   title: 'Real Estate Tracker',
@@ -23,21 +24,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <span>🏠</span>
               <span>Real Estate Tracker</span>
             </Link>
-            <nav className="flex items-center gap-4">
-              <Link href="/properties" className="text-sm font-medium text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white">
-                My Properties
-              </Link>
-              <Link href="/vendors" className="text-sm font-medium text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white">
-                Vendors
-              </Link>
-              <Link href="/grade" className="text-sm font-medium text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white">
-                Grade a Property
-              </Link>
-              <Link href="/settings" className="text-sm font-medium text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white">
-                Investor Profile
-              </Link>
-              <ThemeToggle />
-            </nav>
+            <NavLinks />
           </div>
         </header>
         <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6">{children}</main>

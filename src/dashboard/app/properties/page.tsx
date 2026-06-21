@@ -144,7 +144,7 @@ export default function PropertiesPage() {
                 >
                   <div>
                     <p className="font-semibold">{property.address}</p>
-                    <p className="text-sm text-gray-500">{property.city}, {property.state} · {property.property_type}</p>
+                    <p className="text-sm text-gray-500">{property.city}, {property.state} · {property.property_type.charAt(0).toUpperCase() + property.property_type.slice(1)}</p>
                   </div>
                   <div className="flex items-center gap-3">
                     <Link

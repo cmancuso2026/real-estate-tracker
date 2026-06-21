@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 interface Unit { is_owner_unit: boolean;
   id: number;
@@ -53,6 +54,7 @@ function daysUntilExpiry(endDate: string | null): string {
 }
 
 export function OverviewTab({ id, units, onRefresh }: { id: string; units: Unit[]; onRefresh: () => void }) {
+  const router = useRouter();
   const [selectedUnit, setSelectedUnit] = useState<string>('all');
   const [togglingId, setTogglingId] = useState<number|null>(null);
 
@@ -81,7 +83,7 @@ export function OverviewTab({ id, units, onRefresh }: { id: string; units: Unit[
           <Link href={`/properties/${id}/tenants/new`} className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">
             + Add Tenant
           </Link>
-          <Link href={`/properties/${id}?tab=leases`} className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700">
+          <Link href={`/properties/${id}?tab=leases`} onClick={e=>{e.preventDefault();router.push(`/properties/${id}?tab=leases`);}} className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700">
             + Add Lease
           </Link>
         </div>
@@ -113,6 +115,38 @@ export function OverviewTab({ id, units, onRefresh }: { id: string; units: Unit[
           </button>
         ))}
       </div>
+
+      {/* Summary cards — only when showing all rental units */}
+      {selectedUnit === 'all' && (() => {
+        const today = new Date().toISOString().slice(0, 10);
+        const rentalUnits = units.filter(u => !u.is_owner_unit);
+        const totalRent = rentalUnits
+          .filter(u => u.lease_start_date && u.lease_end_date && u.lease_start_date <= today && u.lease_end_date >= today)
+          .reduce((s, u) => s + (u.rent_amount ?? 0), 0);
+        const collected = rentalUnits.reduce((s, u) => s + (u.amount_paid ?? 0), 0);
+        return (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+              <p className="text-xs text-gray-500">Total Rent Expected</p>
+              <p className="mt-1 text-xl font-bold tabular">${totalRent.toLocaleString()}/mo</p>
+            </div>
+            <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+              <p className="text-xs text-gray-500">Rent Collected</p>
+              <p className="mt-1 text-xl font-bold tabular">${collected.toLocaleString()}</p>
+              <p className="text-xs text-gray-400">{totalRent > 0 ? Math.round((collected/totalRent)*100) : 0}% this month</p>
+            </div>
+            <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+              <p className="text-xs text-gray-500">Occupied Units</p>
+              <p className="mt-1 text-xl font-bold">{rentalUnits.filter(u=>u.tenant_id).length} / {rentalUnits.length}</p>
+            </div>
+            <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+              <p className="text-xs text-gray-500">Leases Expiring Soon</p>
+              <p className="mt-1 text-xl font-bold">{rentalUnits.filter(u=>{const d=u.lease_end_date?Math.ceil((new Date(u.lease_end_date).getTime()-Date.now())/86400000):null;return d!==null&&d>=0&&d<=60;}).length}</p>
+              <p className="text-xs text-gray-400">within 60 days</p>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Table */}
       <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800">
