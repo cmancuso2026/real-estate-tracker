@@ -256,12 +256,28 @@ function InsuranceForm({
 
 
 // ── RENT TAB COMPONENT ──────────────────────────────────────────────────────
-function RentTab({ id, units, rent }: {
-  id: string;
-  units: Array<{ id: number; unit_label: string; is_owner_unit: boolean; rent_amount: number | null; lease_start_date: string | null; lease_end_date: string | null; tenant_name: string | null }>;
-  rent: Array<{ id: number; unit_label: string; due_date: string; amount_due: number; paid_date: string | null; amount_paid: number | null; is_partial: boolean; is_late: boolean; late_fee_charged: number | null; late_fee_applicable: boolean; source: string; notes: string | null }>;
+interface RentRowType {
+  id: number; unit_label: string; due_date: string; amount_due: number;
+  paid_date: string | null; amount_paid: number | null;
+  is_partial: boolean; is_late: boolean;
+  late_fee_charged: number | null; late_fee_applicable: boolean;
+  source: string; notes: string | null;
+}
+interface UnitType {
+  id: number; unit_label: string; is_owner_unit: boolean;
+  rent_amount: number | null; lease_start_date: string | null; lease_end_date: string | null;
+  amount_due: number | null; amount_paid: number | null; is_late: boolean | null;
+}
+
+function RentTab({ id, units, rent, onRefresh }: {
+  id: string; units: UnitType[]; rent: RentRowType[]; onRefresh: () => void;
 }) {
   const [unitFilter, setUnitFilter] = useState<string>('all');
+  const [editingRow, setEditingRow] = useState<RentRowType | null>(null);
+  const [editForm, setEditForm] = useState<Partial<RentRowType>>({});
+  const [editSaving, setEditSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+
   const thisMonth = new Date().toISOString().slice(0, 7);
   const today = new Date().toISOString().slice(0, 10);
   const rentalUnits = units.filter(u => !u.is_owner_unit);
@@ -275,8 +291,7 @@ function RentTab({ id, units, rent }: {
     if (r.amount_paid) { u.paid += r.amount_paid; if (r.is_late) u.late++; else u.onTime++; }
   }
 
-  // Outstanding this month
-  const thisMonthPaid = new Set(rent.filter(r => r.due_date.startsWith(thisMonth)).map(r => r.unit_label));
+  const thisMonthPaid = new Set(rent.filter(r => r.due_date.startsWith(thisMonth) && r.amount_paid != null).map(r => r.unit_label));
   const outstandingUnits = rentalUnits.filter(u =>
     u.rent_amount && u.lease_start_date && u.lease_end_date &&
     u.lease_start_date <= today && u.lease_end_date >= today &&
@@ -287,7 +302,42 @@ function RentTab({ id, units, rent }: {
   const totalOnTime = Object.values(ytdByUnit).reduce((s, u) => s + u.onTime, 0);
   const totalPayments = Object.values(ytdByUnit).reduce((s, u) => s + u.total, 0);
 
+  // Unit filter — filter rent records
   const filtered = unitFilter === 'all' ? rent : rent.filter(r => r.unit_label === unitFilter);
+
+  function startEdit(r: RentRowType) {
+    setEditingRow(r);
+    setEditForm({
+      paid_date: r.paid_date ?? '',
+      amount_paid: r.amount_paid,
+      amount_due: r.amount_due,
+      is_late: r.is_late,
+      late_fee_charged: r.late_fee_charged,
+      notes: r.notes ?? '',
+    });
+  }
+
+  async function saveEdit() {
+    if (!editingRow || editSaving) return;
+    setEditSaving(true);
+    const amountPaid = editForm.amount_paid;
+    const amountDue = editForm.amount_due ?? editingRow.amount_due;
+    const isPartial = amountPaid != null && amountPaid < amountDue;
+    await fetch(`/api/v2/rent/${editingRow.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...editForm, is_partial: isPartial }),
+    });
+    setEditingRow(null); setEditSaving(false);
+    onRefresh();
+  }
+
+  async function deleteRow(rowId: number) {
+    if (!confirm('Delete this payment record?')) return;
+    setDeletingId(rowId);
+    await fetch(`/api/v2/rent/${rowId}`, { method: 'DELETE' });
+    setDeletingId(null);
+    onRefresh();
+  }
 
   function exportCsv() {
     const headers = ['Unit','Due Date','Expected','Paid','Status','Late Fee','Source'];
@@ -295,7 +345,7 @@ function RentTab({ id, units, rent }: {
     const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
     const a = document.createElement('a');
     a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
-    a.download = `rent-collection-${thisMonth}.csv`;
+    a.download = `rent-${thisMonth}.csv`;
     a.click();
   }
 
@@ -327,29 +377,29 @@ function RentTab({ id, units, rent }: {
                   </span>
                 )}
               </div>
-              <p className="text-xl font-bold tabular">{stats ? ('$' + stats.paid.toLocaleString()) : '—'}</p>
+              <p className="text-xl font-bold tabular">{stats ? '$' + stats.paid.toLocaleString() : '—'}</p>
               {pct !== null && <p className="text-xs text-gray-400">{pct}% on time · {stats?.late ?? 0} late</p>}
             </div>
           );
         })}
         <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
           <p className="text-xs font-medium text-gray-500">Total YTD</p>
-          <p className="text-xl font-bold tabular text-green-600">{'$' + totalYTD.toLocaleString()}</p>
+          <p className="text-xl font-bold tabular text-green-600">${totalYTD.toLocaleString()}</p>
           {totalPayments > 0 && <p className="text-xs text-gray-400">{Math.round((totalOnTime / totalPayments) * 100)}% on time</p>}
         </div>
         <div className={`rounded-xl border p-4 ${totalOutstanding > 0 ? 'border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/20' : 'border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/20'}`}>
           <p className={`text-xs font-medium ${totalOutstanding > 0 ? 'text-red-500' : 'text-green-600'}`}>Outstanding {thisMonth}</p>
-          <p className={`text-xl font-bold tabular ${totalOutstanding > 0 ? 'text-red-600' : 'text-green-600'}`}>{'$' + totalOutstanding.toLocaleString()}</p>
+          <p className={`text-xl font-bold tabular ${totalOutstanding > 0 ? 'text-red-600' : 'text-green-600'}`}>${totalOutstanding.toLocaleString()}</p>
           <p className="text-xs text-gray-400">{outstandingUnits.length > 0 ? outstandingUnits.map(u => `Unit ${u.unit_label}`).join(', ') : 'All units paid'}</p>
         </div>
       </div>
 
       {/* Unit slicers */}
       <div className="flex flex-wrap gap-2">
-        <button onClick={() => setUnitFilter('all')} className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${unitFilter === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400'}`}>All Units</button>
-        {rentalUnits.map(u => (
-          <button key={u.id} onClick={() => setUnitFilter(u.unit_label)} className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${unitFilter === u.unit_label ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400'}`}>
-            Unit {u.unit_label}
+        {(['all', ...rentalUnits.map(u => u.unit_label)] as string[]).map(label => (
+          <button key={label} onClick={() => setUnitFilter(label)}
+            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${unitFilter === label ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400'}`}>
+            {label === 'all' ? 'All Units' : `Unit ${label}`}
           </button>
         ))}
       </div>
@@ -358,13 +408,49 @@ function RentTab({ id, units, rent }: {
       <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 dark:bg-gray-900">
-            <tr>{['Unit','Due Date','Expected','Paid','Status','Late Fee','Source'].map(h => <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500">{h}</th>)}</tr>
+            <tr>{['Unit','Due Date','Expected','Paid','Status','Late Fee','Source',''].map(h => <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500">{h}</th>)}</tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
             {filtered.length === 0
-              ? <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">No rent records yet</td></tr>
-              : filtered.map(r => (
-                <tr key={r.id}>
+              ? <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">No rent records yet</td></tr>
+              : filtered.map(r => editingRow?.id === r.id ? (
+                // EDIT ROW
+                <tr key={r.id} className="bg-blue-50 dark:bg-blue-950/20">
+                  <td className="px-4 py-2 font-medium">{r.unit_label}</td>
+                  <td className="px-4 py-2 text-gray-500 text-xs">{r.due_date}</td>
+                  <td className="px-4 py-2">
+                    <input type="number" value={editForm.amount_due ?? ''} onChange={e => setEditForm(p => ({ ...p, amount_due: parseFloat(e.target.value) }))}
+                      className="w-24 rounded border border-gray-300 px-2 py-1 text-xs dark:border-gray-700 dark:bg-gray-800" />
+                  </td>
+                  <td className="px-4 py-2">
+                    <input type="number" value={editForm.amount_paid ?? ''} onChange={e => setEditForm(p => ({ ...p, amount_paid: e.target.value ? parseFloat(e.target.value) : null }))}
+                      className="w-24 rounded border border-gray-300 px-2 py-1 text-xs dark:border-gray-700 dark:bg-gray-800" />
+                  </td>
+                  <td className="px-4 py-2">
+                    <select value={editForm.is_late ? 'late' : 'ontime'} onChange={e => setEditForm(p => ({ ...p, is_late: e.target.value === 'late' }))}
+                      className="rounded border border-gray-300 px-2 py-1 text-xs dark:border-gray-700 dark:bg-gray-800">
+                      <option value="ontime">On time</option>
+                      <option value="late">Late</option>
+                    </select>
+                  </td>
+                  <td className="px-4 py-2">
+                    <input type="number" value={editForm.late_fee_charged ?? ''} onChange={e => setEditForm(p => ({ ...p, late_fee_charged: e.target.value ? parseFloat(e.target.value) : null }))}
+                      placeholder="0" className="w-20 rounded border border-gray-300 px-2 py-1 text-xs dark:border-gray-700 dark:bg-gray-800" />
+                  </td>
+                  <td className="px-4 py-2">
+                    <input type="date" value={editForm.paid_date ?? ''} onChange={e => setEditForm(p => ({ ...p, paid_date: e.target.value || null }))}
+                      className="rounded border border-gray-300 px-2 py-1 text-xs dark:border-gray-700 dark:bg-gray-800" />
+                  </td>
+                  <td className="px-4 py-2">
+                    <div className="flex gap-2">
+                      <button onClick={saveEdit} disabled={editSaving} className="rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-700 disabled:opacity-50">{editSaving ? '…' : 'Save'}</button>
+                      <button onClick={() => setEditingRow(null)} className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-100 dark:border-gray-700">Cancel</button>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                // VIEW ROW
+                <tr key={r.id} className="hover:bg-gray-50 dark:hover:bg-gray-900/30">
                   <td className="px-4 py-3 font-medium">{r.unit_label}</td>
                   <td className="px-4 py-3 tabular">{r.due_date}</td>
                   <td className="px-4 py-3 tabular">${r.amount_due.toLocaleString()}</td>
@@ -379,11 +465,17 @@ function RentTab({ id, units, rent }: {
                         ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">Late</span>
                         : <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">Paid</span>
                       }
-                      {r.late_fee_applicable && !r.late_fee_charged && <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs text-red-500">Fee not charged</span>}
+                      {r.late_fee_applicable && !r.late_fee_charged && <span className="text-xs text-red-500">Fee not charged</span>}
                     </div>
                   </td>
                   <td className="px-4 py-3 tabular">{r.late_fee_charged ? '$' + r.late_fee_charged.toLocaleString() : '—'}</td>
                   <td className="px-4 py-3 text-gray-400 text-xs">{r.source}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex gap-2">
+                      <button onClick={() => startEdit(r)} className="text-xs text-blue-600 hover:underline dark:text-blue-400">Edit</button>
+                      <button onClick={() => deleteRow(r.id)} disabled={deletingId === r.id} className="text-xs text-red-400 hover:text-red-600 disabled:opacity-50">{deletingId === r.id ? '…' : 'Delete'}</button>
+                    </div>
+                  </td>
                 </tr>
               ))
             }
@@ -744,7 +836,7 @@ export default function PropertyDetailPage() {
 
       {/* ── RENT ── */}
       {tab==='rent' && (
-        <RentTab id={id} units={units} rent={rent} />
+        <RentTab id={id} units={units} rent={rent} onRefresh={()=>loadTab('rent')} />
       )}
 
 
