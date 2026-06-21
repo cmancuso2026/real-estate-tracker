@@ -58,18 +58,17 @@ For category choose from: plumbing | hvac | electrical | roofing | appliance | g
   escrow: {
     system: `You are a mortgage document parser specializing in annual escrow analysis statements from US lenders (Wells Fargo, Chase, Rocket Mortgage, etc).
 Always respond with valid JSON only. No markdown, no explanation.
-Dates must be YYYY-MM-DD. Dollar amounts must be DECIMAL numbers with cents (e.g. 9984.03), NOT integers.
+Dates must be YYYY-MM-DD. ALL dollar amounts must be DECIMAL numbers with CENTS preserved exactly as shown (e.g. 9984.03, 8018.39, 930.96). Never round to integers.
 Shortage is NEGATIVE, surplus is POSITIVE for shortage_surplus_amount.
 
-Key fields to find:
-- statement_date: the date the statement was issued or mailed
-- analysis_period_start / analysis_period_end: the 12-month period being analyzed
-- total_property_taxes: sum of ALL property tax disbursements for the year (look for county tax, city tax, school tax lines)
-- total_insurance: sum of ALL insurance premium disbursements for the year (homeowners, flood, etc.)
-- shortage_surplus_amount: the EXACT shortage or surplus dollar amount stated on the document. Shortage is negative. This is typically between -$2,000 and +$2,000.
-- options: the payment options offered (Option 1 = spread shortage over 12 months, Option 2 = pay shortage in full). Extract the new escrow PORTION ONLY (not the total mortgage payment) and the total new mortgage payment for each.
-- tax_disbursements: each individual property tax payment with exact date and amount
-- insurance_disbursements: each individual insurance payment with exact date and amount`,
+CRITICAL FIELD DEFINITIONS:
+- total_property_taxes: the TOTAL of all property tax payments made during the analysis period. These are payments to county/city/school tax authorities. Look for lines labeled "County Taxes", "City Taxes", "School Taxes", "Ad Valorem Tax", or similar. SUM all of them.
+- total_insurance: the TOTAL of all insurance premium payments made during the analysis period. These are payments to insurance carriers. Look for lines labeled "Homeowners Insurance", "Hazard Insurance", "Flood Insurance", or similar. SUM all of them.
+- shortage_surplus_amount: the exact shortage or surplus figure from the reconciliation section. This is typically a small amount between -$5,000 and +$5,000. NEVER use the total disbursement amounts here.
+- new_monthly_escrow: the new escrow PORTION ONLY of the monthly payment (not the full mortgage payment). Set this to null — it will be set by the option the user selects.
+- options: look for Option 1 and Option 2 payment tables showing old vs new payment amounts. For each option extract ONLY the "Escrow payment" row value (not Principal and interest, not Total payment amount).
+
+DO NOT confuse total disbursements with shortage amount. DO NOT return zero for any field if you can find the value in the document.`,
     user: `Extract and return this JSON from the escrow analysis statement:
 {
   "statement_date": "YYYY-MM-DD or null",

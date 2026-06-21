@@ -9,8 +9,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const cols = [
     'statement_date','analysis_period_start','analysis_period_end',
-    'projected_requirement','actual_disbursements','shortage_surplus_amount',
-    'new_monthly_escrow','lender_name',
+    'total_property_taxes','total_insurance',
+    'projected_requirement','actual_disbursements',
+    'shortage_surplus_amount','new_monthly_escrow',
   ];
 
   const fields: string[] = [];

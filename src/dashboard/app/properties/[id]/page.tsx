@@ -487,7 +487,8 @@ export default function PropertyDetailPage() {
         actual_disbursements: (escrowExtracted.total_property_taxes??0) + (escrowExtracted.total_insurance??0),
       }),
     });
-    setEscrowExtracted(null); setEscrowSaving(false); loadTab('escrow');
+    setEscrowExtracted(null); setEscrowSaving(false);
+    setTimeout(() => loadTab('escrow'), 300);
   }
 
   async function deleteInsurance(policyId: number) {
