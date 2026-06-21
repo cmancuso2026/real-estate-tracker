@@ -197,7 +197,6 @@ export default function PropertyDetailPage() {
   const [escrowLender, setEscrowLender] = useState('');
   const [escrowSaving, setEscrowSaving] = useState(false);
   const [deletingEscrowId, setDeletingEscrowId] = useState<number|null>(null);
-  const [deletingEscrowId, setDeletingEscrowId] = useState<number|null>(null);
 
   // Insurance state
   const [insuranceExtracted, setInsuranceExtracted] = useState<InsuranceExtracted | null>(null);
