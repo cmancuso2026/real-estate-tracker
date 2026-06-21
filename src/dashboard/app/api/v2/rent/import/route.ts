@@ -46,6 +46,7 @@ export interface ParsedRow {
   is_early: boolean;
   is_late: boolean;
   late_fee_applicable: boolean;
+  late_fee_included: boolean;
   late_fee_amount: number | null;
   confidence: 'high' | 'low' | 'none';
   category: 'rent' | 'non_rent';
@@ -257,7 +258,7 @@ export async function POST(req: NextRequest) {
           matched_property_address: null, matched_lease_id: null,
           assigned_month: assignedMonth, due_date: dueDate,
           is_early: isEarly, is_late: false,
-          late_fee_applicable: false, late_fee_amount: null,
+          late_fee_applicable: false, late_fee_included: false, late_fee_amount: null,
           confidence: 'none', category: 'non_rent',
           note: 'Not a Zelle payment',
         };
@@ -281,7 +282,7 @@ export async function POST(req: NextRequest) {
           matched_property_address: null, matched_lease_id: null,
           assigned_month: assignedMonth, due_date: dueDate,
           is_early: isEarly, is_late: false,
-          late_fee_applicable: false, late_fee_amount: null,
+          late_fee_applicable: false, late_fee_included: false, late_fee_amount: null,
           confidence: 'none', category: 'non_rent',
           note: 'Zelle — no name found',
         };
@@ -297,7 +298,7 @@ export async function POST(req: NextRequest) {
           matched_property_address: null, matched_lease_id: null,
           assigned_month: assignedMonth, due_date: dueDate,
           is_early: isEarly, is_late: false,
-          late_fee_applicable: false, late_fee_amount: null,
+          late_fee_applicable: false, late_fee_included: false, late_fee_amount: null,
           confidence: 'none', category: 'non_rent',
           note: `Zelle from "${extractedName}" — no tenant match found`,
         };
@@ -306,8 +307,24 @@ export async function POST(req: NextRequest) {
       const { assignedMonth, dueDate, isEarly } = assignMonth(tx.date);
       const graceDays = bestTenant.late_fee_grace_days ?? 5;
       const isLate = !isEarly && checkLate(tx.date, dueDate, graceDays);
-      const lateFeeApplicable = isLate;
+      const rentAmount = bestTenant.rent_amount ?? 0;
+      const lateFeeAmt = bestTenant.late_fee_amount ?? 0;
+
+      // Detect if late fee was already included in the payment
+      // Condition: late payment AND amount ≈ rent + late fee (within $5 tolerance)
+      const lateFeePaidInPayment = isLate &&
+        lateFeeAmt > 0 &&
+        Math.abs(tx.amount - (rentAmount + lateFeeAmt)) <= 5;
+
+      // Late fee applicable but NOT paid = fee was owed but not collected
+      const lateFeeApplicable = isLate && !lateFeePaidInPayment;
+
       const confidence: 'high' | 'low' = bestScore >= 85 ? 'high' : 'low';
+
+      const noteArr: string[] = [];
+      if (isEarly) noteArr.push(`Paid early — assigned to ${assignedMonth}`);
+      if (isLate && lateFeePaidInPayment) noteArr.push(`Late fee of $${lateFeeAmt} included in payment`);
+      else if (isLate) noteArr.push(`Paid late — grace period ${graceDays} days`);
 
       return {
         raw_date: tx.date,
@@ -324,14 +341,11 @@ export async function POST(req: NextRequest) {
         is_early: isEarly,
         is_late: isLate,
         late_fee_applicable: lateFeeApplicable,
-        late_fee_amount: lateFeeApplicable ? (bestTenant.late_fee_amount ?? null) : null,
+        late_fee_included: lateFeePaidInPayment,
+        late_fee_amount: lateFeeAmt > 0 ? lateFeeAmt : null,
         confidence,
         category: 'rent',
-        note: isEarly
-          ? `Paid early — assigned to ${assignedMonth}`
-          : isLate
-          ? `Paid late — grace period ${graceDays} days`
-          : '',
+        note: noteArr.join(' · '),
       };
     });
 
