@@ -56,38 +56,58 @@ For category choose from: plumbing | hvac | electrical | roofing | appliance | g
   },
 
   escrow: {
-    system: `You are a mortgage document parser specializing in annual escrow analysis statements from US lenders (Wells Fargo, Chase, Rocket Mortgage, etc).
+    system: `You are parsing a Wells Fargo (or similar lender) annual Escrow Review Statement.
+
 Always respond with valid JSON only. No markdown, no explanation.
-Dates must be YYYY-MM-DD. ALL dollar amounts must be DECIMAL numbers with CENTS preserved exactly as shown (e.g. 9984.03, 8018.39, 930.96). Never round to integers.
-Shortage is NEGATIVE, surplus is POSITIVE for shortage_surplus_amount.
+All dollar amounts must be DECIMAL with exact cents as shown in the document. Dates must be YYYY-MM-DD.
+Shortage is NEGATIVE, surplus is POSITIVE.
 
-CRITICAL FIELD DEFINITIONS:
-- total_property_taxes: the TOTAL of all property tax payments made during the analysis period. These are payments to county/city/school tax authorities. Look for lines labeled "County Taxes", "City Taxes", "School Taxes", "Ad Valorem Tax", or similar. SUM all of them.
-- total_insurance: the TOTAL of all insurance premium payments made during the analysis period. These are payments to insurance carriers. Look for lines labeled "Homeowners Insurance", "Hazard Insurance", "Flood Insurance", or similar. SUM all of them.
-- shortage_surplus_amount: the exact shortage or surplus figure from the reconciliation section. This is typically a small amount between -$5,000 and +$5,000. NEVER use the total disbursement amounts here.
-- new_monthly_escrow: the new escrow PORTION ONLY of the monthly payment (not the full mortgage payment). Set this to null — it will be set by the option the user selects.
-- options: look for Option 1 and Option 2 payment tables showing old vs new payment amounts. For each option extract ONLY the "Escrow payment" row value (not Principal and interest, not Total payment amount).
+HOW TO READ THIS DOCUMENT:
 
-DO NOT confuse total disbursements with shortage amount. DO NOT return zero for any field if you can find the value in the document.`,
-    user: `Extract and return this JSON from the escrow analysis statement:
+Page 1 contains: the shortage/surplus amount in a highlighted box, and Option 1/Option 2 payment comparison tables showing old vs new escrow payments.
+
+Page 2 contains: an "Escrow comparison" table with columns for multiple date periods (e.g. "03/24 - 02/25 (Actual)", "03/25 - 02/26 (Actual)", "03/26 - 02/27 (Projected)"). Rows include: Property taxes, Property insurance, Total taxes and insurance, Escrow shortage, Total escrow.
+
+Page 3 contains: the actual payment history table.
+
+FIELD BY FIELD INSTRUCTIONS:
+
+statement_date: The "Statement Date" shown at top of page 1. Format YYYY-MM-DD.
+
+analysis_period_start / analysis_period_end: From page 2 Escrow comparison table, use the MOST RECENT column labeled "(Actual)" — ignore Projected. Convert "MM/YY" to first/last day as YYYY-MM-DD.
+
+total_property_taxes: Page 2, "Escrow comparison" table, "Property taxes" row, MOST RECENT (Actual) column. Use EXACT decimal value.
+
+total_insurance: Page 2, "Escrow comparison" table, "Property insurance" row, MOST RECENT (Actual) column. IMPORTANT: If this value is $0.00, it means insurance hasn't been paid yet in this period — instead use the value from the PRIOR actual column (the one before it), OR from the Projected column for the next year.
+
+shortage_surplus_amount: The exact dollar amount stated as "Your escrow account has a shortage of $X" on page 1. Also confirmed in page 2 "Escrow shortage" row under the Projected column. NEGATIVE for shortage, POSITIVE for surplus.
+
+new_monthly_escrow: Always null. User selects the option.
+
+options: From page 1, find Option 1 table and Option 2 table. Each shows a "New payment beginning with the [date] payment" column. Extract:
+  - new_monthly_escrow: The "Escrow payment" row value from the NEW payment column ONLY (not Principal and interest, not Total payment amount)
+  - total_payment: The "Total payment amount" row value from the NEW payment column
+  - label: Short description of the option`,
+    user: `Extract and return this JSON:
 {
-  "statement_date": "YYYY-MM-DD or null",
-  "analysis_period_start": "YYYY-MM-DD or null",
-  "analysis_period_end": "YYYY-MM-DD or null",
-  "total_property_taxes": decimal_sum_of_all_tax_disbursements_or_null,
-  "total_insurance": decimal_sum_of_all_insurance_disbursements_or_null,
-  "shortage_surplus_amount": decimal_negative_if_shortage_positive_if_surplus_or_null,
+  "statement_date": "YYYY-MM-DD",
+  "analysis_period_start": "YYYY-MM-DD",
+  "analysis_period_end": "YYYY-MM-DD",
+  "total_property_taxes": 9984.03,
+  "total_insurance": 8018.39,
+  "shortage_surplus_amount": -930.96,
   "new_monthly_escrow": null,
   "options": [
-    {"label": "Option 1 - Pay shortage over 12 months", "new_monthly_escrow": decimal_escrow_portion_only, "total_payment": decimal_total_mortgage_payment},
-    {"label": "Option 2 - Pay shortage in full", "new_monthly_escrow": decimal_escrow_portion_only, "total_payment": decimal_total_mortgage_payment}
+    {"label": "Option 1 - Pay shortage over 12 months", "new_monthly_escrow": 1577.78, "total_payment": 3320.75},
+    {"label": "Option 2 - Pay shortage in full", "new_monthly_escrow": 1500.20, "total_payment": 3243.17}
   ],
-  "tax_disbursements": [{"date":"YYYY-MM-DD","payee":"county or tax authority name","amount":decimal}],
-  "insurance_disbursements": [{"date":"YYYY-MM-DD","payee":"insurance carrier name","amount":decimal}],
-  "confidence_notes": "describe anything you were uncertain about, or null"
-}`,  
-  },
+  "tax_disbursements": [{"date":"YYYY-MM-DD","payee":"payee name","amount":9984.03}],
+  "insurance_disbursements": [{"date":"YYYY-MM-DD","payee":"payee name","amount":8018.39}],
+  "confidence_notes": "anything uncertain or null"
+}
 
+NOTE: The example values above (9984.03, 8018.39, -930.96, 1577.78, 1500.20) are from a sample Wells Fargo document — replace with actual values from the document being parsed.`,
+  },
   insurance: {
     system: `You are an insurance document parser for residential and landlord policies.
 Always respond with valid JSON only. No markdown, no explanation. Dates must be YYYY-MM-DD. All dollar amounts must be integers (whole dollars).
