@@ -80,7 +80,11 @@ export default function PropertiesPage() {
   // Summary stats across all units
   const allUnits = Object.values(units).flat();
   const rentalUnits = allUnits.filter(u => !u.is_owner_unit);
-  const totalExpected = rentalUnits.reduce((s, u) => s + (u.amount_due ?? 0), 0);
+  const today = new Date().toISOString().slice(0, 10);
+  // Expected = sum of active lease rent amounts (not collections)
+  const totalExpected = rentalUnits
+    .filter(u => u.lease_start_date && u.lease_end_date && u.lease_start_date <= today && u.lease_end_date >= today)
+    .reduce((s, u) => s + (u.rent_amount ?? 0), 0);
   const totalCollected = rentalUnits.reduce((s, u) => s + (u.amount_paid ?? 0), 0);
   const vacant = rentalUnits.filter(u => !u.tenant_id).length;
   const expiring = rentalUnits.filter(u => {
