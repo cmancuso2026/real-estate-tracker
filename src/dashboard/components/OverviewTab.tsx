@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 
-interface Unit {
+interface Unit { is_owner_unit: boolean;
   id: number;
   unit_label: string;
   tenant_name: string | null;
@@ -52,8 +52,21 @@ function daysUntilExpiry(endDate: string | null): string {
   return `${days}d`;
 }
 
-export function OverviewTab({ id, units }: { id: string; units: Unit[] }) {
+export function OverviewTab({ id, units, onRefresh }: { id: string; units: Unit[]; onRefresh: () => void }) {
   const [selectedUnit, setSelectedUnit] = useState<string>('all');
+  const [togglingId, setTogglingId] = useState<number|null>(null);
+
+  async function toggleOwner(u: Unit, e: React.MouseEvent) {
+    e.stopPropagation();
+    setTogglingId(u.id);
+    await fetch(`/api/v2/units/${u.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_owner_unit: !u.is_owner_unit }),
+    });
+    setTogglingId(null);
+    onRefresh();
+  }
 
   const filtered = selectedUnit === 'all'
     ? units
@@ -106,7 +119,7 @@ export function OverviewTab({ id, units }: { id: string; units: Unit[] }) {
         <table className="w-full text-sm">
           <thead className="bg-gray-50 dark:bg-gray-900">
             <tr>
-              {['Unit', 'Tenant', 'Rent/mo', 'Lease Status', 'Lease Expiration', 'Days Until Exp.', 'Years in Unit'].map(h => (
+              {['Unit', 'Tenant', 'Rent/mo', 'Lease Status', 'Lease Expiration', 'Days Until Exp.', 'Years in Unit', ''].map(h => (
                 <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500">{h}</th>
               ))}
             </tr>
@@ -117,10 +130,17 @@ export function OverviewTab({ id, units }: { id: string; units: Unit[] }) {
                 <td colSpan={7} className="px-4 py-8 text-center text-gray-400">No units</td>
               </tr>
             ) : filtered.map(u => (
-              <tr key={u.id} className="hover:bg-gray-50 dark:hover:bg-gray-900/50 cursor-pointer" onClick={()=>window.location.href=`/properties/${id}/units/${u.id}`}>
-                <td className="px-4 py-3 font-semibold text-blue-600 dark:text-blue-400">{u.unit_label}</td>
+              <tr key={u.id} className={`cursor-pointer ${u.is_owner_unit ? 'bg-blue-50/50 dark:bg-blue-950/20' : 'hover:bg-gray-50 dark:hover:bg-gray-900/50'}`} onClick={()=>window.location.href=`/properties/${id}/units/${u.id}`}>
+                <td className="px-4 py-3 font-semibold text-blue-600 dark:text-blue-400">
+                  <div className="flex items-center gap-2">
+                    {u.unit_label}
+                    {u.is_owner_unit && <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">Owner</span>}
+                  </div>
+                </td>
                 <td className="px-4 py-3">
-                  {u.tenant_name
+                  {u.is_owner_unit
+                    ? <span className="italic text-blue-500 dark:text-blue-400">Owner occupied</span>
+                    : u.tenant_name
                     ? <span className="font-medium">{u.tenant_name}</span>
                     : <span className="italic text-gray-400">Vacant</span>
                   }
@@ -147,7 +167,16 @@ export function OverviewTab({ id, units }: { id: string; units: Unit[] }) {
                   ) : <span className="text-gray-400">—</span>}
                 </td>
                 <td className="px-4 py-3 tabular text-gray-600 dark:text-gray-400">
-                  {yearsInUnit(u.first_lease_start_date)}
+                  {u.is_owner_unit ? '—' : yearsInUnit(u.first_lease_start_date)}
+                </td>
+                <td className="px-4 py-3" onClick={e=>e.stopPropagation()}>
+                  <button
+                    onClick={e=>toggleOwner(u,e)}
+                    disabled={togglingId===u.id}
+                    className={`rounded-full px-2 py-0.5 text-xs font-medium transition-colors ${u.is_owner_unit ? 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/40 dark:text-blue-300' : 'bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400'}`}
+                  >
+                    {togglingId===u.id ? '…' : u.is_owner_unit ? 'Owner ✓' : 'Set Owner'}
+                  </button>
                 </td>
               </tr>
             ))}

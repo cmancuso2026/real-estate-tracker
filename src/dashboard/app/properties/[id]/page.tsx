@@ -8,7 +8,7 @@ import { OverviewTab } from '@/components/OverviewTab';
 type Tab = 'overview' | 'tenants' | 'rent' | 'leases' | 'work-orders' | 'escrow' | 'insurance';
 
 interface Property { id: number; address: string; city: string; state: string; property_type: string; unit_count: number; }
-interface Unit { id: number; unit_label: string; tenant_name: string | null; tenant_id: number | null; rent_amount: number | null; lease_start_date: string | null; lease_end_date: string | null; first_lease_start_date: string | null; amount_due: number | null; amount_paid: number | null; is_late: boolean | null; }
+interface Unit { id: number; unit_label: string; tenant_name: string | null; tenant_id: number | null; rent_amount: number | null; lease_start_date: string | null; lease_end_date: string | null; first_lease_start_date: string | null; amount_due: number | null; amount_paid: number | null; is_late: boolean | null; is_owner_unit: boolean; }
 interface RentRow { id: number; unit_label: string; due_date: string; amount_due: number; paid_date: string | null; amount_paid: number | null; is_partial: boolean; is_late: boolean; late_fee_charged: number | null; source: string; }
 interface WorkOrder { id: number; vendor_name: string; vendor_trade: string; category: string; description: string; status: string; date_received: string; date_completed: string | null; quoted_cost: number | null; actual_cost: number | null; rating: number | null; unit_label: string | null; }
 interface Lease { id: number; unit_label: string; tenant_name: string; start_date: string; end_date: string; rent_amount: number; security_deposit: number | null; late_fee_amount: number | null; late_fee_grace_days: number | null; utilities_landlord: string | null; utilities_tenant: string | null; equipment_included: string | null; extracted_by_ai: boolean; }
@@ -395,7 +395,7 @@ export default function PropertyDetailPage() {
 
       {/* ── OVERVIEW ── */}
       {tab==='overview' && (
-        <OverviewTab id={id} units={units} />
+        <OverviewTab id={id} units={units} onRefresh={load} />
       )}
 
       {/* ── RENT ── */}

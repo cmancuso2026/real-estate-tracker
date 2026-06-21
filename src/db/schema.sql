@@ -458,3 +458,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_leases_unique_term
 -- Prevent duplicate tenants: same name in same unit
 CREATE UNIQUE INDEX IF NOT EXISTS idx_tenants_unique_name_unit
   ON tenants (unit_id, lower(first_name), lower(last_name));
+
+-- Owner-occupied unit flag
+ALTER TABLE units ADD COLUMN IF NOT EXISTS is_owner_unit BOOLEAN NOT NULL DEFAULT FALSE;

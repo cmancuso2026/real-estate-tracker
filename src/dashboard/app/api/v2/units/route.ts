@@ -11,12 +11,13 @@ export async function GET(req: NextRequest) {
 
   const rows = await query(
     `SELECT u.*,
+            t.id          AS tenant_id,
             t.first_name || ' ' || t.last_name AS tenant_name,
-            t.id AS tenant_id,
             l.rent_amount,
             l.start_date  AS lease_start_date,
             l.end_date    AS lease_end_date,
-            first_l.start_date AS first_lease_start_date,
+            -- Earliest lease for the CURRENT tenant on this unit (years in unit)
+            first_t_lease.start_date AS first_lease_start_date,
             rc.amount_due,
             rc.amount_paid,
             rc.is_late
@@ -35,13 +36,13 @@ export async function GET(req: NextRequest) {
        ORDER BY start_date DESC
        LIMIT 1
      ) l ON TRUE
-     -- Earliest ever lease (for years-in-unit)
+     -- Earliest lease for the current tenant specifically
      LEFT JOIN LATERAL (
        SELECT * FROM leases
-       WHERE unit_id = u.id
+       WHERE unit_id = u.id AND tenant_id = t.id
        ORDER BY start_date ASC
        LIMIT 1
-     ) first_l ON TRUE
+     ) first_t_lease ON TRUE
      -- This month's rent
      LEFT JOIN LATERAL (
        SELECT * FROM rent_collections
@@ -58,16 +59,32 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { property_id, unit_label, bedrooms, bathrooms, sqft, notes } = body;
+  const { property_id, unit_label, bedrooms, bathrooms, sqft, notes, is_owner_unit } = body;
+
   if (!property_id || !unit_label) {
     return NextResponse.json({ error: 'property_id and unit_label are required' }, { status: 400 });
   }
+
   const rows = await query(
-    `INSERT INTO units (property_id, unit_label, bedrooms, bathrooms, sqft, notes)
-     VALUES ($1,$2,$3,$4,$5,$6)
-     ON CONFLICT (property_id, unit_label) DO UPDATE SET bedrooms=$3, bathrooms=$4, sqft=$5, notes=$6
+    `INSERT INTO units (property_id, unit_label, bedrooms, bathrooms, sqft, notes, is_owner_unit)
+     VALUES ($1,$2,$3,$4,$5,$6,$7)
+     ON CONFLICT (property_id, unit_label) DO UPDATE
+       SET bedrooms=$3, bathrooms=$4, sqft=$5, notes=$6, is_owner_unit=$7
      RETURNING *`,
-    [property_id, unit_label, bedrooms ?? null, bathrooms ?? null, sqft ?? null, notes ?? null]
+    [property_id, unit_label, bedrooms ?? null, bathrooms ?? null, sqft ?? null, notes ?? null, is_owner_unit ?? false]
   );
   return NextResponse.json(rows[0], { status: 201 });
+}
+
+export async function PATCH(req: NextRequest) {
+  const body = await req.json();
+  const { unit_id, is_owner_unit } = body;
+
+  if (!unit_id) return NextResponse.json({ error: 'unit_id required' }, { status: 400 });
+
+  const rows = await query(
+    `UPDATE units SET is_owner_unit = $1 WHERE id = $2 RETURNING *`,
+    [is_owner_unit ?? false, unit_id]
+  );
+  return NextResponse.json(rows[0]);
 }

@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 
 interface Property { id: number; address: string; city: string; state: string; property_type: string; unit_count: number; }
 interface Unit {
-  id: number; property_id: number; unit_label: string;
+  id: number; property_id: number; unit_label: string; is_owner_unit: boolean;
   tenant_name: string | null; tenant_id: number | null;
   rent_amount: number | null; lease_start_date: string | null; lease_end_date: string | null;
   first_lease_start_date: string | null; amount_due: number | null; amount_paid: number | null; is_late: boolean | null;
@@ -79,10 +79,11 @@ export default function PropertiesPage() {
 
   // Summary stats across all units
   const allUnits = Object.values(units).flat();
-  const totalExpected = allUnits.reduce((s, u) => s + (u.amount_due ?? 0), 0);
-  const totalCollected = allUnits.reduce((s, u) => s + (u.amount_paid ?? 0), 0);
-  const vacant = allUnits.filter(u => !u.tenant_id).length;
-  const expiring = allUnits.filter(u => {
+  const rentalUnits = allUnits.filter(u => !u.is_owner_unit);
+  const totalExpected = rentalUnits.reduce((s, u) => s + (u.amount_due ?? 0), 0);
+  const totalCollected = rentalUnits.reduce((s, u) => s + (u.amount_paid ?? 0), 0);
+  const vacant = rentalUnits.filter(u => !u.tenant_id).length;
+  const expiring = rentalUnits.filter(u => {
     const d = daysUntil(u.lease_end_date);
     return d !== null && d >= 0 && d <= 60;
   }).length;
@@ -174,22 +175,27 @@ export default function PropertiesPage() {
                               <tr
                                 key={u.id}
                                 onClick={() => router.push(`/properties/${property.id}/units/${u.id}`)}
-                                className="cursor-pointer border-b border-gray-50 last:border-0 hover:bg-gray-50 dark:border-gray-800/50 dark:hover:bg-gray-800/30"
+                                className={`cursor-pointer border-b border-gray-50 last:border-0 dark:border-gray-800/50 ${u.is_owner_unit ? 'bg-blue-50/50 dark:bg-blue-950/20' : 'hover:bg-gray-50 dark:hover:bg-gray-800/30'}`}
                               >
-                                <td className="px-5 py-3 font-semibold text-blue-600 dark:text-blue-400">{u.unit_label}</td>
-                                <td className="px-5 py-3">{u.tenant_name ?? <span className="italic text-gray-400">Vacant</span>}</td>
-                                <td className="px-5 py-3 tabular">{fmt$(u.rent_amount)}</td>
-                                <td className="px-5 py-3"><LeaseStatusBadge startDate={u.lease_start_date} endDate={u.lease_end_date} /></td>
-                                <td className="px-5 py-3 text-gray-500 text-xs tabular">{u.lease_end_date ?? '—'}</td>
+                                <td className="px-5 py-3 font-semibold text-blue-600 dark:text-blue-400">
+                                  <div className="flex items-center gap-2">
+                                    {u.unit_label}
+                                    {u.is_owner_unit && <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">Owner</span>}
+                                  </div>
+                                </td>
+                                <td className="px-5 py-3">{u.is_owner_unit ? <span className="italic text-blue-500 dark:text-blue-400">Owner occupied</span> : u.tenant_name ?? <span className="italic text-gray-400">Vacant</span>}</td>
+                                <td className="px-5 py-3 tabular">{u.is_owner_unit ? <span className="text-gray-400">—</span> : fmt$(u.rent_amount)}</td>
+                                <td className="px-5 py-3">{u.is_owner_unit ? <span className="text-gray-400">—</span> : <LeaseStatusBadge startDate={u.lease_start_date} endDate={u.lease_end_date} />}</td>
+                                <td className="px-5 py-3 text-gray-500 text-xs tabular">{u.is_owner_unit ? '—' : u.lease_end_date ?? '—'}</td>
                                 <td className="px-5 py-3 tabular">
-                                  {days !== null
+                                  {u.is_owner_unit ? <span className="text-gray-400">—</span> : days !== null
                                     ? <span className={days < 0 ? 'text-red-500' : days <= 60 ? 'text-amber-600 font-medium' : 'text-gray-500'}>
                                         {Math.abs(days)}d{days < 0 ? ' ago' : ''}
                                       </span>
                                     : <span className="text-gray-400">—</span>
                                   }
                                 </td>
-                                <td className="px-5 py-3 text-gray-500">{yearsInUnit(u.first_lease_start_date)}</td>
+                                <td className="px-5 py-3 text-gray-500">{u.is_owner_unit ? '—' : yearsInUnit(u.first_lease_start_date)}</td>
                               </tr>
                             );
                           })}
