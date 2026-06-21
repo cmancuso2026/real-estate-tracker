@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
-interface Unit { amount_due: number | null; amount_paid: number | null; is_late: boolean | null; is_owner_unit: boolean;
+interface Unit { is_owner_unit: boolean;
   id: number;
   unit_label: string;
   tenant_name: string | null;
