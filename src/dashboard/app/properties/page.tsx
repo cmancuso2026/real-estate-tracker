@@ -161,6 +161,16 @@ export default function PropertiesPage() {
                       <p className="px-5 py-4 text-sm text-gray-400 italic">Loading units…</p>
                     ) : (
                       <table className="w-full text-sm">
+                        <colgroup>
+                          <col className="w-24" />
+                          <col className="w-64" />
+                          <col className="w-28" />
+                          <col className="w-32" />
+                          <col className="w-32" />
+                          <col className="w-20" />
+                          <col className="w-24" />
+                          <col />
+                        </colgroup>
                         <thead>
                           <tr className="border-b border-gray-50 dark:border-gray-800">
                             {['Unit', 'Tenant', 'Rent/mo', 'Lease Status', 'Expires', 'Days', 'Tenure'].map(h => (
