@@ -164,6 +164,7 @@ export default function PropertyDetailPage() {
   const [deletingTenantId, setDeletingTenantId] = useState<number|null>(null);
   const [tenantSaving, setTenantSaving] = useState(false);
   const [expandedTenantId, setExpandedTenantId] = useState<number|null>(null);
+  const [leaseUnitFilter, setLeaseUnitFilter] = useState<string>('all');
   const [editTenantForm, setEditTenantForm] = useState({first_name:"",last_name:"",email:"",phone:"",notes:""});
   const [loading, setLoading] = useState(true);
   const [uploadingLease, setUploadingLease] = useState(false);
@@ -456,6 +457,16 @@ export default function PropertyDetailPage() {
             </div>
           </div>
 
+          {/* Unit filter bubbles */}
+          <div className="flex flex-wrap gap-2">
+            <button onClick={()=>setLeaseUnitFilter('all')} className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${leaseUnitFilter==='all'?'bg-blue-600 text-white':'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400'}`}>All Units</button>
+            {units.map(u=>(
+              <button key={u.id} onClick={()=>setLeaseUnitFilter(u.unit_label)} className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${leaseUnitFilter===u.unit_label?'bg-blue-600 text-white':'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400'}`}>
+                Unit {u.unit_label}
+              </button>
+            ))}
+          </div>
+
           {/* Extraction review panel */}
           {leaseExtracted && (
             <div className="rounded-xl border-2 border-blue-300 bg-blue-50 p-5 space-y-4 dark:border-blue-700 dark:bg-blue-950/20">
@@ -489,7 +500,7 @@ export default function PropertyDetailPage() {
           <div className="space-y-3">
             {leases.length===0&&!leaseExtracted
               ?<div className="rounded-xl border border-dashed border-gray-300 p-8 text-center text-gray-400 dark:border-gray-700">No leases yet. Upload a PDF or add manually.</div>
-              :leases.map(l=>(
+              :(leaseUnitFilter==='all'?leases:leases.filter(l=>l.unit_label===leaseUnitFilter)).map(l=>(
                 <div key={l.id} className="rounded-xl border border-gray-200 dark:border-gray-800">
                   {editingLease?.id===l.id ? (
                     // EDIT MODE
