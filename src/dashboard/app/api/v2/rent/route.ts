@@ -25,25 +25,30 @@ export async function GET(req: NextRequest) {
             u.unit_label,
             p.address AS property_address,
             (t.first_name || ' ' || t.last_name) AS tenant_name,
-            active_lease.rent_amount AS lease_rent_at_time
+            -- Find the lease whose term covers the due date,
+            -- or if none matches exactly, use the most recent lease
+            -- whose start_date is on or before the due date
+            COALESCE(
+              (SELECT rent_amount FROM leases
+               WHERE unit_id = rc.unit_id
+                 AND start_date <= rc.due_date
+                 AND end_date   >= rc.due_date
+               ORDER BY start_date DESC LIMIT 1),
+              (SELECT rent_amount FROM leases
+               WHERE unit_id = rc.unit_id
+                 AND start_date <= rc.due_date
+               ORDER BY start_date DESC LIMIT 1)
+            ) AS lease_rent_at_time
      FROM rent_collections rc
      JOIN units u            ON u.id = rc.unit_id
      JOIN owned_properties p ON p.id = u.property_id
      LEFT JOIN tenants t     ON t.unit_id = rc.unit_id AND t.is_active = TRUE
-     LEFT JOIN LATERAL (
-       SELECT rent_amount FROM leases
-       WHERE unit_id = rc.unit_id
-         AND start_date <= rc.due_date
-         AND end_date   >= rc.due_date
-       ORDER BY start_date DESC
-       LIMIT 1
-     ) active_lease ON TRUE
      ${where}
      ORDER BY rc.due_date DESC`,
     values
   );
 
-  // Re-evaluate is_partial using the rent amount from the lease active at due date
+  // Re-evaluate is_partial using the correct rent at time of payment
   const corrected = rows.map(r => {
     const rentAtTime = (r['lease_rent_at_time'] as number | null) ?? (r['amount_due'] as number);
     const amountPaid = r['amount_paid'] as number | null;

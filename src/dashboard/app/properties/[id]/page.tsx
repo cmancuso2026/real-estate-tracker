@@ -269,10 +269,10 @@ interface UnitType {
   amount_due: number | null; amount_paid: number | null; is_late: boolean | null;
 }
 
-function RentTab({ id, units, rent, onRefresh }: {
+function RentTab({ id, units, rent, onRefresh, unitFilter, setUnitFilter }: {
   id: string; units: UnitType[]; rent: RentRowType[]; onRefresh: () => void;
+  unitFilter: string; setUnitFilter: (v: string) => void;
 }) {
-  const [unitFilter, setUnitFilter] = useState<string>('all');
   const [editingRow, setEditingRow] = useState<RentRowType | null>(null);
   const [editForm, setEditForm] = useState<Partial<RentRowType>>({});
   const [editSaving, setEditSaving] = useState(false);
@@ -507,6 +507,7 @@ export default function PropertyDetailPage() {
   const [expandedTenantId, setExpandedTenantId] = useState<number|null>(null);
   const [tenantUnitFilter, setTenantUnitFilter] = useState<string>('all');
   const [leaseUnitFilter, setLeaseUnitFilter] = useState<string>('all');
+  const [rentUnitFilter, setRentUnitFilter] = useState<string>('all');
   const [editTenantForm, setEditTenantForm] = useState({first_name:"",last_name:"",email:"",phone:"",notes:""});
   const [loading, setLoading] = useState(true);
   const [uploadingLease, setUploadingLease] = useState(false);
@@ -836,7 +837,7 @@ export default function PropertyDetailPage() {
 
       {/* ── RENT ── */}
       {tab==='rent' && (
-        <RentTab id={id} units={units} rent={rent} onRefresh={()=>loadTab('rent')} />
+        <RentTab id={id} units={units} rent={rent} onRefresh={()=>loadTab('rent')} unitFilter={rentUnitFilter} setUnitFilter={setRentUnitFilter} />
       )}
 
 
