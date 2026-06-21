@@ -138,6 +138,10 @@ function isZelle(description: string): boolean {
   return /zelle/i.test(description);
 }
 
+function isHousingAuthority(description: string): boolean {
+  return /miami.?dade.*phcd|phcd.*miami.?dade|miami.?dade.*cnty.*des/i.test(description);
+}
+
 // ---------------------------------------------------------------------------
 // Tenant name matching
 // ---------------------------------------------------------------------------
@@ -248,8 +252,10 @@ export async function POST(req: NextRequest) {
       const zellePayment = isZelle(tx.description);
       const extractedName = extractZelleName(tx.description);
 
-      // Non-Zelle = non_rent immediately
-      if (!zellePayment) {
+      const housingAuth = isHousingAuthority(tx.description);
+
+      // Non-Zelle and not housing authority = non_rent immediately
+      if (!zellePayment && !housingAuth) {
         const { assignedMonth, dueDate, isEarly } = assignMonth(tx.date);
         return {
           raw_date: tx.date, description: tx.description, amount: tx.amount,
@@ -261,6 +267,23 @@ export async function POST(req: NextRequest) {
           late_fee_applicable: false, late_fee_included: false, late_fee_amount: null,
           confidence: 'none', category: 'non_rent',
           note: 'Not a Zelle payment',
+        };
+      }
+
+      // Housing authority payment — can't extract name, mark as low confidence rent
+      // so user can assign to the right tenant
+      if (housingAuth) {
+        const { assignedMonth, dueDate, isEarly } = assignMonth(tx.date);
+        return {
+          raw_date: tx.date, description: tx.description, amount: tx.amount,
+          matched_tenant_id: null, matched_tenant_name: null,
+          matched_unit_id: null, matched_unit_label: null,
+          matched_property_address: null, matched_lease_id: null,
+          assigned_month: assignedMonth, due_date: dueDate,
+          is_early: isEarly, is_late: false,
+          late_fee_applicable: false, late_fee_included: false, late_fee_amount: null,
+          confidence: 'low', category: 'rent',
+          note: 'Section 8 / Housing Authority payment — assign to tenant',
         };
       }
 
