@@ -96,6 +96,9 @@ export default function RentImportPage() {
   const [error, setError] = useState('');
 
   const [confidenceFilter, setConfidenceFilter] = useState(new Set(['all']));
+  const [search, setSearch] = useState('');
+  const [sortCol, setSortCol] = useState<string>('');
+  const [sortDir, setSortDir] = useState<'asc'|'desc'>('asc');
   const [categoryFilter, setCategoryFilter] = useState(new Set(['all']));
   const [tenantFilter, setTenantFilter] = useState(new Set(['all']));
 
@@ -145,17 +148,43 @@ export default function RentImportPage() {
     const confAll = confidenceFilter.has('all');
     const catAll = categoryFilter.has('all');
     const tenAll = tenantFilter.has('all');
+    const q = search.toLowerCase().trim();
 
-    return rows.filter(r => {
+    let result = rows.filter(r => {
       if (!confAll && !confidenceFilter.has(r.confidence)) return false;
       if (!catAll && !categoryFilter.has(r.category)) return false;
       if (!tenAll) {
         const tid = r.matched_tenant_id ? String(r.matched_tenant_id) : 'non_rent';
         if (!tenantFilter.has(tid)) return false;
       }
+      if (q) {
+        const haystack = [
+          r.description, r.matched_tenant_name ?? '', r.matched_property_address ?? '',
+          r.matched_unit_label ?? '', r.raw_date, String(r.amount), r.note,
+        ].join(' ').toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
       return true;
     });
-  }, [rows, confidenceFilter, categoryFilter, tenantFilter]);
+
+    if (sortCol) {
+      result = [...result].sort((a, b) => {
+        let av: string | number = '';
+        let bv: string | number = '';
+        if (sortCol === 'date')   { av = a.raw_date; bv = b.raw_date; }
+        if (sortCol === 'desc')   { av = a.description.toLowerCase(); bv = b.description.toLowerCase(); }
+        if (sortCol === 'amount') { av = a.amount; bv = b.amount; }
+        if (sortCol === 'match')  { av = a.confidence; bv = b.confidence; }
+        if (sortCol === 'tenant') { av = (a.matched_tenant_name ?? '').toLowerCase(); bv = (b.matched_tenant_name ?? '').toLowerCase(); }
+        if (sortCol === 'month')  { av = a.assigned_month; bv = b.assigned_month; }
+        if (av < bv) return sortDir === 'asc' ? -1 : 1;
+        if (av > bv) return sortDir === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }
+
+    return result;
+  }, [rows, confidenceFilter, categoryFilter, tenantFilter, search, sortCol, sortDir]);
 
   const counts = useMemo(() => ({
     high: rows.filter(r => r.confidence === 'high').length,
@@ -183,6 +212,15 @@ export default function RentImportPage() {
     if (!res.ok) { setError(data.error ?? 'Save failed'); return; }
     setSaved(data.saved);
     setRows([]);
+  }
+
+  function toggleSort(col: string) {
+    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortCol(col); setSortDir('asc'); }
+  }
+  function SortIcon({ col }: { col: string }) {
+    if (sortCol !== col) return <span className="text-gray-300 ml-1">↕</span>;
+    return <span className="text-blue-500 ml-1">{sortDir === 'asc' ? '↑' : '↓'}</span>;
   }
 
   if (saved !== null) return (
@@ -290,13 +328,31 @@ export default function RentImportPage() {
 
           {error && <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">{error}</p>}
 
+          {/* Search bar */}
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">🔍</span>
+            <input
+              type="text"
+              placeholder="Search description, tenant name, amount…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-4 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-900"
+            />
+            {search && (
+              <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-sm">✕</button>
+            )}
+          </div>
+
           {/* Table */}
           <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 dark:bg-gray-900">
                 <tr>
-                  {['Date','Description','Amount','Match','Tenant','Month','Flags'].map(h => (
-                    <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500">{h}</th>
+                  {([['date','Date'],['desc','Description'],['amount','Amount'],['match','Match'],['tenant','Tenant'],['month','Month'],['','Flags']] as [string,string][]).map(([col, label]) => (
+                    <th key={label} onClick={() => col && toggleSort(col)}
+                      className={`px-4 py-3 text-left text-xs font-medium text-gray-500 ${col ? 'cursor-pointer hover:text-gray-800 select-none' : ''}`}>
+                      {label}{col && <SortIcon col={col} />}
+                    </th>
                   ))}
                 </tr>
               </thead>
