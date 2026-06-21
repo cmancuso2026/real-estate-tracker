@@ -12,7 +12,7 @@ interface Unit { id: number; unit_label: string; tenant_name: string | null; ten
 interface RentRow { id: number; unit_label: string; due_date: string; amount_due: number; paid_date: string | null; amount_paid: number | null; is_partial: boolean; is_late: boolean; late_fee_charged: number | null; late_fee_applicable: boolean; source: string; notes: string | null; }
 interface WorkOrder { id: number; vendor_name: string; vendor_trade: string; category: string; description: string; status: string; date_received: string; date_completed: string | null; quoted_cost: number | null; actual_cost: number | null; rating: number | null; unit_label: string | null; }
 interface Lease { id: number; unit_label: string; tenant_name: string; start_date: string; end_date: string; rent_amount: number; security_deposit: number | null; late_fee_amount: number | null; late_fee_grace_days: number | null; utilities_landlord: string | null; utilities_tenant: string | null; equipment_included: string | null; extracted_by_ai: boolean; }
-interface EscrowAccount { id: number; lender_name: string; loan_number: string | null; statement_id: number | null; statement_date: string | null; analysis_period_start: string | null; analysis_period_end: string | null; projected_requirement: number | null; actual_disbursements: number | null; shortage_surplus_amount: number | null; new_monthly_escrow: number | null; }
+interface EscrowAccount { id: number; lender_name: string; loan_number: string | null; statement_id: number | null; statement_date: string | null; analysis_period_start: string | null; analysis_period_end: string | null; total_property_taxes: number | null; total_insurance: number | null; shortage_surplus_amount: number | null; new_monthly_escrow: number | null; }
 interface InsurancePolicy {
   id: number; carrier: string; policy_number: string | null; policy_type: string | null;
   effective_date: string; expiration_date: string; annual_premium: number | null;
@@ -34,7 +34,7 @@ interface LeaseExtracted {
   confidence_notes: string | null;
 }
 interface EscrowOption { label: string; new_monthly_escrow: number | null; total_payment: number | null; }
-interface EscrowExtracted { statement_date: string | null; analysis_period_start: string | null; analysis_period_end: string | null; projected_requirement: number | null; actual_disbursements: number | null; shortage_surplus_amount: number | null; new_monthly_escrow: number | null; options?: EscrowOption[]; confidence_notes: string | null; }
+interface EscrowExtracted { statement_date: string | null; analysis_period_start: string | null; analysis_period_end: string | null; total_property_taxes: number | null; total_insurance: number | null; shortage_surplus_amount: number | null; new_monthly_escrow: number | null; options?: EscrowOption[]; confidence_notes: string | null; }
 interface InsuranceExtracted {
   carrier: string | null; policy_number: string | null; policy_type: string | null;
   effective_date: string | null; expiration_date: string | null; renewal_period_days: number | null;
@@ -474,7 +474,18 @@ export default function PropertyDetailPage() {
     const acc = await accRes.json();
     await fetch('/api/v2/escrow/statement', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...escrowExtracted, escrow_account_id: acc.id, extracted_by_ai: true }),
+      body: JSON.stringify({
+        escrow_account_id: acc.id, extracted_by_ai: true,
+        statement_date: escrowExtracted.statement_date,
+        analysis_period_start: escrowExtracted.analysis_period_start,
+        analysis_period_end: escrowExtracted.analysis_period_end,
+        total_property_taxes: escrowExtracted.total_property_taxes,
+        total_insurance: escrowExtracted.total_insurance,
+        shortage_surplus_amount: escrowExtracted.shortage_surplus_amount,
+        new_monthly_escrow: escrowExtracted.new_monthly_escrow,
+        projected_requirement: (escrowExtracted.total_property_taxes??0) + (escrowExtracted.total_insurance??0),
+        actual_disbursements: (escrowExtracted.total_property_taxes??0) + (escrowExtracted.total_insurance??0),
+      }),
     });
     setEscrowExtracted(null); setEscrowSaving(false); loadTab('escrow');
   }
@@ -528,8 +539,8 @@ export default function PropertyDetailPage() {
       statement_date: e.statement_date ?? '',
       analysis_period_start: e.analysis_period_start ?? '',
       analysis_period_end: e.analysis_period_end ?? '',
-      projected_requirement: e.projected_requirement,
-      actual_disbursements: e.actual_disbursements,
+      total_property_taxes: e.total_property_taxes,
+      total_insurance: e.total_insurance,
       shortage_surplus_amount: e.shortage_surplus_amount,
       new_monthly_escrow: e.new_monthly_escrow,
     });
@@ -934,13 +945,11 @@ export default function PropertyDetailPage() {
 
               {/* Editable fields */}
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                <Input label="Property Taxes ($)" type="number" value={escrowExtracted.total_property_taxes?.toString()??''} onChange={v=>setEscrowExtracted(p=>p?{...p,total_property_taxes:v?parseFloat(v):null}:p)} placeholder="9984.03" />
+                <Input label="Insurance ($)" type="number" value={escrowExtracted.total_insurance?.toString()??''} onChange={v=>setEscrowExtracted(p=>p?{...p,total_insurance:v?parseFloat(v):null}:p)} placeholder="8018.39" />
+                <Input label="Shortage (−) / Surplus (+) ($)" type="number" value={escrowExtracted.shortage_surplus_amount?.toString()??''} onChange={v=>setEscrowExtracted(p=>p?{...p,shortage_surplus_amount:v?parseFloat(v):null}:p)} placeholder="-930.96" />
+                <Input label="New Monthly Escrow ($)" type="number" value={escrowExtracted.new_monthly_escrow?.toString()??''} onChange={v=>setEscrowExtracted(p=>p?{...p,new_monthly_escrow:v?parseFloat(v):null}:p)} placeholder="1577.78" />
                 <Input label="Statement Date" type="date" value={escrowExtracted.statement_date??''} onChange={v=>setEscrowExtracted(p=>p?{...p,statement_date:v}:p)} />
-                <Input label="Period Start" type="date" value={escrowExtracted.analysis_period_start??''} onChange={v=>setEscrowExtracted(p=>p?{...p,analysis_period_start:v}:p)} />
-                <Input label="Period End" type="date" value={escrowExtracted.analysis_period_end??''} onChange={v=>setEscrowExtracted(p=>p?{...p,analysis_period_end:v}:p)} />
-                <Input label="Projected ($)" type="number" value={escrowExtracted.projected_requirement?.toString()??''} onChange={v=>setEscrowExtracted(p=>p?{...p,projected_requirement:v?parseInt(v):null}:p)} placeholder="0" />
-                <Input label="Actual Disbursed ($)" type="number" value={escrowExtracted.actual_disbursements?.toString()??''} onChange={v=>setEscrowExtracted(p=>p?{...p,actual_disbursements:v?parseInt(v):null}:p)} placeholder="0" />
-                <Input label="Shortage (−) / Surplus (+) ($)" type="number" value={escrowExtracted.shortage_surplus_amount?.toString()??''} onChange={v=>setEscrowExtracted(p=>p?{...p,shortage_surplus_amount:v?parseInt(v):null}:p)} placeholder="-930" />
-                <Input label="New Monthly Escrow ($)" type="number" value={escrowExtracted.new_monthly_escrow?.toString()??''} onChange={v=>setEscrowExtracted(p=>p?{...p,new_monthly_escrow:v?parseInt(v):null}:p)} placeholder="0" />
                 <div className="sm:col-span-2">
                   <Input label="Lender Name *" value={escrowLender} onChange={setEscrowLender} placeholder="e.g. Wells Fargo" />
                 </div>
@@ -974,26 +983,26 @@ export default function PropertyDetailPage() {
                   )}
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                     <div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-900">
-                      <p className="text-xs text-gray-500">Projected</p>
-                      <p className="mt-1 text-lg font-bold tabular">{fmt$(e.projected_requirement)}</p>
-                      <p className="text-xs text-gray-400">annual requirement</p>
+                      <p className="text-xs text-gray-500">Property Taxes</p>
+                      <p className="mt-1 text-lg font-bold tabular">{e.total_property_taxes!=null?'$'+e.total_property_taxes.toLocaleString(undefined,{minimumFractionDigits:2}):'—'}</p>
+                      <p className="text-xs text-gray-400">paid this year</p>
                     </div>
                     <div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-900">
-                      <p className="text-xs text-gray-500">Actual Disbursed</p>
-                      <p className="mt-1 text-lg font-bold tabular">{fmt$(e.actual_disbursements)}</p>
-                      <p className="text-xs text-gray-400">taxes + insurance paid</p>
+                      <p className="text-xs text-gray-500">Insurance</p>
+                      <p className="mt-1 text-lg font-bold tabular">{e.total_insurance!=null?'$'+e.total_insurance.toLocaleString(undefined,{minimumFractionDigits:2}):'—'}</p>
+                      <p className="text-xs text-gray-400">paid this year</p>
                     </div>
                     <div className={`rounded-lg p-3 ${(e.shortage_surplus_amount??0)<0?'bg-red-50 dark:bg-red-950/20':'bg-green-50 dark:bg-green-950/20'}`}>
-                      <p className={`text-xs ${(e.shortage_surplus_amount??0)<0?'text-red-500':'text-green-600'}`}>{(e.shortage_surplus_amount??0)<0?'Shortage':'Surplus'}</p>
+                      <p className={`text-xs ${(e.shortage_surplus_amount??0)<0?'text-red-500':'text-green-600'}`}>{(e.shortage_surplus_amount??0)<0?'Escrow Shortage':'Escrow Surplus'}</p>
                       <p className={`mt-1 text-lg font-bold tabular ${(e.shortage_surplus_amount??0)<0?'text-red-600':'text-green-600'}`}>
-                        {e.shortage_surplus_amount!=null?`${e.shortage_surplus_amount<0?'-':'+'}${fmt$(e.shortage_surplus_amount)}`:'—'}
+                        {e.shortage_surplus_amount!=null?`${e.shortage_surplus_amount<0?'-':'+'}$${Math.abs(e.shortage_surplus_amount).toLocaleString(undefined,{minimumFractionDigits:2})}`:'—'}
                       </p>
                       <p className="text-xs text-gray-400">{(e.shortage_surplus_amount??0)<0?'owed to lender':'returned to you'}</p>
                     </div>
                     <div className="rounded-lg bg-blue-50 p-3 dark:bg-blue-950/20">
-                      <p className="text-xs text-blue-600 dark:text-blue-400">New Monthly Escrow</p>
-                      <p className="mt-1 text-lg font-bold tabular text-blue-700 dark:text-blue-300">{fmt$(e.new_monthly_escrow)}</p>
-                      <p className="text-xs text-gray-400">starting next cycle</p>
+                      <p className="text-xs text-blue-600 dark:text-blue-400">New Monthly Payment</p>
+                      <p className="mt-1 text-lg font-bold tabular text-blue-700 dark:text-blue-300">{e.new_monthly_escrow!=null?'$'+e.new_monthly_escrow.toLocaleString(undefined,{minimumFractionDigits:2}):'—'}</p>
+                      <p className="text-xs text-gray-400">escrow portion</p>
                     </div>
                   </div>
                 </div>
@@ -1012,10 +1021,10 @@ export default function PropertyDetailPage() {
                   <Input label="Statement Date" type="date" value={editEscrowData.statement_date??''} onChange={v=>setEditEscrowData(p=>({...p,statement_date:v}))} />
                   <Input label="Period Start" type="date" value={editEscrowData.analysis_period_start??''} onChange={v=>setEditEscrowData(p=>({...p,analysis_period_start:v}))} />
                   <Input label="Period End" type="date" value={editEscrowData.analysis_period_end??''} onChange={v=>setEditEscrowData(p=>({...p,analysis_period_end:v}))} />
-                  <Input label="Projected ($)" type="number" value={editEscrowData.projected_requirement?.toString()??''} onChange={v=>setEditEscrowData(p=>({...p,projected_requirement:v?parseInt(v):null}))} placeholder="0" />
-                  <Input label="Actual Disbursed ($)" type="number" value={editEscrowData.actual_disbursements?.toString()??''} onChange={v=>setEditEscrowData(p=>({...p,actual_disbursements:v?parseInt(v):null}))} placeholder="0" />
-                  <Input label="Shortage (−) / Surplus (+) ($)" type="number" value={editEscrowData.shortage_surplus_amount?.toString()??''} onChange={v=>setEditEscrowData(p=>({...p,shortage_surplus_amount:v?parseInt(v):null}))} placeholder="-931" />
-                  <Input label="New Monthly Escrow ($)" type="number" value={editEscrowData.new_monthly_escrow?.toString()??''} onChange={v=>setEditEscrowData(p=>({...p,new_monthly_escrow:v?parseInt(v):null}))} placeholder="0" />
+                  <Input label="Property Taxes ($)" type="number" value={editEscrowData.total_property_taxes?.toString()??''} onChange={v=>setEditEscrowData(p=>({...p,total_property_taxes:v?parseFloat(v):null}))} placeholder="9984.03" />
+                  <Input label="Insurance ($)" type="number" value={editEscrowData.total_insurance?.toString()??''} onChange={v=>setEditEscrowData(p=>({...p,total_insurance:v?parseFloat(v):null}))} placeholder="8018.39" />
+                  <Input label="Shortage (−) / Surplus (+) ($)" type="number" value={editEscrowData.shortage_surplus_amount?.toString()??''} onChange={v=>setEditEscrowData(p=>({...p,shortage_surplus_amount:v?parseFloat(v):null}))} placeholder="-930.96" />
+                  <Input label="New Monthly Escrow ($)" type="number" value={editEscrowData.new_monthly_escrow?.toString()??''} onChange={v=>setEditEscrowData(p=>({...p,new_monthly_escrow:v?parseFloat(v):null}))} placeholder="1577.78" />
                 </div>
                 <button onClick={saveEditEscrow} disabled={editEscrowSaving} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
                   {editEscrowSaving?'Saving…':'Save Changes'}
