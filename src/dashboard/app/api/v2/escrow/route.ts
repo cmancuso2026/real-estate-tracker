@@ -3,7 +3,6 @@ import { query } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
-// GET /api/v2/escrow?propertyId=1
 export async function GET(req: NextRequest) {
   const propertyId = req.nextUrl.searchParams.get('propertyId');
   const where = propertyId ? 'WHERE ea.property_id = $1' : '';
@@ -12,11 +11,16 @@ export async function GET(req: NextRequest) {
   const accounts = await query(
     `SELECT ea.*,
             p.address AS property_address,
+            es.id AS statement_id,
             es.statement_date,
+            es.analysis_period_start,
+            es.analysis_period_end,
             es.projected_requirement,
             es.actual_disbursements,
             es.shortage_surplus_amount,
-            es.new_monthly_escrow
+            es.new_monthly_escrow,
+            es.tax_disbursements,
+            es.insurance_disbursements
      FROM escrow_accounts ea
      JOIN owned_properties p ON p.id = ea.property_id
      LEFT JOIN LATERAL (
