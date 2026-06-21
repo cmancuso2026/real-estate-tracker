@@ -474,3 +474,6 @@ ALTER TABLE insurance_policies ADD COLUMN IF NOT EXISTS wind_hail_deductible INT
 ALTER TABLE insurance_policies ADD COLUMN IF NOT EXISTS flood_coverage INTEGER;
 ALTER TABLE insurance_policies ADD COLUMN IF NOT EXISTS loss_of_rent_coverage INTEGER;
 ALTER TABLE insurance_policies ADD COLUMN IF NOT EXISTS loss_of_rent_months INTEGER;
+
+-- Track when a late fee was applicable but not charged
+ALTER TABLE rent_collections ADD COLUMN IF NOT EXISTS late_fee_applicable BOOLEAN NOT NULL DEFAULT FALSE;

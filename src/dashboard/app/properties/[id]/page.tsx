@@ -9,7 +9,7 @@ type Tab = 'overview' | 'tenants' | 'rent' | 'leases' | 'work-orders' | 'escrow'
 
 interface Property { id: number; address: string; city: string; state: string; property_type: string; unit_count: number; }
 interface Unit { id: number; unit_label: string; tenant_name: string | null; tenant_id: number | null; rent_amount: number | null; lease_start_date: string | null; lease_end_date: string | null; first_lease_start_date: string | null; amount_due: number | null; amount_paid: number | null; is_late: boolean | null; is_owner_unit: boolean; }
-interface RentRow { id: number; unit_label: string; due_date: string; amount_due: number; paid_date: string | null; amount_paid: number | null; is_partial: boolean; is_late: boolean; late_fee_charged: number | null; source: string; }
+interface RentRow { id: number; unit_label: string; due_date: string; amount_due: number; paid_date: string | null; amount_paid: number | null; is_partial: boolean; is_late: boolean; late_fee_charged: number | null; late_fee_applicable: boolean; source: string; notes: string | null; }
 interface WorkOrder { id: number; vendor_name: string; vendor_trade: string; category: string; description: string; status: string; date_received: string; date_completed: string | null; quoted_cost: number | null; actual_cost: number | null; rating: number | null; unit_label: string | null; }
 interface Lease { id: number; unit_label: string; tenant_name: string; start_date: string; end_date: string; rent_amount: number; security_deposit: number | null; late_fee_amount: number | null; late_fee_grace_days: number | null; utilities_landlord: string | null; utilities_tenant: string | null; equipment_included: string | null; extracted_by_ai: boolean; }
 interface EscrowAccount { id: number; lender_name: string; loan_number: string | null; statement_date: string | null; analysis_period_start: string | null; analysis_period_end: string | null; projected_requirement: number | null; actual_disbursements: number | null; shortage_surplus_amount: number | null; new_monthly_escrow: number | null; }
@@ -566,6 +566,7 @@ export default function PropertyDetailPage() {
                 <input type="file" accept=".csv" className="hidden" onChange={async e=>{const file=e.target.files?.[0];if(!file)return;const form=new FormData();form.append('file',file);const res=await fetch('/api/v2/rent',{method:'PUT',body:form});const data=await res.json();alert(`Found ${data.count} credit transactions.`);}} />
               </label>
               <Link href={`/properties/${id}/rent/new`} className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700">+ Add Payment</Link>
+              <Link href="/rent" className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">Import CSV</Link>
             </div>
           </div>
           <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800">

@@ -6,6 +6,7 @@ import { ThemeToggle } from './ThemeToggle';
 
 const PERSONAL_LINKS = [
   { href: '/properties', label: 'My Properties' },
+  { href: '/rent', label: 'Import Rent' },
   { href: '/vendors', label: 'Vendors' },
 ];
 
