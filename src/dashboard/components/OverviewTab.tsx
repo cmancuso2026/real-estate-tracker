@@ -68,7 +68,7 @@ export function OverviewTab({ id, units }: { id: string; units: Unit[] }) {
           <Link href={`/properties/${id}/tenants/new`} className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">
             + Add Tenant
           </Link>
-          <Link href={`/properties/${id}/leases/new`} className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700">
+          <Link href={`/properties/${id}?tab=leases`} className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700">
             + Add Lease
           </Link>
         </div>
@@ -117,11 +117,11 @@ export function OverviewTab({ id, units }: { id: string; units: Unit[] }) {
                 <td colSpan={7} className="px-4 py-8 text-center text-gray-400">No units</td>
               </tr>
             ) : filtered.map(u => (
-              <tr key={u.id} className="hover:bg-gray-50 dark:hover:bg-gray-900/50">
-                <td className="px-4 py-3 font-semibold">{u.unit_label}</td>
+              <tr key={u.id} className="hover:bg-gray-50 dark:hover:bg-gray-900/50 cursor-pointer" onClick={()=>window.location.href=`/properties/${id}/units/${u.id}`}>
+                <td className="px-4 py-3 font-semibold text-blue-600 dark:text-blue-400">{u.unit_label}</td>
                 <td className="px-4 py-3">
                   {u.tenant_name
-                    ? <span>{u.tenant_name}</span>
+                    ? <span className="font-medium">{u.tenant_name}</span>
                     : <span className="italic text-gray-400">Vacant</span>
                   }
                 </td>

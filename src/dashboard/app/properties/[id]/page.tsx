@@ -163,6 +163,7 @@ export default function PropertyDetailPage() {
   const [editingTenant, setEditingTenant] = useState<ExistingTenant | null>(null);
   const [deletingTenantId, setDeletingTenantId] = useState<number|null>(null);
   const [tenantSaving, setTenantSaving] = useState(false);
+  const [expandedTenantId, setExpandedTenantId] = useState<number|null>(null);
   const [editTenantForm, setEditTenantForm] = useState({first_name:"",last_name:"",email:"",phone:"",notes:""});
   const [loading, setLoading] = useState(true);
   const [uploadingLease, setUploadingLease] = useState(false);
@@ -578,17 +579,39 @@ export default function PropertyDetailPage() {
                       </button>
                     </div>
                   ) : (
-                    <div className="flex items-center justify-between p-4">
-                      <div>
-                        <p className="font-medium">{t.first_name} {t.last_name}</p>
-                        <p className="text-sm text-gray-500">Unit {t.unit_label}</p>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <button onClick={()=>startEditTenant(t)} className="text-xs text-blue-600 hover:underline dark:text-blue-400">Edit</button>
-                        <button onClick={()=>deleteTenant(t.id)} disabled={deletingTenantId===t.id} className="text-xs text-red-400 hover:text-red-600 disabled:opacity-50">
-                          {deletingTenantId===t.id?'Deleting…':'Delete'}
-                        </button>
-                      </div>
+                    <div>
+                      {/* Clickable header */}
+                      <button
+                        onClick={()=>setExpandedTenantId(expandedTenantId===t.id?null:t.id)}
+                        className="flex w-full items-center justify-between p-4 text-left hover:bg-gray-50 dark:hover:bg-gray-800/50"
+                      >
+                        <div>
+                          <p className="font-medium">{t.first_name} {t.last_name}</p>
+                          <p className="text-sm text-gray-500">Unit {t.unit_label}</p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <button onClick={e=>{e.stopPropagation();startEditTenant(t);}} className="text-xs text-blue-600 hover:underline dark:text-blue-400">Edit</button>
+                          <button onClick={e=>{e.stopPropagation();deleteTenant(t.id);}} disabled={deletingTenantId===t.id} className="text-xs text-red-400 hover:text-red-600 disabled:opacity-50">
+                            {deletingTenantId===t.id?'Deleting…':'Delete'}
+                          </button>
+                          <span className="text-gray-400 text-xs">{expandedTenantId===t.id?'▲':'▼'}</span>
+                        </div>
+                      </button>
+                      {/* Expanded detail */}
+                      {expandedTenantId===t.id && (
+                        <div className="border-t border-gray-100 px-4 py-4 dark:border-gray-800">
+                          <Link href={`/properties/${id}/units/${units.find(u=>u.unit_label===t.unit_label)?.id??''}`}
+                            className="inline-block mb-3 text-xs text-blue-600 hover:underline dark:text-blue-400">
+                            View full unit detail →
+                          </Link>
+                          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 text-sm">
+                            <div><p className="text-xs text-gray-500">Rent/mo</p><p className="font-semibold tabular">{units.find(u=>u.unit_label===t.unit_label)?.rent_amount!=null?'$'+units.find(u=>u.unit_label===t.unit_label)!.rent_amount!.toLocaleString():'—'}</p></div>
+                            <div><p className="text-xs text-gray-500">Years in Unit</p><p className="font-semibold">{(()=>{const u=units.find(u=>u.unit_label===t.unit_label);if(!u?.first_lease_start_date)return'—';const yrs=(Date.now()-new Date(u.first_lease_start_date).getTime())/(1000*60*60*24*365.25);return yrs<0?'—':yrs.toFixed(1)+' yrs';})()}</p></div>
+                            <div><p className="text-xs text-gray-500">Lease Expires</p><p className="font-medium">{units.find(u=>u.unit_label===t.unit_label)?.lease_end_date??'—'}</p></div>
+                            <div><p className="text-xs text-gray-500">Days Until Exp.</p><p className={`font-semibold tabular ${(()=>{const d=Math.ceil((new Date(units.find(u=>u.unit_label===t.unit_label)?.lease_end_date??'').getTime()-Date.now())/86400000);return d<0?'text-red-500':d<=60?'text-amber-600':'text-gray-700 dark:text-gray-300';})()}`}>{(()=>{const end=units.find(u=>u.unit_label===t.unit_label)?.lease_end_date;if(!end)return'—';const d=Math.ceil((new Date(end).getTime()-Date.now())/86400000);return Math.abs(d)+'d'+(d<0?' ago':'');})()}</p></div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
