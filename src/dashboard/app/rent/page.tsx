@@ -13,7 +13,7 @@ interface ParsedRow {
   late_fee_applicable: boolean; late_fee_included: boolean; late_fee_amount: number | null;
   confidence: 'high' | 'low' | 'none'; category: 'rent' | 'non_rent'; note: string;
 }
-interface TenantOption { id: number; name: string; unit_label: string; }
+interface TenantOption { id: number; name: string; unit_label: string; unit_id: number; property_address?: string; }
 
 function fmt$(n: number) { return '$' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
@@ -133,8 +133,13 @@ export default function RentImportPage() {
     const t = tenantOptions.find(t => String(t.id) === tenantId);
     if (!t) return;
     updateRow(rowIdx, {
-      matched_tenant_id: t.id, matched_tenant_name: t.name,
-      matched_unit_label: t.unit_label, confidence: 'high', category: 'rent',
+      matched_tenant_id: t.id,
+      matched_tenant_name: t.name,
+      matched_unit_id: t.unit_id,
+      matched_unit_label: t.unit_label,
+      matched_property_address: t.property_address ?? null,
+      confidence: 'high',
+      category: 'rent',
     });
   }
 
@@ -202,7 +207,7 @@ export default function RentImportPage() {
 
   async function confirm() {
     setSaving(true);
-    const toSave = rows.filter(r => r.category === 'rent' && r.matched_unit_id);
+    const toSave = rows.filter(r => r.category === 'rent' && (r.matched_unit_id || r.matched_tenant_id));
     const res = await fetch('/api/v2/rent/import', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ rows: toSave }),
@@ -416,9 +421,9 @@ export default function RentImportPage() {
           </div>
 
           <div className="flex items-center gap-4">
-            <button onClick={confirm} disabled={saving || rentRows.filter(r => r.matched_unit_id).length === 0}
+            <button onClick={confirm} disabled={saving || rows.filter(r => r.category === 'rent' && (r.matched_unit_id || r.matched_tenant_id)).length === 0}
               className="rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
-              {saving ? 'Saving…' : `Save ${rentRows.filter(r => r.matched_unit_id).length} Rent Payments`}
+              {saving ? 'Saving…' : `Save ${rows.filter(r => r.category === 'rent' && (r.matched_unit_id || r.matched_tenant_id)).length} Rent Payments`}
             </button>
             <button onClick={() => { setRows([]); setError(''); }}
               className="rounded-lg border border-gray-300 px-6 py-2.5 text-sm hover:bg-gray-50 dark:border-gray-700">

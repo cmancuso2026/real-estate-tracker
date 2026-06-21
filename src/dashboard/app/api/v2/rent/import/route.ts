@@ -351,7 +351,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       preview,
-      tenants: tenants.map(t => ({ id: t.id, name: `${t.first_name} ${t.last_name}`, unit_label: t.unit_label })),
+      tenants: tenants.map(t => ({ id: t.id, name: `${t.first_name} ${t.last_name}`, unit_label: t.unit_label, unit_id: t.unit_id, property_address: t.property_address })),
     });
   }
 
@@ -363,8 +363,14 @@ export async function POST(req: NextRequest) {
   const saved: number[] = [];
   const batchId = `csv-${Date.now()}`;
 
-  for (const row of rows) {
-    if (row.category !== 'rent' || !row.matched_unit_id || !row.due_date) continue;
+  for (let row of rows) {
+    if (row.category !== 'rent' || !row.due_date) continue;
+    // If unit_id missing but tenant_id present, look up the unit
+    if (!row.matched_unit_id && row.matched_tenant_id) {
+      const tenantRows = await query<{ unit_id: number }>(`SELECT unit_id FROM tenants WHERE id = $1`, [row.matched_tenant_id]);
+      if (tenantRows[0]) row = { ...row, matched_unit_id: tenantRows[0].unit_id };
+    }
+    if (!row.matched_unit_id) continue;
 
     // Skip if already recorded for this unit+month
     const existing = await query<{ id: number }>(
