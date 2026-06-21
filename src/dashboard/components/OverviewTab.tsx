@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
-interface Unit { is_owner_unit: boolean;
+interface Unit { amount_due: number | null; amount_paid: number | null; is_late: boolean | null; is_owner_unit: boolean;
   id: number;
   unit_label: string;
   tenant_name: string | null;
@@ -153,7 +153,7 @@ export function OverviewTab({ id, units, onRefresh }: { id: string; units: Unit[
         <table className="w-full text-sm">
           <thead className="bg-gray-50 dark:bg-gray-900">
             <tr>
-              {['Unit', 'Tenant', 'Rent/mo', 'Lease Status', 'Lease Expiration', 'Days Until Exp.', 'Years in Unit', ''].map(h => (
+              {['Unit', 'Tenant', 'Rent/mo', 'This Month', 'Lease Status', 'Lease Expiration', 'Days Until Exp.', 'Years in Unit', ''].map(h => (
                 <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500">{h}</th>
               ))}
             </tr>
@@ -180,6 +180,14 @@ export function OverviewTab({ id, units, onRefresh }: { id: string; units: Unit[
                   }
                 </td>
                 <td className="px-4 py-3 tabular font-medium">{fmt$(u.rent_amount)}</td>
+                <td className="px-4 py-3">
+                  {u.is_owner_unit ? <span className="text-gray-400">—</span> : u.amount_paid != null
+                    ? <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${u.is_late ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}`}>{u.is_late ? 'Late' : 'Paid'} {fmt$(u.amount_paid)}</span>
+                    : u.amount_due != null
+                    ? <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-600">Unpaid</span>
+                    : <span className="text-gray-400 text-xs">No record</span>
+                  }
+                </td>
                 <td className="px-4 py-3">
                   <LeaseStatusBadge startDate={u.lease_start_date} endDate={u.lease_end_date} />
                 </td>

@@ -177,7 +177,7 @@ export default function PropertiesPage() {
                         </colgroup>
                         <thead>
                           <tr className="border-b border-gray-50 dark:border-gray-800">
-                            {['Unit', 'Tenant', 'Rent/mo', 'Lease Status', 'Expires', 'Days', 'Tenure'].map(h => (
+                            {['Unit', 'Tenant', 'Rent/mo', 'This Month', 'Lease Status', 'Expires', 'Days', 'Tenure'].map(h => (
                               <th key={h} className="px-5 py-2.5 text-left text-xs font-medium text-gray-400">{h}</th>
                             ))}
                           </tr>
@@ -199,6 +199,15 @@ export default function PropertiesPage() {
                                 </td>
                                 <td className="px-5 py-3">{u.is_owner_unit ? <span className="italic text-blue-500 dark:text-blue-400">Owner occupied</span> : u.tenant_name ?? <span className="italic text-gray-400">Vacant</span>}</td>
                                 <td className="px-5 py-3 tabular">{u.is_owner_unit ? <span className="text-gray-400">—</span> : fmt$(u.rent_amount)}</td>
+                                <td className="px-5 py-3">
+                                  {u.is_owner_unit ? <span className="text-gray-400">—</span>
+                                    : u.amount_paid != null
+                                    ? <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${u.is_late ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}`}>{u.is_late ? 'Late' : 'Paid'}</span>
+                                    : u.amount_due != null
+                                    ? <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-600">Unpaid</span>
+                                    : <span className="text-gray-400 text-xs">—</span>
+                                  }
+                                </td>
                                 <td className="px-5 py-3">{u.is_owner_unit ? <span className="text-gray-400">—</span> : <LeaseStatusBadge startDate={u.lease_start_date} endDate={u.lease_end_date} />}</td>
                                 <td className="px-5 py-3 text-gray-500 text-xs tabular">{u.is_owner_unit ? '—' : u.lease_end_date ?? '—'}</td>
                                 <td className="px-5 py-3 tabular">

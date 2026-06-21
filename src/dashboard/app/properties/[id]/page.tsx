@@ -9,7 +9,7 @@ type Tab = 'overview' | 'tenants' | 'rent' | 'leases' | 'work-orders' | 'escrow'
 
 interface Property { id: number; address: string; city: string; state: string; property_type: string; unit_count: number; }
 interface Unit { id: number; unit_label: string; tenant_name: string | null; tenant_id: number | null; rent_amount: number | null; lease_start_date: string | null; lease_end_date: string | null; first_lease_start_date: string | null; amount_due: number | null; amount_paid: number | null; is_late: boolean | null; is_owner_unit: boolean; }
-interface RentRow { id: number; unit_label: string; due_date: string; amount_due: number; paid_date: string | null; amount_paid: number | null; is_partial: boolean; is_late: boolean; late_fee_charged: number | null; late_fee_applicable: boolean; source: string; notes: string | null; }
+interface RentRow { id: number; unit_label: string; tenant_name: string | null; due_date: string; amount_due: number; paid_date: string | null; amount_paid: number | null; is_partial: boolean; is_late: boolean; late_fee_charged: number | null; late_fee_applicable: boolean; source: string; notes: string | null; }
 interface WorkOrder { id: number; vendor_name: string; vendor_trade: string; category: string; description: string; status: string; date_received: string; date_completed: string | null; quoted_cost: number | null; actual_cost: number | null; rating: number | null; unit_label: string | null; }
 interface Lease { id: number; unit_label: string; tenant_name: string; start_date: string; end_date: string; rent_amount: number; security_deposit: number | null; late_fee_amount: number | null; late_fee_grace_days: number | null; utilities_landlord: string | null; utilities_tenant: string | null; equipment_included: string | null; extracted_by_ai: boolean; }
 interface EscrowAccount { id: number; lender_name: string; loan_number: string | null; statement_id: number | null; statement_date: string | null; analysis_period_start: string | null; analysis_period_end: string | null; total_property_taxes: number | null; total_insurance: number | null; shortage_surplus_amount: number | null; new_monthly_escrow: number | null; }
@@ -250,6 +250,146 @@ function InsuranceForm({
         className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
         {saving ? 'Saving…' : 'Confirm & Save Policy'}
       </button>
+    </div>
+  );
+}
+
+
+// ── RENT TAB COMPONENT ──────────────────────────────────────────────────────
+function RentTab({ id, units, rent }: {
+  id: string;
+  units: Array<{ id: number; unit_label: string; is_owner_unit: boolean; rent_amount: number | null; lease_start_date: string | null; lease_end_date: string | null; tenant_name: string | null }>;
+  rent: Array<{ id: number; unit_label: string; due_date: string; amount_due: number; paid_date: string | null; amount_paid: number | null; is_partial: boolean; is_late: boolean; late_fee_charged: number | null; late_fee_applicable: boolean; source: string; notes: string | null }>;
+}) {
+  const [unitFilter, setUnitFilter] = useState<string>('all');
+  const thisMonth = new Date().toISOString().slice(0, 7);
+  const today = new Date().toISOString().slice(0, 10);
+  const rentalUnits = units.filter(u => !u.is_owner_unit);
+
+  // YTD stats per unit
+  const ytdByUnit: Record<string, { paid: number; onTime: number; late: number; total: number }> = {};
+  for (const r of rent) {
+    if (!ytdByUnit[r.unit_label]) ytdByUnit[r.unit_label] = { paid: 0, onTime: 0, late: 0, total: 0 };
+    const u = ytdByUnit[r.unit_label]!;
+    u.total++;
+    if (r.amount_paid) { u.paid += r.amount_paid; if (r.is_late) u.late++; else u.onTime++; }
+  }
+
+  // Outstanding this month
+  const thisMonthPaid = new Set(rent.filter(r => r.due_date.startsWith(thisMonth)).map(r => r.unit_label));
+  const outstandingUnits = rentalUnits.filter(u =>
+    u.rent_amount && u.lease_start_date && u.lease_end_date &&
+    u.lease_start_date <= today && u.lease_end_date >= today &&
+    !thisMonthPaid.has(u.unit_label)
+  );
+  const totalOutstanding = outstandingUnits.reduce((s, u) => s + (u.rent_amount ?? 0), 0);
+  const totalYTD = Object.values(ytdByUnit).reduce((s, u) => s + u.paid, 0);
+  const totalOnTime = Object.values(ytdByUnit).reduce((s, u) => s + u.onTime, 0);
+  const totalPayments = Object.values(ytdByUnit).reduce((s, u) => s + u.total, 0);
+
+  const filtered = unitFilter === 'all' ? rent : rent.filter(r => r.unit_label === unitFilter);
+
+  function exportCsv() {
+    const headers = ['Unit','Due Date','Expected','Paid','Status','Late Fee','Source'];
+    const rows = rent.map(r => [r.unit_label, r.due_date, r.amount_due, r.amount_paid ?? '', r.amount_paid ? (r.is_late ? 'Late' : 'Paid') : 'Unpaid', r.late_fee_charged ?? '', r.source]);
+    const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
+    const a = document.createElement('a');
+    a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+    a.download = `rent-collection-${thisMonth}.csv`;
+    a.click();
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="font-semibold text-gray-700 dark:text-gray-300">Rent Collection</h2>
+        <div className="flex gap-2">
+          <Link href={`/properties/${id}/rent/new`} className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700">+ Add Payment</Link>
+          <Link href="/rent" className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">Import CSV</Link>
+          <button onClick={exportCsv} className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">Export CSV</button>
+        </div>
+      </div>
+
+      {/* Summary cards */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {rentalUnits.map(u => {
+          const stats = ytdByUnit[u.unit_label];
+          const pct = stats && stats.total > 0 ? Math.round((stats.onTime / stats.total) * 100) : null;
+          const thisMonthRecord = rent.find(r => r.unit_label === u.unit_label && r.due_date.startsWith(thisMonth));
+          const isPaid = thisMonthRecord?.amount_paid != null;
+          return (
+            <div key={u.id} className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-xs font-medium text-gray-500">Unit {u.unit_label} YTD</p>
+                {thisMonthRecord && (
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${isPaid ? (thisMonthRecord.is_late ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700') : 'bg-red-100 text-red-600'}`}>
+                    {isPaid ? (thisMonthRecord.is_late ? 'Late' : 'Paid') : 'Unpaid'}
+                  </span>
+                )}
+              </div>
+              <p className="text-xl font-bold tabular">{stats ? ('$' + stats.paid.toLocaleString()) : '—'}</p>
+              {pct !== null && <p className="text-xs text-gray-400">{pct}% on time · {stats?.late ?? 0} late</p>}
+            </div>
+          );
+        })}
+        <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+          <p className="text-xs font-medium text-gray-500">Total YTD</p>
+          <p className="text-xl font-bold tabular text-green-600">{'$' + totalYTD.toLocaleString()}</p>
+          {totalPayments > 0 && <p className="text-xs text-gray-400">{Math.round((totalOnTime / totalPayments) * 100)}% on time</p>}
+        </div>
+        <div className={`rounded-xl border p-4 ${totalOutstanding > 0 ? 'border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/20' : 'border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/20'}`}>
+          <p className={`text-xs font-medium ${totalOutstanding > 0 ? 'text-red-500' : 'text-green-600'}`}>Outstanding {thisMonth}</p>
+          <p className={`text-xl font-bold tabular ${totalOutstanding > 0 ? 'text-red-600' : 'text-green-600'}`}>{'$' + totalOutstanding.toLocaleString()}</p>
+          <p className="text-xs text-gray-400">{outstandingUnits.length > 0 ? outstandingUnits.map(u => `Unit ${u.unit_label}`).join(', ') : 'All units paid'}</p>
+        </div>
+      </div>
+
+      {/* Unit slicers */}
+      <div className="flex flex-wrap gap-2">
+        <button onClick={() => setUnitFilter('all')} className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${unitFilter === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400'}`}>All Units</button>
+        {rentalUnits.map(u => (
+          <button key={u.id} onClick={() => setUnitFilter(u.unit_label)} className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${unitFilter === u.unit_label ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400'}`}>
+            Unit {u.unit_label}
+          </button>
+        ))}
+      </div>
+
+      {/* Table */}
+      <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 dark:bg-gray-900">
+            <tr>{['Unit','Due Date','Expected','Paid','Status','Late Fee','Source'].map(h => <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500">{h}</th>)}</tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+            {filtered.length === 0
+              ? <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">No rent records yet</td></tr>
+              : filtered.map(r => (
+                <tr key={r.id}>
+                  <td className="px-4 py-3 font-medium">{r.unit_label}</td>
+                  <td className="px-4 py-3 tabular">{r.due_date}</td>
+                  <td className="px-4 py-3 tabular">${r.amount_due.toLocaleString()}</td>
+                  <td className="px-4 py-3 tabular">{r.amount_paid != null ? '$' + r.amount_paid.toLocaleString() : '—'}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-col gap-1">
+                      {!r.amount_paid
+                        ? <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-600">Unpaid</span>
+                        : r.is_partial
+                        ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">Partial</span>
+                        : r.is_late
+                        ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">Late</span>
+                        : <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">Paid</span>
+                      }
+                      {r.late_fee_applicable && !r.late_fee_charged && <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs text-red-500">Fee not charged</span>}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 tabular">{r.late_fee_charged ? '$' + r.late_fee_charged.toLocaleString() : '—'}</td>
+                  <td className="px-4 py-3 text-gray-400 text-xs">{r.source}</td>
+                </tr>
+              ))
+            }
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -604,38 +744,9 @@ export default function PropertyDetailPage() {
 
       {/* ── RENT ── */}
       {tab==='rent' && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="font-semibold text-gray-700 dark:text-gray-300">Rent Collection</h2>
-            <div className="flex gap-2">
-              <label className="cursor-pointer rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">
-                Import BofA CSV
-                <input type="file" accept=".csv" className="hidden" onChange={async e=>{const file=e.target.files?.[0];if(!file)return;const form=new FormData();form.append('file',file);const res=await fetch('/api/v2/rent',{method:'PUT',body:form});const data=await res.json();alert(`Found ${data.count} credit transactions.`);}} />
-              </label>
-              <Link href={`/properties/${id}/rent/new`} className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700">+ Add Payment</Link>
-              <Link href="/rent" className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">Import CSV</Link>
-            </div>
-          </div>
-          <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 dark:bg-gray-900"><tr>{['Unit','Due Date','Expected','Paid','Status','Late Fee','Source'].map(h=><th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500">{h}</th>)}</tr></thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {rent.length===0?<tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">No rent records yet</td></tr>:rent.map(r=>(
-                  <tr key={r.id}>
-                    <td className="px-4 py-3 font-medium">{r.unit_label}</td>
-                    <td className="px-4 py-3 tabular">{r.due_date}</td>
-                    <td className="px-4 py-3 tabular">{fmt$(r.amount_due)}</td>
-                    <td className="px-4 py-3 tabular">{fmt$(r.amount_paid)}</td>
-                    <td className="px-4 py-3">{!r.amount_paid?<span className="text-red-600 font-medium">Unpaid</span>:r.is_partial?<span className="text-amber-600 font-medium">Partial</span>:r.is_late?<span className="text-amber-600 font-medium">Late</span>:<span className="text-green-600 font-medium">Paid</span>}</td>
-                    <td className="px-4 py-3 tabular">{fmt$(r.late_fee_charged)}</td>
-                    <td className="px-4 py-3 text-gray-400 text-xs">{r.source}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <RentTab id={id} units={units} rent={rent} />
       )}
+
 
       {/* ── LEASES ── */}
       {tab==='leases' && (
