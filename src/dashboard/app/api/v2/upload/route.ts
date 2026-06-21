@@ -56,22 +56,39 @@ For category choose from: plumbing | hvac | electrical | roofing | appliance | g
   },
 
   escrow: {
-    system: `You are a mortgage document parser specializing in annual escrow analysis statements.
-Always respond with valid JSON only. Dates must be YYYY-MM-DD. Amounts must be integers.
-Shortage is negative, surplus is positive for shortage_surplus_amount.`,
+    system: `You are a mortgage document parser specializing in annual escrow analysis statements from US lenders (Wells Fargo, Chase, Rocket Mortgage, etc).
+Always respond with valid JSON only. No markdown, no explanation.
+Dates must be YYYY-MM-DD. Dollar amounts must be integers (whole dollars, no cents).
+Shortage is NEGATIVE, surplus is POSITIVE for shortage_surplus_amount.
+
+Key fields to find:
+- statement_date: the date the statement was issued or mailed
+- analysis_period_start / analysis_period_end: the 12-month period being analyzed (e.g. "Escrow Analysis Period: 02/01/2025 - 01/31/2026")
+- projected_requirement: the total amount the lender projected they would need to disburse for the year (taxes + insurance combined)
+- actual_disbursements: what was actually paid out for taxes and insurance during the period
+- shortage_surplus_amount: the shortage or surplus amount stated on the document (shortage is negative). This is typically a small number like -$930 or +$200, NOT millions of dollars.
+- new_monthly_escrow: the new escrow PORTION ONLY of the monthly payment going forward (not the total mortgage payment)
+- tax_disbursements: each property tax payment made, with date and amount
+- insurance_disbursements: each insurance premium payment made, with date and amount
+
+IMPORTANT: shortage_surplus_amount is typically between -$2,000 and +$2,000. new_monthly_escrow is typically between $100 and $3,000/month. If you see numbers outside these ranges, you are reading the wrong fields.`,
     user: `Extract and return this JSON from the escrow analysis statement:
 {
   "statement_date": "YYYY-MM-DD or null",
   "analysis_period_start": "YYYY-MM-DD or null",
   "analysis_period_end": "YYYY-MM-DD or null",
-  "projected_requirement": integer_or_null,
-  "actual_disbursements": integer_or_null,
-  "shortage_surplus_amount": integer_or_null,
-  "new_monthly_escrow": integer_or_null,
-  "tax_disbursements": [{"date":"YYYY-MM-DD","payee":"string","amount":integer}],
-  "insurance_disbursements": [{"date":"YYYY-MM-DD","payee":"string","amount":integer}],
-  "confidence_notes": "string or null"
-}`,
+  "projected_requirement": integer_total_lender_projected_for_year_or_null,
+  "actual_disbursements": integer_total_actually_paid_out_or_null,
+  "shortage_surplus_amount": integer_negative_if_shortage_positive_if_surplus_or_null,
+  "new_monthly_escrow": null,
+  "options": [
+    {"label": "Option 1 - Pay shortage over 12 months", "new_monthly_escrow": integer_escrow_portion_only, "total_payment": integer_total_mortgage_payment},
+    {"label": "Option 2 - Pay shortage in full", "new_monthly_escrow": integer_escrow_portion_only, "total_payment": integer_total_mortgage_payment}
+  ],
+  "tax_disbursements": [{"date":"YYYY-MM-DD","payee":"county or tax authority name","amount":integer}],
+  "insurance_disbursements": [{"date":"YYYY-MM-DD","payee":"insurance carrier name","amount":integer}],
+  "confidence_notes": "describe anything you were uncertain about, or null"
+}`,  
   },
 
   insurance: {

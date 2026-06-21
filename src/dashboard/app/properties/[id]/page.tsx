@@ -12,7 +12,7 @@ interface Unit { id: number; unit_label: string; tenant_name: string | null; ten
 interface RentRow { id: number; unit_label: string; due_date: string; amount_due: number; paid_date: string | null; amount_paid: number | null; is_partial: boolean; is_late: boolean; late_fee_charged: number | null; source: string; }
 interface WorkOrder { id: number; vendor_name: string; vendor_trade: string; category: string; description: string; status: string; date_received: string; date_completed: string | null; quoted_cost: number | null; actual_cost: number | null; rating: number | null; unit_label: string | null; }
 interface Lease { id: number; unit_label: string; tenant_name: string; start_date: string; end_date: string; rent_amount: number; security_deposit: number | null; late_fee_amount: number | null; late_fee_grace_days: number | null; utilities_landlord: string | null; utilities_tenant: string | null; equipment_included: string | null; extracted_by_ai: boolean; }
-interface EscrowAccount { id: number; lender_name: string; loan_number: string | null; statement_date: string | null; projected_requirement: number | null; actual_disbursements: number | null; shortage_surplus_amount: number | null; new_monthly_escrow: number | null; }
+interface EscrowAccount { id: number; lender_name: string; loan_number: string | null; statement_date: string | null; analysis_period_start: string | null; analysis_period_end: string | null; projected_requirement: number | null; actual_disbursements: number | null; shortage_surplus_amount: number | null; new_monthly_escrow: number | null; }
 interface InsurancePolicy { id: number; carrier: string; policy_type: string | null; effective_date: string; expiration_date: string; annual_premium: number | null; deductible: number | null; coverage_notes: string | null; extracted_by_ai: boolean; }
 interface ExistingTenant { id: number; first_name: string; last_name: string; unit_id: number; unit_label: string; phone: string | null; email: string | null; is_active: boolean; notes: string | null; }
 
@@ -23,7 +23,8 @@ interface LeaseExtracted {
   utilities_landlord: string[]; utilities_tenant: string[]; equipment_included: string[];
   confidence_notes: string | null;
 }
-interface EscrowExtracted { statement_date: string | null; analysis_period_start: string | null; analysis_period_end: string | null; projected_requirement: number | null; actual_disbursements: number | null; shortage_surplus_amount: number | null; new_monthly_escrow: number | null; confidence_notes: string | null; }
+interface EscrowOption { label: string; new_monthly_escrow: number | null; total_payment: number | null; }
+interface EscrowExtracted { statement_date: string | null; analysis_period_start: string | null; analysis_period_end: string | null; projected_requirement: number | null; actual_disbursements: number | null; shortage_surplus_amount: number | null; new_monthly_escrow: number | null; options?: EscrowOption[]; confidence_notes: string | null; }
 interface InsuranceExtracted { carrier: string | null; policy_number: string | null; policy_type: string | null; effective_date: string | null; expiration_date: string | null; renewal_period_days: number | null; annual_premium: number | null; deductible: number | null; coverage_limit: number | null; coverage_notes: string | null; confidence_notes: string | null; }
 interface WorkOrderExtracted { vendor_name: string | null; category: string | null; description: string | null; date_received: string | null; quoted_cost: number | null; actual_cost: number | null; confidence_notes: string | null; }
 
@@ -195,6 +196,8 @@ export default function PropertyDetailPage() {
   const [escrowExtracted, setEscrowExtracted] = useState<EscrowExtracted | null>(null);
   const [escrowLender, setEscrowLender] = useState('');
   const [escrowSaving, setEscrowSaving] = useState(false);
+  const [deletingEscrowId, setDeletingEscrowId] = useState<number|null>(null);
+  const [deletingEscrowId, setDeletingEscrowId] = useState<number|null>(null);
 
   // Insurance state
   const [insuranceExtracted, setInsuranceExtracted] = useState<InsuranceExtracted | null>(null);
@@ -360,6 +363,22 @@ export default function PropertyDetailPage() {
       body: JSON.stringify({ ...escrowExtracted, escrow_account_id: acc.id, extracted_by_ai: true }),
     });
     setEscrowExtracted(null); setEscrowSaving(false); loadTab('escrow');
+  }
+
+  async function deleteEscrow(escrowId: number) {
+    if (!confirm('Delete this escrow account and all its statements?')) return;
+    setDeletingEscrowId(escrowId);
+    await fetch(`/api/v2/escrow/${escrowId}`, { method: 'DELETE' });
+    setDeletingEscrowId(null);
+    loadTab('escrow');
+  }
+
+  async function deleteEscrow(escrowId: number) {
+    if (!confirm('Delete this escrow account and all its statements?')) return;
+    setDeletingEscrowId(escrowId);
+    await fetch(`/api/v2/escrow/${escrowId}`, { method: 'DELETE' });
+    setDeletingEscrowId(null);
+    loadTab('escrow');
   }
 
   async function confirmInsurance() {
@@ -713,23 +732,50 @@ export default function PropertyDetailPage() {
             </label>
           </div>
           {escrowExtracted&&(
-            <div className="rounded-xl border-2 border-blue-300 bg-blue-50 p-5 dark:border-blue-700 dark:bg-blue-950/20">
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className="font-semibold text-blue-800 dark:text-blue-300">✦ AI Extracted — Review & Confirm</h3>
+            <div className="rounded-xl border-2 border-blue-300 bg-blue-50 p-5 space-y-4 dark:border-blue-700 dark:bg-blue-950/20">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-blue-800 dark:text-blue-300">✦ AI Extracted — Review & Edit Before Saving</h3>
                 <button onClick={()=>setEscrowExtracted(null)} className="text-xs text-gray-400 hover:text-gray-600">Discard</button>
               </div>
-              {escrowExtracted.confidence_notes&&<p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">⚠ {escrowExtracted.confidence_notes}</p>}
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                <Field label="Statement Date" value={escrowExtracted.statement_date} />
-                <Field label="Period Start" value={escrowExtracted.analysis_period_start} />
-                <Field label="Period End" value={escrowExtracted.analysis_period_end} />
-                <Field label="New Monthly Escrow" value={escrowExtracted.new_monthly_escrow?fmt$(escrowExtracted.new_monthly_escrow):null} />
-                <Field label="Projected" value={escrowExtracted.projected_requirement?fmt$(escrowExtracted.projected_requirement):null} />
-                <Field label="Actual Disbursed" value={escrowExtracted.actual_disbursements?fmt$(escrowExtracted.actual_disbursements):null} />
-                <Field label="Shortage/Surplus" value={escrowExtracted.shortage_surplus_amount!=null?`${escrowExtracted.shortage_surplus_amount<0?'-':'+'}${fmt$(escrowExtracted.shortage_surplus_amount)}`:null} />
+              {escrowExtracted.confidence_notes&&<p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">⚠ {escrowExtracted.confidence_notes}</p>}
+
+              {/* Payment option selector */}
+              {escrowExtracted.options && escrowExtracted.options.length > 0 && (
+                <div>
+                  <p className="mb-2 text-xs font-medium text-gray-600 dark:text-gray-400">Which option did you choose?</p>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {escrowExtracted.options.map((opt, i) => (
+                      <button
+                        key={i}
+                        onClick={()=>setEscrowExtracted(prev=>prev?{...prev, new_monthly_escrow: opt.new_monthly_escrow}:prev)}
+                        className={`rounded-lg border-2 p-3 text-left transition-colors ${escrowExtracted.new_monthly_escrow===opt.new_monthly_escrow?'border-blue-500 bg-blue-100 dark:bg-blue-900/30':'border-gray-200 bg-white hover:border-blue-300 dark:border-gray-700 dark:bg-gray-800'}`}
+                      >
+                        <p className="text-xs font-semibold text-gray-700 dark:text-gray-300">{opt.label}</p>
+                        <p className="mt-1 text-sm">New escrow: <span className="font-bold tabular">{fmt$(opt.new_monthly_escrow)}/mo</span></p>
+                        {opt.total_payment && <p className="text-xs text-gray-500">Total payment: {fmt$(opt.total_payment)}/mo</p>}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Editable fields */}
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                <Input label="Statement Date" type="date" value={escrowExtracted.statement_date??''} onChange={v=>setEscrowExtracted(p=>p?{...p,statement_date:v}:p)} />
+                <Input label="Period Start" type="date" value={escrowExtracted.analysis_period_start??''} onChange={v=>setEscrowExtracted(p=>p?{...p,analysis_period_start:v}:p)} />
+                <Input label="Period End" type="date" value={escrowExtracted.analysis_period_end??''} onChange={v=>setEscrowExtracted(p=>p?{...p,analysis_period_end:v}:p)} />
+                <Input label="Projected ($)" type="number" value={escrowExtracted.projected_requirement?.toString()??''} onChange={v=>setEscrowExtracted(p=>p?{...p,projected_requirement:v?parseInt(v):null}:p)} placeholder="0" />
+                <Input label="Actual Disbursed ($)" type="number" value={escrowExtracted.actual_disbursements?.toString()??''} onChange={v=>setEscrowExtracted(p=>p?{...p,actual_disbursements:v?parseInt(v):null}:p)} placeholder="0" />
+                <Input label="Shortage (−) / Surplus (+) ($)" type="number" value={escrowExtracted.shortage_surplus_amount?.toString()??''} onChange={v=>setEscrowExtracted(p=>p?{...p,shortage_surplus_amount:v?parseInt(v):null}:p)} placeholder="-930" />
+                <Input label="New Monthly Escrow ($)" type="number" value={escrowExtracted.new_monthly_escrow?.toString()??''} onChange={v=>setEscrowExtracted(p=>p?{...p,new_monthly_escrow:v?parseInt(v):null}:p)} placeholder="0" />
+                <div className="sm:col-span-2">
+                  <Input label="Lender Name *" value={escrowLender} onChange={setEscrowLender} placeholder="e.g. Wells Fargo" />
+                </div>
               </div>
-              <div className="mt-4"><Input label="Lender Name *" value={escrowLender} onChange={setEscrowLender} placeholder="e.g. Rocket Mortgage" /></div>
-              <button onClick={confirmEscrow} disabled={escrowSaving||!escrowLender} className="mt-3 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">{escrowSaving?'Saving…':'Confirm & Save'}</button>
+
+              <button onClick={confirmEscrow} disabled={escrowSaving||!escrowLender} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
+                {escrowSaving?'Saving…':'Confirm & Save'}
+              </button>
             </div>
           )}
           <div className="space-y-3">
@@ -737,13 +783,21 @@ export default function PropertyDetailPage() {
               <div key={e.id} className="rounded-xl border border-gray-200 p-5 dark:border-gray-800">
                 <div className="flex items-start justify-between">
                   <div><p className="font-medium">{e.lender_name}</p>{e.loan_number&&<p className="text-sm text-gray-500">Loan #{e.loan_number}</p>}</div>
-                  {e.new_monthly_escrow&&<div className="text-right"><p className="text-xs text-gray-500">New monthly escrow</p><p className="font-semibold tabular">{fmt$(e.new_monthly_escrow)}</p></div>}
+                  <div className="flex items-center gap-4">
+                    {e.new_monthly_escrow&&<div className="text-right"><p className="text-xs text-gray-500">New monthly escrow</p><p className="font-semibold tabular">{fmt$(e.new_monthly_escrow)}</p></div>}
+                    <button onClick={()=>deleteEscrow(e.id)} disabled={deletingEscrowId===e.id} className="text-xs text-red-400 hover:text-red-600 disabled:opacity-50">{deletingEscrowId===e.id?'Deleting…':'Delete'}</button>
+                  </div>
                 </div>
                 {e.statement_date&&(
-                  <div className="mt-4 grid grid-cols-3 gap-4 rounded-lg bg-gray-50 p-4 text-sm dark:bg-gray-900">
-                    <div><p className="text-xs text-gray-500">Projected</p><p className="font-medium tabular">{fmt$(e.projected_requirement)}</p></div>
-                    <div><p className="text-xs text-gray-500">Actual</p><p className="font-medium tabular">{fmt$(e.actual_disbursements)}</p></div>
-                    <div><p className="text-xs text-gray-500">Shortage/Surplus</p><p className={`font-medium tabular ${(e.shortage_surplus_amount??0)<0?'text-red-600':'text-green-600'}`}>{e.shortage_surplus_amount!=null?`${e.shortage_surplus_amount<0?'-':'+'}${fmt$(e.shortage_surplus_amount)}`:'—'}</p></div>
+                  <div className="mt-4 space-y-3">
+                    {(e.analysis_period_start||e.analysis_period_end) && (
+                      <p className="text-xs text-gray-400">Analysis period: {e.analysis_period_start} → {e.analysis_period_end}</p>
+                    )}
+                    <div className="grid grid-cols-3 gap-4 rounded-lg bg-gray-50 p-4 text-sm dark:bg-gray-900">
+                      <div><p className="text-xs text-gray-500">Projected</p><p className="font-medium tabular">{fmt$(e.projected_requirement)}</p></div>
+                      <div><p className="text-xs text-gray-500">Actual</p><p className="font-medium tabular">{fmt$(e.actual_disbursements)}</p></div>
+                      <div><p className="text-xs text-gray-500">Shortage/Surplus</p><p className={`font-medium tabular ${(e.shortage_surplus_amount??0)<0?'text-red-600':'text-green-600'}`}>{e.shortage_surplus_amount!=null?`${e.shortage_surplus_amount<0?'-':'+'}${fmt$(e.shortage_surplus_amount)}`:'—'}</p></div>
+                    </div>
                   </div>
                 )}
               </div>
