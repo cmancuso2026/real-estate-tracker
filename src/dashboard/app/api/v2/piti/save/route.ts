@@ -1,23 +1,18 @@
 /**
- * POST /api/v2/piti/[property_id]
+ * POST /api/v2/piti/save
  * Saves extracted PITI data to the database after user review.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getPool } from '@/db/index.js';
+import { query } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ property_id: string }> },
-) {
-  const { property_id } = await params;
-  const pool = getPool();
-
+export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const {
+      property_id,
       statement_date,
       principal,
       interest,
@@ -39,7 +34,7 @@ export async function POST(
     const totalPayment = principal + interest + property_taxes + escrow_insurance;
 
     // Insert with UNIQUE (property_id, statement_year_month) conflict handling
-    const result = await pool.query(
+    const result = await query(
       `INSERT INTO piti_history (
         property_id,
         statement_date,
@@ -81,7 +76,7 @@ export async function POST(
 
     return NextResponse.json({
       success: true,
-      piti: result.rows[0],
+      piti: result[0],
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

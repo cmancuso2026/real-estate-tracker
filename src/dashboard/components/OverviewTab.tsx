@@ -28,6 +28,8 @@ interface Metrics {
   monthly_average_piti: number;
   monthly_net_cash_flow: number;
   months_analyzed: number;
+  rental_units: number;
+  total_units: number;
 }
 
 interface InsurancePolicy {
