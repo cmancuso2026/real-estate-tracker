@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 
 interface Vendor {
   id: number; name: string; trade: string; phone: string | null; email: string | null;
@@ -10,6 +10,14 @@ interface Vendor {
   project_count: number | null;
   is_active: boolean;
 }
+
+interface VendorQuote {
+  id: number; work_order_id: number; quoted_cost: number | null; final_cost: number | null;
+  is_selected: boolean; notes: string | null;
+  project_name: string | null; description: string | null; status: string | null;
+  property_address: string | null;
+}
+interface WorkOrderOption { id: number; project_name: string | null; description: string | null; property_address: string | null; }
 
 interface SpendVendor { vendor_id: number; vendor_name: string; trade: string; total_spend: number; last_90_days_spend: number; last_active_date: string | null; }
 interface SpendByPropertyUnit { unit_id: number; unit_label: string; total_spend: number; }
@@ -40,6 +48,7 @@ export default function VendorsPage() {
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [addMode, setAddMode] = useState<AddMode>(null);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
 
   // Manual add form
   const [form, setForm] = useState({ name: '', trade: 'general', phone: '', email: '', website: '' });
@@ -206,24 +215,43 @@ export default function VendorsPage() {
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
               {vendors.map(v => (
-                <tr key={v.id} className="hover:bg-gray-50 dark:hover:bg-gray-900/50">
-                  <td className="px-5 py-3 font-medium">{v.name}</td>
-                  <td className="px-5 py-3 text-gray-500">{tradeLabel(v.trade)}</td>
-                  <td className="px-5 py-3">
-                    {v.google_rating
-                      ? <span><Stars rating={v.google_rating} /> <span className="text-xs text-gray-400">({v.google_review_count})</span></span>
-                      : <span className="text-xs text-gray-400">Not found</span>
-                    }
-                  </td>
-                  <td className="px-5 py-3"><Stars rating={v.manual_rating} /></td>
-                  <td className="px-5 py-3 tabular">{v.project_count ?? 0}</td>
-                  <td className="px-5 py-3 tabular">{v.completed_jobs}/{v.total_jobs}</td>
-                  <td className="px-5 py-3 tabular">{fmt$(v.total_spend)}</td>
-                  <td className="px-5 py-3 text-gray-400 text-xs">
-                    {v.phone && <p>{v.phone}</p>}
-                    {v.email && <p>{v.email}</p>}
-                  </td>
-                </tr>
+                <Fragment key={v.id}>
+                  <tr
+                    onClick={() => setExpandedId(id => (id === v.id ? null : v.id))}
+                    className={`cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-900/50 ${expandedId === v.id ? 'bg-gray-50 dark:bg-gray-900/50' : ''}`}
+                  >
+                    <td className="px-5 py-3 font-medium">
+                      <span className="mr-2 inline-block text-gray-400">{expandedId === v.id ? '▾' : '▸'}</span>
+                      {v.name}
+                    </td>
+                    <td className="px-5 py-3 text-gray-500">{tradeLabel(v.trade)}</td>
+                    <td className="px-5 py-3">
+                      {v.google_rating
+                        ? <span><Stars rating={v.google_rating} /> <span className="text-xs text-gray-400">({v.google_review_count})</span></span>
+                        : <span className="text-xs text-gray-400">Not found</span>
+                      }
+                    </td>
+                    <td className="px-5 py-3"><Stars rating={v.manual_rating} /></td>
+                    <td className="px-5 py-3 tabular">{v.project_count ?? 0}</td>
+                    <td className="px-5 py-3 tabular">{v.completed_jobs}/{v.total_jobs}</td>
+                    <td className="px-5 py-3 tabular">{fmt$(v.total_spend)}</td>
+                    <td className="px-5 py-3 text-gray-400 text-xs">
+                      {v.phone && <p>{v.phone}</p>}
+                      {v.email && <p>{v.email}</p>}
+                    </td>
+                  </tr>
+                  {expandedId === v.id && (
+                    <tr className="bg-gray-50 dark:bg-gray-900/30">
+                      <td colSpan={8} className="px-5 py-4">
+                        <VendorDetail
+                          vendor={v}
+                          onSaved={() => load(search)}
+                          onDeleted={() => { setExpandedId(null); load(search); }}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               ))}
             </tbody>
           </table>
@@ -356,6 +384,214 @@ function VendorImportPanel({ onCancel, onDone }: { onCancel: () => void; onDone:
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Expandable vendor detail: edit fields, manage projects, delete ────────────────
+function VendorDetail({ vendor, onSaved, onDeleted }: { vendor: Vendor; onSaved: () => void; onDeleted: () => void }) {
+  const [form, setForm] = useState({
+    name: vendor.name ?? '', trade: vendor.trade ?? 'general',
+    phone: vendor.phone ?? '', email: vendor.email ?? '',
+    manual_notes: vendor.manual_notes ?? '', manual_rating: vendor.manual_rating ?? 0,
+  });
+  const [quotes, setQuotes] = useState<VendorQuote[]>([]);
+  const [loadingQuotes, setLoadingQuotes] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  // Assign-to-project UI
+  const [assigning, setAssigning] = useState(false);
+  const [workOrders, setWorkOrders] = useState<WorkOrderOption[]>([]);
+  const [assignWoId, setAssignWoId] = useState('');
+  const [assignCost, setAssignCost] = useState('');
+  const [assignSaving, setAssignSaving] = useState(false);
+
+  const loadDetail = async () => {
+    setLoadingQuotes(true);
+    try {
+      const res = await fetch(`/api/v2/vendors/${vendor.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        setQuotes(Array.isArray(data.quotes) ? data.quotes : []);
+      }
+    } catch (e) {
+      console.error('Failed to load vendor detail:', e);
+    } finally {
+      setLoadingQuotes(false);
+    }
+  };
+  useEffect(() => { loadDetail(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [vendor.id]);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await fetch(`/api/v2/vendors/${vendor.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...form, manual_rating: form.manual_rating || null }),
+      });
+      onSaved();
+    } finally { setSaving(false); }
+  };
+
+  const remove = async () => {
+    if (!confirm(`Delete vendor "${vendor.name}"? This cannot be undone.`)) return;
+    setDeleting(true);
+    try {
+      await fetch(`/api/v2/vendors/${vendor.id}`, { method: 'DELETE' });
+      onDeleted();
+    } finally { setDeleting(false); }
+  };
+
+  const openAssign = async () => {
+    setAssigning(true);
+    try {
+      const res = await fetch('/api/v2/work-orders');
+      if (res.ok) {
+        const data = await res.json();
+        setWorkOrders(Array.isArray(data) ? data : []);
+      }
+    } catch (e) { console.error('Failed to load projects:', e); }
+  };
+
+  const submitAssign = async () => {
+    if (!assignWoId) return;
+    setAssignSaving(true);
+    try {
+      await fetch('/api/v2/project-quotes', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          work_order_id: Number(assignWoId), vendor_id: vendor.id,
+          quoted_cost: assignCost ? parseFloat(assignCost) : null,
+        }),
+      });
+      setAssigning(false); setAssignWoId(''); setAssignCost('');
+      loadDetail();
+      onSaved();
+    } finally { setAssignSaving(false); }
+  };
+
+  const woLabel = (w: WorkOrderOption) =>
+    `${w.project_name || w.description || `Project #${w.id}`}${w.property_address ? ` — ${w.property_address}` : ''}`;
+  const quoteLabel = (q: VendorQuote) => q.project_name || q.description || `Project #${q.work_order_id}`;
+
+  return (
+    <div className="grid gap-6 lg:grid-cols-2">
+      {/* LEFT: editable fields */}
+      <div>
+        <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">Vendor Details</h4>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1 block text-xs text-gray-500">Name</label>
+            <input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800" />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-gray-500">Trade</label>
+            <select value={form.trade} onChange={e => setForm(p => ({ ...p, trade: e.target.value }))}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800">
+              {TRADES.map(t => <option key={t} value={t}>{tradeLabel(t)}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-gray-500">Phone</label>
+            <input value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800" />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-gray-500">Email</label>
+            <input value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800" />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-gray-500">My Rating</label>
+            <select value={form.manual_rating} onChange={e => setForm(p => ({ ...p, manual_rating: Number(e.target.value) }))}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800">
+              <option value={0}>—</option>
+              {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{'★'.repeat(n)}</option>)}
+            </select>
+          </div>
+        </div>
+        <div className="mt-3">
+          <label className="mb-1 block text-xs text-gray-500">Notes</label>
+          <textarea value={form.manual_notes} onChange={e => setForm(p => ({ ...p, manual_notes: e.target.value }))} rows={2}
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800" />
+        </div>
+        <div className="mt-4 flex gap-2">
+          <button onClick={save} disabled={saving}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+          <button onClick={remove} disabled={deleting}
+            className="rounded-lg border border-red-300 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 dark:border-red-800 dark:hover:bg-red-950/30">
+            {deleting ? 'Deleting…' : 'Delete'}
+          </button>
+        </div>
+      </div>
+
+      {/* RIGHT: projects */}
+      <div>
+        <div className="mb-3 flex items-center justify-between">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Projects</h4>
+          {!assigning && (
+            <button onClick={openAssign} className="text-xs font-medium text-blue-600 hover:text-blue-700">+ Assign to Project</button>
+          )}
+        </div>
+
+        {assigning && (
+          <div className="mb-3 rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-800 dark:bg-blue-950/20">
+            <label className="mb-1 block text-xs text-gray-500">Project</label>
+            <select value={assignWoId} onChange={e => setAssignWoId(e.target.value)}
+              className="mb-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800">
+              <option value="">Select a project…</option>
+              {workOrders.map(w => <option key={w.id} value={w.id}>{woLabel(w)}</option>)}
+            </select>
+            <label className="mb-1 block text-xs text-gray-500">Quoted Cost ($)</label>
+            <input type="number" value={assignCost} onChange={e => setAssignCost(e.target.value)}
+              className="mb-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800" />
+            <div className="flex gap-2">
+              <button onClick={submitAssign} disabled={assignSaving || !assignWoId}
+                className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50">
+                {assignSaving ? 'Saving…' : 'Assign'}
+              </button>
+              <button onClick={() => { setAssigning(false); setAssignWoId(''); setAssignCost(''); }}
+                className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">Cancel</button>
+            </div>
+          </div>
+        )}
+
+        {loadingQuotes ? (
+          <p className="text-sm text-gray-400">Loading projects…</p>
+        ) : quotes.length === 0 ? (
+          <p className="text-sm text-gray-400">No projects assigned yet.</p>
+        ) : (
+          <div className="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
+            <table className="w-full text-xs">
+              <thead className="bg-gray-100 dark:bg-gray-800">
+                <tr>
+                  {['Project', 'Quoted', 'Final', 'Status'].map(h => (
+                    <th key={h} className="px-3 py-2 text-left font-medium text-gray-500">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                {quotes.map(q => (
+                  <tr key={q.id}>
+                    <td className="px-3 py-2">
+                      {quoteLabel(q)}
+                      {q.is_selected && <span className="ml-1 text-green-600">✓</span>}
+                      {q.property_address && <span className="block text-gray-400">{q.property_address}</span>}
+                    </td>
+                    <td className="px-3 py-2 tabular">{fmt$(q.quoted_cost)}</td>
+                    <td className="px-3 py-2 tabular">{fmt$(q.final_cost)}</td>
+                    <td className="px-3 py-2 text-gray-500">{q.status ? tradeLabel(q.status) : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
