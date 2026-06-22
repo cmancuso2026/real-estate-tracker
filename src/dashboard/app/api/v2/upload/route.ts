@@ -56,51 +56,45 @@ For category choose from: plumbing | hvac | electrical | roofing | appliance | g
   },
 
   escrow: {
-    system: `You are parsing a Wells Fargo annual Escrow Review Statement PDF.
-Respond with valid JSON only. No markdown. All amounts are decimals with exact cents. Dates are YYYY-MM-DD. Shortage = NEGATIVE.
+    system: `You are parsing an annual Escrow Account Disclosure Statement PDF from any mortgage lender (Wells Fargo, Freedom Mortgage, Chase, etc.).
+Respond with valid JSON only. No markdown, no preamble, no explanation. All amounts are decimals with exact cents. Dates are YYYY-MM-DD. Shortage = NEGATIVE number.
 
-THIS DOCUMENT HAS 3 PAGES:
+WHAT TO EXTRACT:
 
-PAGE 1: Shows shortage amount in a box ("Your escrow account has a shortage of $X.XX"), and two option tables (Option 1, Option 2) each with columns "Previous payment" and "New payment". Each table has rows: Principal and/or interest, Escrow payment, Total payment amount.
+1. statement_date: The "Statement Date" shown in the header/account info section. Convert to YYYY-MM-DD.
 
-PAGE 2: Has an "Escrow comparison" table. This table has 4 columns representing different time periods, labeled something like:
-  - Column A: "03/24 - 02/25 (Actual)" — full year, actual
-  - Column B: "03/25 - 02/26 (Actual)" — full year, actual  
-  - Column C: "08/25 - 01/26 (Actual)" — PARTIAL year, actual (fewer than 12 months)
-  - Column D: "03/26 - 02/27 (Projected)" — future projection
-The rows are: Property taxes, Property insurance, Total taxes and insurance, Escrow shortage, Total escrow.
+2. analysis_period_start / analysis_period_end: The date range of the most recent FULL 12-month actual period analyzed. Look for phrases like "analysis period", "escrow account history", or the period covered by the previous year's actual disbursements table. Use the start and end dates of that 12-month window.
 
-PAGE 3: Payment history and projections tables.
+3. total_property_taxes: Total property/county tax disbursements paid out in the most recent full 12-month actual period. Look in "Actual Activity" or "Your Escrow Account History" tables for rows labeled "COUNTY TAX", "PROPERTY TAX", "REAL ESTATE TAX" etc. Sum all tax rows for the full year.
 
-CRITICAL RULES:
+4. total_insurance: Total homeowners/hazard insurance disbursements in the most recent full 12-month actual period. Look for rows labeled "HOMEOWNERS", "HAZARD INSURANCE", "PROPERTY INSURANCE" etc. Sum all insurance rows. FHA MIP / mortgage insurance premium is NOT homeowners insurance — exclude it.
 
-1. total_property_taxes: Use Column B (the most recent FULL 12-month actual period). Do NOT use the partial period column (Column C) or the Projected column.
+5. shortage_surplus_amount: The shortage or surplus dollar amount. Look for "Shortage Amount", "escrow shortage of $X", "surplus of $X". Make shortage NEGATIVE, surplus POSITIVE.
 
-2. total_insurance: Use Column B (the most recent FULL 12-month actual period). If Column B shows $0.00 for insurance, use the Projected column (Column D) instead, because insurance renews annually and the projected amount reflects the actual premium.
+6. new_monthly_escrow: The new monthly escrow payment amount going forward. Look for "New Monthly Escrow Payment", "Escrow Payment" under "New Monthly Payment", or "New Payment" breakdown table. This is the escrow-only portion, NOT the total mortgage payment.
 
-3. shortage_surplus_amount: Use the dollar amount from page 1's highlighted box. It says "Your escrow account has a shortage of $X.XX" or "surplus of $X.XX". Make shortage NEGATIVE.
+7. options: Payment options if presented (some lenders offer Option 1 / Option 2 for paying shortage). If no options are presented, return an empty array []. Each option: {"label": string, "new_monthly_escrow": decimal, "total_payment": decimal}.
 
-4. options: From page 1, for Option 1 and Option 2, extract ONLY the "Escrow payment" row from the "New payment" column (NOT Principal and interest, NOT Total payment amount).
+8. tax_disbursements: Array of individual tax payment rows from the actual activity table. Each: {"date": "YYYY-MM-DD", "payee": "COUNTY TAX or similar", "amount": decimal}.
 
-5. statement_date: From page 1 header "Statement Date: Month DD, YYYY". Convert to YYYY-MM-DD.
+9. insurance_disbursements: Array of individual homeowners/hazard insurance payment rows from the actual activity table. Each: {"date": "YYYY-MM-DD", "payee": "HOMEOWNERS or similar", "amount": decimal}. Exclude FHA MIP.
 
-6. analysis_period_start/end: Use the date range from Column B (the full 12-month actual period).`,
-    user: `Return this JSON with values extracted from the document:
+10. confidence_notes: Note anything uncertain, ambiguous, or approximated. Null if confident.
+
+IMPORTANT: FHA MIP (FHA Mortgage Insurance Premium / FHA MIP RBP MON) is NOT property insurance. Do not include it in total_insurance or insurance_disbursements.`,
+    user: `Return this JSON with values extracted from the escrow statement:
 {
   "statement_date": "YYYY-MM-DD",
   "analysis_period_start": "YYYY-MM-DD",
   "analysis_period_end": "YYYY-MM-DD",
-  "total_property_taxes": decimal_from_full_year_actual_column,
-  "total_insurance": decimal_from_full_year_actual_column_or_projected_if_zero,
-  "shortage_surplus_amount": decimal_negative_for_shortage,
-  "new_monthly_escrow": null,
-  "options": [
-    {"label": "Option 1 - Pay shortage over 12 months", "new_monthly_escrow": decimal_escrow_payment_row_new_column_only, "total_payment": decimal_total_payment_row_new_column},
-    {"label": "Option 2 - Pay shortage in full", "new_monthly_escrow": decimal_escrow_payment_row_new_column_only, "total_payment": decimal_total_payment_row_new_column}
-  ],
-  "tax_disbursements": [{"date":"YYYY-MM-DD","payee":"name","amount":decimal}],
-  "insurance_disbursements": [{"date":"YYYY-MM-DD","payee":"name","amount":decimal}],
-  "confidence_notes": "note anything uncertain or null"
+  "total_property_taxes": decimal,
+  "total_insurance": decimal,
+  "shortage_surplus_amount": decimal_negative_for_shortage_positive_for_surplus,
+  "new_monthly_escrow": decimal,
+  "options": [],
+  "tax_disbursements": [{"date":"YYYY-MM-DD","payee":"string","amount":decimal}],
+  "insurance_disbursements": [{"date":"YYYY-MM-DD","payee":"string","amount":decimal}],
+  "confidence_notes": "string or null"
 }`,
   },
   insurance: {
