@@ -635,6 +635,7 @@ export default function PropertyDetailPage() {
   const [existingTenants, setExistingTenants] = useState<ExistingTenant[]>([]);
   const [editingTenant, setEditingTenant] = useState<ExistingTenant | null>(null);
   const [deletingTenantId, setDeletingTenantId] = useState<number|null>(null);
+  const [togglingTenantId, setTogglingTenantId] = useState<number|null>(null);
   const [tenantSaving, setTenantSaving] = useState(false);
   const [expandedTenantId, setExpandedTenantId] = useState<number|null>(null);
   const [tenantUnitFilter, setTenantUnitFilter] = useState<string>('all');
@@ -829,6 +830,17 @@ export default function PropertyDetailPage() {
       body: JSON.stringify(editTenantForm),
     });
     setEditingTenant(null); setTenantSaving(false);
+    await load();
+  }
+
+  async function toggleTenantActive(t: ExistingTenant) {
+    if (togglingTenantId) return;
+    setTogglingTenantId(t.id);
+    await fetch(`/api/v2/tenants/${t.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_active: !t.is_active }),
+    });
+    setTogglingTenantId(null);
     await load();
   }
 
@@ -1138,7 +1150,7 @@ export default function PropertyDetailPage() {
             {existingTenants.length === 0
               ? <div className="rounded-xl border border-dashed border-gray-300 p-8 text-center text-gray-400 dark:border-gray-700">No tenants yet.</div>
               : existingTenants.filter(t => tenantUnitFilter === 'all' || t.unit_label === tenantUnitFilter).map(t => (
-                <div key={t.id} className="rounded-xl border border-gray-200 dark:border-gray-800">
+                <div key={t.id} className={`rounded-xl border border-gray-200 dark:border-gray-800 ${!t.is_active ? 'opacity-60' : ''}`}>
                   {editingTenant?.id === t.id ? (
                     <div className="p-5 space-y-3">
                       <div className="flex items-center justify-between">
@@ -1164,10 +1176,17 @@ export default function PropertyDetailPage() {
                         className="flex w-full items-center justify-between p-4 text-left hover:bg-gray-50 dark:hover:bg-gray-800/50"
                       >
                         <div>
-                          <p className="font-medium">{t.first_name} {t.last_name}</p>
+                          <p className="font-medium flex items-center gap-2">
+                            {t.first_name} {t.last_name}
+                            {!t.is_active && <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-500 dark:bg-gray-700 dark:text-gray-400">Inactive</span>}
+                          </p>
                           <p className="text-sm text-gray-500">Unit {t.unit_label}</p>
                         </div>
                         <div className="flex items-center gap-3">
+                          <button onClick={e=>{e.stopPropagation();toggleTenantActive(t);}} disabled={togglingTenantId===t.id}
+                            className="text-xs text-gray-500 hover:text-gray-700 hover:underline disabled:opacity-50 dark:text-gray-400">
+                            {togglingTenantId===t.id?'…':t.is_active?'Mark inactive':'Mark active'}
+                          </button>
                           <button onClick={e=>{e.stopPropagation();startEditTenant(t);}} className="text-xs text-blue-600 hover:underline dark:text-blue-400">Edit</button>
                           <button onClick={e=>{e.stopPropagation();deleteTenant(t.id);}} disabled={deletingTenantId===t.id} className="text-xs text-red-400 hover:text-red-600 disabled:opacity-50">
                             {deletingTenantId===t.id?'Deleting…':'Delete'}

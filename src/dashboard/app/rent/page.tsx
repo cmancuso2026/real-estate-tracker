@@ -93,6 +93,7 @@ export default function RentImportPage() {
   const [tenantOptions, setTenantOptions] = useState<TenantOption[]>([]);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState<number | null>(null);
+  const [skipped, setSkipped] = useState(0);
   const [error, setError] = useState('');
 
   const [confidenceFilter, setConfidenceFilter] = useState(new Set(['all']));
@@ -216,6 +217,7 @@ export default function RentImportPage() {
     setSaving(false);
     if (!res.ok) { setError(data.error ?? 'Save failed'); return; }
     setSaved(data.saved);
+    setSkipped(data.skipped ?? 0);
     setRows([]);
   }
 
@@ -236,8 +238,11 @@ export default function RentImportPage() {
       </div>
       <div className="rounded-xl border border-green-200 bg-green-50 p-8 text-center dark:border-green-800 dark:bg-green-950/20">
         <p className="text-3xl font-bold text-green-700 dark:text-green-400">✓ {saved} payment{saved !== 1 ? 's' : ''} recorded</p>
+        {skipped > 0 && (
+          <p className="mt-2 text-sm text-gray-500">{skipped} row{skipped !== 1 ? 's' : ''} skipped — already imported (same unit, date &amp; amount)</p>
+        )}
         <div className="mt-4 flex justify-center gap-3">
-          <button onClick={() => { setSaved(null); setRows([]); }} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50 dark:border-gray-700">Import Another</button>
+          <button onClick={() => { setSaved(null); setSkipped(0); setRows([]); }} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50 dark:border-gray-700">Import Another</button>
           <Link href="/properties" className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Back to Properties</Link>
         </div>
       </div>

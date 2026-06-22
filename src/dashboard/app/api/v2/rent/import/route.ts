@@ -384,6 +384,7 @@ export async function POST(req: NextRequest) {
   if (!rows?.length) return NextResponse.json({ error: 'No rows to save' }, { status: 400 });
 
   const saved: number[] = [];
+  let skipped = 0;
   const batchId = `csv-${Date.now()}`;
 
   for (let row of rows) {
@@ -395,20 +396,26 @@ export async function POST(req: NextRequest) {
     }
     if (!row.matched_unit_id) continue;
 
-    // Skip if already recorded for this unit+month
+    const amountPaid = Math.round(row.amount);
+
+    // Skip only an exact re-import of the SAME bank transaction (same unit,
+    // same paid date, same amount). Deduping on unit+month would wrongly drop
+    // legitimate second payments in a month (e.g. a Section 8 payment landing
+    // in a month that already has the tenant's own portion).
     const existing = await query<{ id: number }>(
-      `SELECT id FROM rent_collections WHERE unit_id = $1 AND due_date = $2`,
-      [row.matched_unit_id, row.due_date]
+      `SELECT id FROM rent_collections
+       WHERE unit_id = $1 AND paid_date = $2 AND amount_paid = $3`,
+      [row.matched_unit_id, row.raw_date, amountPaid]
     );
-    if (existing.length > 0) continue;
+    if (existing.length > 0) { skipped++; continue; }
 
     const leaseRows = await query<{ rent_amount: number; id: number }>(
       `SELECT rent_amount, id FROM leases WHERE unit_id = $1 ORDER BY start_date DESC LIMIT 1`,
       [row.matched_unit_id]
     );
     const lease = leaseRows[0];
-    const amountDue = lease?.rent_amount ?? row.amount;
-    const isPartial = row.amount < amountDue;
+    const amountDue = Math.round(lease?.rent_amount ?? row.amount);
+    const isPartial = amountPaid < amountDue;
 
     const result = await query<{ id: number }>(
       `INSERT INTO rent_collections
@@ -418,7 +425,7 @@ export async function POST(req: NextRequest) {
        RETURNING id`,
       [
         row.matched_unit_id, lease?.id ?? null, row.due_date,
-        amountDue, row.raw_date, row.amount,
+        amountDue, row.raw_date, amountPaid,
         isPartial, row.is_late, row.late_fee_applicable,
         batchId, row.note || null,
       ]
@@ -426,5 +433,5 @@ export async function POST(req: NextRequest) {
     if (result[0]) saved.push(result[0].id);
   }
 
-  return NextResponse.json({ saved: saved.length, batch_id: batchId });
+  return NextResponse.json({ saved: saved.length, skipped, batch_id: batchId });
 }
