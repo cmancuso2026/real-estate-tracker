@@ -539,3 +539,87 @@ CREATE TABLE IF NOT EXISTS piti_history (
 
 CREATE INDEX IF NOT EXISTS idx_piti_property ON piti_history (property_id);
 CREATE INDEX IF NOT EXISTS idx_piti_month ON piti_history (statement_year_month);
+
+-- ===========================================================================
+-- V2.1: PROJECTS (renamed work_orders), multi-vendor quotes, recurring costs
+-- work_orders is now conceptually the "projects" table: a project has a name,
+-- can span multiple units, has a status flow, and collects quotes from one or
+-- more vendors (project_quotes). The legacy single-vendor work-order columns are
+-- kept for backwards compatibility but relaxed to nullable.
+-- ===========================================================================
+
+-- New project-level columns on work_orders.
+ALTER TABLE work_orders ADD COLUMN IF NOT EXISTS project_name TEXT;
+ALTER TABLE work_orders ADD COLUMN IF NOT EXISTS is_recurring BOOLEAN NOT NULL DEFAULT FALSE;
+-- (property_id and status already exist on work_orders.)
+
+-- The legacy model made these NOT NULL, but a project is created from just a name
+-- + status, so relax them. DROP NOT NULL is a no-op if already nullable.
+ALTER TABLE work_orders ALTER COLUMN vendor_id     DROP NOT NULL;
+ALTER TABLE work_orders ALTER COLUMN category      DROP NOT NULL;
+ALTER TABLE work_orders ALTER COLUMN description   DROP NOT NULL;
+ALTER TABLE work_orders ALTER COLUMN date_received DROP NOT NULL;
+
+-- Status vocabulary changed 'complete' -> 'completed'. Migrate existing rows and
+-- swap the CHECK constraint. Guarded so it is a no-op once applied.
+DO $$
+BEGIN
+  UPDATE work_orders SET status = 'completed' WHERE status = 'complete';
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'work_orders_status_check') THEN
+    ALTER TABLE work_orders DROP CONSTRAINT work_orders_status_check;
+  END IF;
+  ALTER TABLE work_orders ADD CONSTRAINT work_orders_status_check
+    CHECK (status IN ('received', 'open', 'completed'));
+END $$;
+
+-- Make sure vendor contact columns exist (email/trade already in CREATE above).
+ALTER TABLE vendors ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE vendors ADD COLUMN IF NOT EXISTS trade TEXT;
+
+-- ---------------------------------------------------------------------------
+-- project_quotes: one row per vendor's quote on a project. Replaces the
+-- single-vendor work-order model with multi-vendor quotes.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS project_quotes (
+  id           SERIAL PRIMARY KEY,
+  project_id   INTEGER NOT NULL REFERENCES work_orders (id) ON DELETE CASCADE,
+  vendor_id    INTEGER NOT NULL REFERENCES vendors (id),
+  quoted_cost  NUMERIC(12,2),
+  final_cost   NUMERIC(12,2),
+  is_selected  BOOLEAN NOT NULL DEFAULT FALSE,   -- the winning quote
+  notes        TEXT,
+  created_at   TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+  UNIQUE (project_id, vendor_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_project_quotes_project ON project_quotes (project_id);
+CREATE INDEX IF NOT EXISTS idx_project_quotes_vendor  ON project_quotes (vendor_id);
+
+-- ---------------------------------------------------------------------------
+-- project_units: links a project to one or more units with optional cost split.
+-- cost_share is a percentage 0-100; NULL means "split evenly".
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS project_units (
+  id          SERIAL PRIMARY KEY,
+  project_id  INTEGER NOT NULL REFERENCES work_orders (id) ON DELETE CASCADE,
+  unit_id     INTEGER NOT NULL REFERENCES units (id),
+  cost_share  NUMERIC(5,2),                       -- 0-100, NULL = split evenly
+  UNIQUE (project_id, unit_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_project_units_project ON project_units (project_id);
+
+-- ---------------------------------------------------------------------------
+-- recurring_costs: standing monthly costs tied to a vendor, shown in cash flow.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS recurring_costs (
+  id             SERIAL PRIMARY KEY,
+  property_id    INTEGER NOT NULL REFERENCES owned_properties (id),
+  vendor_id      INTEGER REFERENCES vendors (id),
+  description    TEXT NOT NULL,                    -- e.g. "Lawn Care", "Pest Control"
+  monthly_amount NUMERIC(12,2) NOT NULL,
+  is_active      BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at     TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')
+);
+
+CREATE INDEX IF NOT EXISTS idx_recurring_costs_property ON recurring_costs (property_id);

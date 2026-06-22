@@ -141,7 +141,15 @@ export async function GET(
 
     const avgMonthlyCollected =
       months.size > 0 ? totalCollected / months.size : 0;
-    const monthlyNetCashFlow = avgMonthlyCollected - avgPiti;
+
+    const recurringRows = await query<{ recurring_total: string | number }>(
+      `SELECT COALESCE(SUM(monthly_amount), 0) AS recurring_total
+       FROM recurring_costs WHERE property_id = $1 AND is_active = TRUE`,
+      [property_id],
+    );
+    const recurringTotal = Number(recurringRows[0]?.recurring_total ?? 0);
+
+    const monthlyNetCashFlow = avgMonthlyCollected - avgPiti - recurringTotal;
 
     return NextResponse.json({
       on_time_percent: onTimePercent,
@@ -151,6 +159,7 @@ export async function GET(
       monthly_average_collected: Math.round(avgMonthlyCollected),
       monthly_average_piti: Math.round(avgPiti * 100) / 100,
       monthly_net_cash_flow: Math.round(monthlyNetCashFlow * 100) / 100,
+      recurring_costs_monthly: Math.round(recurringTotal * 100) / 100,
       months_analyzed: months.size,
       rental_units: rentalUnits,
       total_units: totalUnits,

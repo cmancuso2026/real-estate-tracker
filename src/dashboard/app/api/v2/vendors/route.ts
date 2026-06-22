@@ -20,9 +20,10 @@ export async function GET(req: NextRequest) {
   const rows = await query(
     `SELECT v.*,
             COUNT(wo.id)::int               AS total_jobs,
-            COUNT(wo.id) FILTER (WHERE wo.status = 'complete')::int AS completed_jobs,
+            COUNT(wo.id) FILTER (WHERE wo.status = 'completed')::int AS completed_jobs,
             ROUND(AVG(wo.rating) FILTER (WHERE wo.rating IS NOT NULL), 1) AS avg_internal_rating,
-            SUM(wo.actual_cost) FILTER (WHERE wo.actual_cost IS NOT NULL)::int AS total_spend
+            SUM(wo.actual_cost) FILTER (WHERE wo.actual_cost IS NOT NULL)::int AS total_spend,
+            (SELECT COUNT(DISTINCT pq.project_id) FROM project_quotes pq WHERE pq.vendor_id = v.id)::int AS project_count
      FROM vendors v
      LEFT JOIN work_orders wo ON wo.vendor_id = v.id
      ${where}

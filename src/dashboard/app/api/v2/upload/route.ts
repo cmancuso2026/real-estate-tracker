@@ -97,6 +97,22 @@ IMPORTANT: FHA MIP (FHA Mortgage Insurance Premium / FHA MIP RBP MON) is NOT pro
   "confidence_notes": "string or null"
 }`,
   },
+  vendor_quote: {
+    system: `You are parsing a vendor quote, invoice, or contractor email/PDF for a real estate property. Extract all available information. Respond with valid JSON only. No markdown. Dates YYYY-MM-DD. Amounts as decimals.`,
+    user: `Extract and return this JSON:
+{
+  "vendor_name": "string or null",
+  "vendor_phone": "string or null",
+  "vendor_email": "string or null",
+  "trade": "plumbing|hvac|electrical|roofing|appliance|landscaping|pest_control|general|other",
+  "project_name": "brief description of the work e.g. 'AC Repair' or null",
+  "quoted_cost": decimal or null,
+  "scope_of_work": "string description of what's included or null",
+  "quote_date": "YYYY-MM-DD or null",
+  "valid_until": "YYYY-MM-DD or null",
+  "confidence_notes": "string or null"
+}`,
+  },
   insurance: {
     system: `You are an insurance document parser for residential and landlord policies.
 Always respond with valid JSON only. No markdown, no explanation. Dates must be YYYY-MM-DD. All dollar amounts must be integers (whole dollars).
@@ -144,20 +160,32 @@ export async function POST(req: NextRequest) {
   }
 
   const file = formData.get('file') as File | null;
+  const pastedText = ((formData.get('text') as string | null) ?? '').trim() || null;
   const type = formData.get('type') as string | null;
 
-  if (!file) return NextResponse.json({ error: 'file is required' }, { status: 400 });
+  if (!file && !pastedText) {
+    return NextResponse.json({ error: 'file or text is required' }, { status: 400 });
+  }
   if (!type || !PROMPTS[type]) {
     return NextResponse.json(
-      { error: 'type must be one of: lease, work_order, escrow, insurance' },
+      { error: 'type must be one of: lease, work_order, escrow, insurance, vendor_quote' },
       { status: 400 }
     );
   }
 
-  // Convert file to base64
-  const arrayBuffer = await file.arrayBuffer();
-  const base64 = Buffer.from(arrayBuffer).toString('base64');
   const { system, user } = PROMPTS[type];
+
+  // Build the user content: a PDF document when a file is uploaded, otherwise the
+  // pasted email/quote text. The instruction block (`user`) always comes last.
+  const content: Array<Record<string, unknown>> = [];
+  if (file) {
+    const arrayBuffer = await file.arrayBuffer();
+    const base64 = Buffer.from(arrayBuffer).toString('base64');
+    content.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } });
+  } else if (pastedText) {
+    content.push({ type: 'text', text: `Document content:\n\n${pastedText}` });
+  }
+  content.push({ type: 'text', text: user });
 
   const response = await fetch(ANTHROPIC_API_URL, {
     method: 'POST',
@@ -170,18 +198,7 @@ export async function POST(req: NextRequest) {
       model: MODEL,
       max_tokens: 2048,
       system,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'document',
-              source: { type: 'base64', media_type: 'application/pdf', data: base64 },
-            },
-            { type: 'text', text: user },
-          ],
-        },
-      ],
+      messages: [{ role: 'user', content }],
     }),
   });
 

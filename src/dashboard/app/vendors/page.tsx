@@ -7,12 +7,20 @@ interface Vendor {
   google_rating: number | null; google_review_count: number | null;
   manual_rating: number | null; manual_notes: string | null;
   total_jobs: number; completed_jobs: number; avg_internal_rating: number | null; total_spend: number | null;
+  project_count: number | null;
   is_active: boolean;
 }
 
-const TRADES = ['plumbing','hvac','electrical','roofing','appliance','landscaping','general','other'];
+interface SpendVendor { vendor_id: number; vendor_name: string; trade: string; total_spend: number; last_90_days_spend: number; last_active_date: string | null; }
+interface SpendByPropertyUnit { unit_id: number; unit_label: string; total_spend: number; }
+interface SpendByProperty { property_id: number; address: string; total_spend: number; units: SpendByPropertyUnit[]; }
+interface SpendResponse { vendors: SpendVendor[]; by_property: SpendByProperty[]; }
 
-function fmt$(n: number | null) { return n == null ? '—' : '$' + n.toLocaleString(); }
+const TRADES = ['plumbing','hvac','electrical','roofing','appliance','landscaping','pest_control','general','other'];
+
+const capitalize = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+const tradeLabel = (s: string | null | undefined) => (s ? s.split('_').map(capitalize).join(' ') : '—');
+function fmt$(n: number | null) { return n == null ? '—' : '$' + Number(n).toLocaleString(); }
 function Stars({ rating, max = 5 }: { rating: number | null; max?: number }) {
   if (!rating) return <span className="text-xs text-gray-400">—</span>;
   return <span className="text-amber-500 text-sm">{'★'.repeat(Math.round(rating))}{'☆'.repeat(max - Math.round(rating))}</span>;
@@ -20,6 +28,7 @@ function Stars({ rating, max = 5 }: { rating: number | null; max?: number }) {
 
 export default function VendorsPage() {
   const [vendors, setVendors] = useState<Vendor[]>([]);
+  const [spend, setSpend] = useState<SpendResponse | null>(null);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -28,8 +37,12 @@ export default function VendorsPage() {
 
   const load = async (q = '') => {
     setLoading(true);
-    const res = await fetch(`/api/v2/vendors${q ? `?search=${encodeURIComponent(q)}` : ''}`);
-    setVendors(await res.json());
+    const [vRes, sRes] = await Promise.all([
+      fetch(`/api/v2/vendors${q ? `?search=${encodeURIComponent(q)}` : ''}`),
+      fetch('/api/v2/vendors/spend'),
+    ]);
+    setVendors(await vRes.json());
+    if (sRes.ok) setSpend(await sRes.json());
     setLoading(false);
   };
 
@@ -45,6 +58,9 @@ export default function VendorsPage() {
     load();
   };
 
+  const spend90 = spend ? spend.vendors.reduce((s, v) => s + Number(v.last_90_days_spend || 0), 0) : 0;
+  const spendAll = spend ? spend.by_property.reduce((s, p) => s + Number(p.total_spend || 0), 0) : 0;
+
   return (
     <>
       <div className="mb-6 flex items-center justify-between">
@@ -55,6 +71,35 @@ export default function VendorsPage() {
         <button onClick={() => setShowForm(true)} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
           + Add Vendor
         </button>
+      </div>
+
+      {/* Spend summary */}
+      <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+          <p className="text-xs font-medium text-gray-500">Last 90 Days Spend</p>
+          <p className="mt-1 text-2xl font-bold tabular text-blue-600 dark:text-blue-400">{fmt$(spend90)}</p>
+          <p className="text-xs text-gray-400">across all properties</p>
+        </div>
+        <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+          <p className="text-xs font-medium text-gray-500">All-Time Spend</p>
+          <p className="mt-1 text-2xl font-bold tabular">{fmt$(spendAll)}</p>
+          <p className="text-xs text-gray-400">across all properties</p>
+        </div>
+        <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+          <p className="text-xs font-medium text-gray-500">Spend by Property</p>
+          {spend && spend.by_property.length > 0 ? (
+            <div className="mt-1 space-y-1">
+              {spend.by_property.map(p => (
+                <div key={p.property_id}>
+                  <p className="text-sm font-semibold tabular">{p.address}: {fmt$(p.total_spend)}</p>
+                  {p.units.length > 0 && (
+                    <p className="text-xs text-gray-400">{p.units.map(u => `Unit ${u.unit_label}: ${fmt$(u.total_spend)}`).join('   ')}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : <p className="mt-1 text-sm text-gray-400">No spend recorded</p>}
+        </div>
       </div>
 
       {/* Search */}
@@ -90,7 +135,7 @@ export default function VendorsPage() {
               <label className="mb-1 block text-xs text-gray-500">Trade *</label>
               <select value={form.trade} onChange={e => setForm(prev => ({ ...prev, trade: e.target.value }))}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800">
-                {TRADES.map(t => <option key={t} value={t}>{t}</option>)}
+                {TRADES.map(t => <option key={t} value={t}>{tradeLabel(t)}</option>)}
               </select>
             </div>
           </div>
@@ -111,14 +156,14 @@ export default function VendorsPage() {
       ) : vendors.length === 0 ? (
         <div className="rounded-xl border border-dashed border-gray-300 p-12 text-center text-gray-400 dark:border-gray-700">
           <p className="text-lg font-medium">No vendors yet</p>
-          <p className="mt-1 text-sm">Add your contractors to start tracking work orders and ratings.</p>
+          <p className="mt-1 text-sm">Add your contractors to start tracking projects and ratings.</p>
         </div>
       ) : (
         <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 dark:bg-gray-900">
               <tr>
-                {['Vendor', 'Trade', 'Google Rating', 'My Rating', 'Jobs', 'Total Spend', 'Contact'].map(h => (
+                {['Vendor', 'Trade', 'Google Rating', 'My Rating', 'Projects', 'Jobs', 'Total Spend', 'Contact'].map(h => (
                   <th key={h} className="px-5 py-3 text-left text-xs font-medium text-gray-500">{h}</th>
                 ))}
               </tr>
@@ -127,7 +172,7 @@ export default function VendorsPage() {
               {vendors.map(v => (
                 <tr key={v.id} className="hover:bg-gray-50 dark:hover:bg-gray-900/50">
                   <td className="px-5 py-3 font-medium">{v.name}</td>
-                  <td className="px-5 py-3 capitalize text-gray-500">{v.trade}</td>
+                  <td className="px-5 py-3 text-gray-500">{tradeLabel(v.trade)}</td>
                   <td className="px-5 py-3">
                     {v.google_rating
                       ? <span><Stars rating={v.google_rating} /> <span className="text-xs text-gray-400">({v.google_review_count})</span></span>
@@ -135,6 +180,7 @@ export default function VendorsPage() {
                     }
                   </td>
                   <td className="px-5 py-3"><Stars rating={v.manual_rating} /></td>
+                  <td className="px-5 py-3 tabular">{v.project_count ?? 0}</td>
                   <td className="px-5 py-3 tabular">{v.completed_jobs}/{v.total_jobs}</td>
                   <td className="px-5 py-3 tabular">{fmt$(v.total_spend)}</td>
                   <td className="px-5 py-3 text-gray-400 text-xs">
