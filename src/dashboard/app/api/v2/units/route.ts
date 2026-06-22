@@ -20,7 +20,14 @@ export async function GET(req: NextRequest) {
             first_t_lease.start_date AS first_lease_start_date,
             rc.amount_due,
             rc.amount_paid,
-            rc.is_late
+            rc.is_late,
+            rc.is_partial,
+            CASE
+              WHEN rc.id IS NULL THEN 'no_record'
+              WHEN rc.amount_paid IS NULL OR rc.amount_paid = 0 THEN 'outstanding'
+              WHEN rc.amount_paid >= rc.amount_due THEN 'paid'
+              ELSE 'partial'
+            END AS payment_status
      FROM units u
      -- Most recent active tenant
      LEFT JOIN LATERAL (
@@ -43,11 +50,12 @@ export async function GET(req: NextRequest) {
        ORDER BY start_date ASC
        LIMIT 1
      ) first_t_lease ON TRUE
-     -- This month's rent
+     -- This month's rent (most recent record, in case of multiple)
      LEFT JOIN LATERAL (
        SELECT * FROM rent_collections
        WHERE unit_id = u.id
          AND due_date LIKE to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM') || '%'
+       ORDER BY created_at DESC
        LIMIT 1
      ) rc ON TRUE
      WHERE u.property_id = $1

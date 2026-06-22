@@ -111,32 +111,24 @@ export async function GET(
     const onTimePercent =
       totalPayments > 0 ? Math.round((onTimeCount / totalPayments) * 100) : 0;
 
-    // Vacancy rate
-    // For each month, count how many rental units had active tenants
-    const monthlyOccupancy: Record<string, number> = {};
-    for (const month of months) {
-      const activeTenantsThisMonth = new Set<number>();
-      for (const row of rentRows) {
-        const month_str = (row['due_date'] as string).slice(0, 7);
-        if (month_str === month) {
-          const isOwner = row['is_owner_unit'] as boolean;
-          const tenantId = row['tenant_id'] as number | null;
-          if (!isOwner && tenantId) {
-            activeTenantsThisMonth.add(tenantId);
-          }
-        }
-      }
-      monthlyOccupancy[month] = activeTenantsThisMonth.size;
+    // Vacancy rate: percentage of rental unit-months where no payment was recorded
+    // 0% = fully occupied all year, 100% = vacant all year
+    // We look at how many distinct (unit, month) combos have NO rent record vs total expected
+    // Simpler proxy: count unit-months with a rent record (occupied) vs total possible unit-months
+    const occupiedUnitMonths = new Set<string>();
+    for (const row of rentRows) {
+      const isOwner = row['is_owner_unit'] as boolean;
+      if (isOwner) continue;
+      const unitId = row['unit_id'] as number;
+      const month = (row['due_date'] as string).slice(0, 7);
+      // A unit-month is occupied if it has a rent_collection record (even unpaid)
+      occupiedUnitMonths.add(`${unitId}-${month}`);
     }
-
-    const avgMonthlyOccupancy =
-      months.size > 0
-        ? Object.values(monthlyOccupancy).reduce((a, b) => a + b, 0) / months.size
-        : 0;
-    const vacancyPercent =
-      rentalUnits > 0
-        ? Math.round(((rentalUnits - avgMonthlyOccupancy) / rentalUnits) * 100)
-        : 0;
+    // Total expected unit-months = rental units * months analyzed
+    const totalExpectedUnitMonths = rentalUnits * (months.size || 1);
+    const vacancyPercent = totalExpectedUnitMonths > 0
+      ? Math.max(0, Math.round(((totalExpectedUnitMonths - occupiedUnitMonths.size) / totalExpectedUnitMonths) * 100))
+      : 0;
 
     // Cash flow = collected rent - average PITI
     const avgPiti =

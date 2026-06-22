@@ -88,7 +88,10 @@ function InsuranceExpirationBadge({ expirationDate }: { expirationDate: string |
 }
 
 function PaymentStatusBadge({ status, amount, amountDue }: { status?: string | null; amount?: number | null; amountDue?: number | null }) {
-  if (!status || status === 'outstanding') {
+  if (!status || status === 'no_record') {
+    return <span className="italic text-gray-400 text-xs">No record</span>;
+  }
+  if (status === 'outstanding') {
     return <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-600 dark:bg-red-900/30 dark:text-red-400">Outstanding</span>;
   }
   if (status === 'paid') {
@@ -307,13 +310,22 @@ export function OverviewTab({ id, units, onRefresh }: { id: string; units: Unit[
               <p className="text-xs text-gray-400">{totalRent > 0 ? Math.round((collected/totalRent)*100) : 0}% collected</p>
             </div>
             <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
-              <p className="text-xs text-gray-500">Occupied Units</p>
-              <p className="mt-1 text-xl font-bold">{rentalUnits.filter(u=>u.tenant_id).length} / {rentalUnits.length}</p>
-            </div>
-            <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
               <p className="text-xs text-gray-500">Leases Expiring Soon</p>
               <p className="mt-1 text-xl font-bold">{rentalUnits.filter(u=>{const d=u.lease_end_date?Math.ceil((new Date(u.lease_end_date).getTime()-Date.now())/86400000):null;return d!==null&&d>=0&&d<=60;}).length}</p>
               <p className="text-xs text-gray-400">within 60 days</p>
+            </div>
+            <div className={`rounded-xl border p-4 ${insurance && Math.ceil((new Date(insurance.expiration_date).getTime()-Date.now())/86400000) <= 60 ? 'border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/20' : 'border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900'}`}>
+              <p className="text-xs text-gray-500">Insurance Expiry</p>
+              {insurance ? (
+                <>
+                  <p className={`mt-1 text-xl font-bold ${Math.ceil((new Date(insurance.expiration_date).getTime()-Date.now())/86400000) <= 30 ? 'text-red-600' : Math.ceil((new Date(insurance.expiration_date).getTime()-Date.now())/86400000) <= 60 ? 'text-amber-600' : ''}`}>
+                    {Math.ceil((new Date(insurance.expiration_date).getTime()-Date.now())/86400000)}d
+                  </p>
+                  <p className="text-xs text-gray-400">until renewal</p>
+                </>
+              ) : (
+                <p className="mt-1 text-sm italic text-gray-400">No policy</p>
+              )}
             </div>
           </div>
         );

@@ -675,6 +675,14 @@ export default function PropertyDetailPage() {
   const [editEscrowData, setEditEscrowData] = useState<Partial<EscrowExtracted & {lender_name:string}>>({});
   const [editEscrowSaving, setEditEscrowSaving] = useState(false);
 
+  // PITI state
+  interface PITIRecord { id: number; statement_date: string; statement_year_month: string; principal: number; interest: number; property_taxes: number; escrow_insurance: number; total_payment: number; }
+  interface PITIExtracted { statement_date: string|null; principal: number|null; interest: number|null; property_taxes: number|null; escrow_insurance: number|null; confidence_notes: string|null; }
+  const [pitiHistory, setPitiHistory] = useState<PITIRecord[]>([]);
+  const [pitiExtracted, setPitiExtracted] = useState<PITIExtracted|null>(null);
+  const [uploadingPiti, setUploadingPiti] = useState(false);
+  const [pitiSaving, setPitiSaving] = useState(false);
+
   // Insurance state
   const [insuranceExtracted, setInsuranceExtracted] = useState<InsuranceExtracted | null>(null);
   const [insuranceSaving, setInsuranceSaving] = useState(false);
@@ -716,6 +724,9 @@ export default function PropertyDetailPage() {
     } else if (t === 'escrow') {
       const res = await fetch(`/api/v2/escrow?propertyId=${id}`);
       setEscrow(asArray(await res.json()));
+      // Also load PITI history
+      const pitiRes = await fetch(`/api/v2/piti?propertyId=${id}`);
+      if (pitiRes.ok) setPitiHistory(asArray(await pitiRes.json()));
     } else if (t === 'insurance') {
       const res = await fetch(`/api/v2/insurance?propertyId=${id}`);
       setInsurance(asArray(await res.json()));
@@ -1403,6 +1414,120 @@ export default function PropertyDetailPage() {
                 </button>
               </div>
             )}
+          </div>
+
+          {/* ── PITI SECTION ── */}
+          <div className="mt-8 space-y-4">
+            <div className="border-t-2 border-blue-100 pt-6 dark:border-blue-900/30">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="font-semibold text-gray-900 dark:text-gray-100">Monthly PITI Breakdown</h2>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Principal · Interest · Taxes · Insurance — upload monthly mortgage statements</p>
+                </div>
+                <label className={`cursor-pointer rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 ${uploadingPiti?'opacity-50':''}`}>
+                {uploadingPiti ? 'Parsing…' : 'Upload Mortgage Statement'}
+                <input type="file" accept=".pdf" className="hidden" disabled={uploadingPiti} onChange={async e => {
+                  const file = e.target.files?.[0];
+                  if (!file || uploadingPiti) return;
+                  setUploadingPiti(true);
+                  const form = new FormData();
+                  form.append('file', file);
+                  form.append('property_id', id);
+                  try {
+                    const res = await fetch('/api/v2/piti', { method: 'POST', body: form });
+                    if (res.ok) { const d = await res.json(); setPitiExtracted(d.extracted); }
+                    else alert('Failed to parse mortgage statement');
+                  } catch { alert('Upload error'); }
+                  finally { setUploadingPiti(false); e.target.value = ''; }
+                }} />
+              </label>
+            </div>
+
+            {/* PITI extraction review */}
+            {pitiExtracted && (
+              <div className="rounded-xl border-2 border-blue-300 bg-blue-50 p-5 space-y-4 dark:border-blue-700 dark:bg-blue-950/20">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold text-blue-800 dark:text-blue-300">✦ AI Extracted — Review & Edit Before Saving</h3>
+                  <button onClick={() => setPitiExtracted(null)} className="text-xs text-gray-400 hover:text-gray-600">Discard</button>
+                </div>
+                {pitiExtracted.confidence_notes && <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">⚠ {pitiExtracted.confidence_notes}</p>}
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  <Input label="Statement Date" type="date" value={pitiExtracted.statement_date??''} onChange={v=>setPitiExtracted(p=>p?{...p,statement_date:v}:p)} />
+                  <Input label="Principal ($)" type="number" value={pitiExtracted.principal?.toString()??''} onChange={v=>setPitiExtracted(p=>p?{...p,principal:v?parseFloat(v):null}:p)} placeholder="1234.56" />
+                  <Input label="Interest ($)" type="number" value={pitiExtracted.interest?.toString()??''} onChange={v=>setPitiExtracted(p=>p?{...p,interest:v?parseFloat(v):null}:p)} placeholder="2345.67" />
+                  <Input label="Property Taxes ($)" type="number" value={pitiExtracted.property_taxes?.toString()??''} onChange={v=>setPitiExtracted(p=>p?{...p,property_taxes:v?parseFloat(v):null}:p)} placeholder="456.78" />
+                  <Input label="Insurance ($)" type="number" value={pitiExtracted.escrow_insurance?.toString()??''} onChange={v=>setPitiExtracted(p=>p?{...p,escrow_insurance:v?parseFloat(v):null}:p)} placeholder="234.56" />
+                </div>
+                <button
+                  disabled={pitiSaving || !pitiExtracted.statement_date || pitiExtracted.principal==null}
+                  onClick={async () => {
+                    setPitiSaving(true);
+                    try {
+                      const res = await fetch('/api/v2/piti/save', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ property_id: parseInt(id), ...pitiExtracted }),
+                      });
+                      if (res.ok) {
+                        setPitiExtracted(null);
+                        const pitiRes = await fetch(`/api/v2/piti?propertyId=${id}`);
+                        if (pitiRes.ok) { const d = await pitiRes.json(); setPitiHistory(Array.isArray(d) ? d : []); }
+                      } else { alert('Failed to save PITI record'); }
+                    } catch { alert('Save error'); }
+                    finally { setPitiSaving(false); }
+                  }}
+                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {pitiSaving ? 'Saving…' : 'Confirm & Save'}
+                </button>
+              </div>
+            )}
+
+            {/* PITI history table */}
+            {pitiHistory.length === 0 && !pitiExtracted ? (
+              <div className="rounded-xl border border-dashed border-gray-300 p-8 text-center text-gray-400 dark:border-gray-700">
+                No mortgage statements yet. Upload a monthly statement to track your PITI breakdown.
+              </div>
+            ) : pitiHistory.length > 0 && (
+              <>
+                <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 dark:bg-gray-900">
+                      <tr>
+                        {['Month','Principal','Interest','Taxes','Insurance','Total'].map(h=>(
+                          <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                      {pitiHistory.map(r=>(
+                        <tr key={r.id} className="hover:bg-gray-50 dark:hover:bg-gray-900/50">
+                          <td className="px-4 py-3 font-medium">{r.statement_year_month}</td>
+                          <td className="px-4 py-3 tabular">${Number(r.principal).toLocaleString(undefined,{minimumFractionDigits:2})}</td>
+                          <td className="px-4 py-3 tabular">${Number(r.interest).toLocaleString(undefined,{minimumFractionDigits:2})}</td>
+                          <td className="px-4 py-3 tabular">${Number(r.property_taxes).toLocaleString(undefined,{minimumFractionDigits:2})}</td>
+                          <td className="px-4 py-3 tabular">${Number(r.escrow_insurance).toLocaleString(undefined,{minimumFractionDigits:2})}</td>
+                          <td className="px-4 py-3 tabular font-bold">${Number(r.total_payment).toLocaleString(undefined,{minimumFractionDigits:2})}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  {[
+                    { label: 'Avg Monthly PITI', value: '$'+(pitiHistory.reduce((s,r)=>s+Number(r.total_payment),0)/pitiHistory.length).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}) },
+                    { label: 'Latest Month', value: pitiHistory[0]?.statement_year_month ?? '—' },
+                    { label: 'Records', value: String(pitiHistory.length) },
+                  ].map(c=>(
+                    <div key={c.label} className="rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-800 dark:bg-gray-900">
+                      <p className="text-xs text-gray-500">{c.label}</p>
+                      <p className="mt-1 text-lg font-bold">{c.value}</p>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+            </div>{/* end border-t wrapper */}
           </div>
         </div>
       )}

@@ -10,7 +10,9 @@ interface Unit {
   tenant_name: string | null; tenant_id: number | null;
   rent_amount: number | null; lease_start_date: string | null; lease_end_date: string | null;
   first_lease_start_date: string | null; amount_due: number | null; amount_paid: number | null; is_late: boolean | null;
+  payment_status: string | null;
 }
+interface InsurancePolicy { id: number; property_id: number; expiration_date: string; carrier: string; }
 
 function fmt$(n: number | null | undefined) {
   if (n == null) return '—';
@@ -40,12 +42,21 @@ function yearsInUnit(first: string | null) {
   return yrs < 0 ? '—' : yrs.toFixed(1) + ' yrs';
 }
 
+function PaymentStatusBadge({ status, amountPaid }: { status: string | null; amountPaid: number | null }) {
+  if (!status || status === 'no_record') return <span className="italic text-gray-400 text-xs">No record</span>;
+  if (status === 'outstanding') return <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-600">Outstanding</span>;
+  if (status === 'paid') return <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">✓ Paid {fmt$(amountPaid)}</span>;
+  if (status === 'partial') return <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">⚠ Partial {fmt$(amountPaid)}</span>;
+  return null;
+}
+
 export default function PropertiesPage() {
   const router = useRouter();
   const [properties, setProperties] = useState<Property[]>([]);
   const [units, setUnits] = useState<Record<number, Unit[]>>({});
   const [expanded, setExpanded] = useState<Record<number, boolean>>({});
   const [loading, setLoading] = useState(true);
+  const [insurancePolicies, setInsurancePolicies] = useState<InsurancePolicy[]>([]);
 
   const thisMonth = new Date().toISOString().slice(0, 7);
 
@@ -55,11 +66,19 @@ export default function PropertiesPage() {
       .then((props: Property[]) => {
         setProperties(props);
         setLoading(false);
-        // Auto-expand all properties and load their units
         const exp: Record<number, boolean> = {};
         props.forEach(p => { exp[p.id] = true; });
         setExpanded(exp);
-        props.forEach(p => loadUnits(p.id));
+        props.forEach(p => {
+          loadUnits(p.id);
+          // Load insurance for each property
+          fetch(`/api/v2/insurance?propertyId=${p.id}`)
+            .then(r => r.ok ? r.json() : [])
+            .then((policies: InsurancePolicy[]) => {
+              setInsurancePolicies(prev => [...prev.filter(pol => pol.property_id !== p.id), ...policies]);
+            })
+            .catch(() => {});
+        });
       });
   }, []);
 
@@ -81,14 +100,18 @@ export default function PropertiesPage() {
   const allUnits = Object.values(units).flat();
   const rentalUnits = allUnits.filter(u => !u.is_owner_unit);
   const today = new Date().toISOString().slice(0, 10);
-  // Expected = sum of active lease rent amounts (not collections)
   const totalExpected = rentalUnits
     .filter(u => u.lease_start_date && u.lease_end_date && u.lease_start_date <= today && u.lease_end_date >= today)
     .reduce((s, u) => s + (u.rent_amount ?? 0), 0);
   const totalCollected = rentalUnits.reduce((s, u) => s + (u.amount_paid ?? 0), 0);
-  const vacant = rentalUnits.filter(u => !u.tenant_id).length;
   const expiring = rentalUnits.filter(u => {
     const d = daysUntil(u.lease_end_date);
+    return d !== null && d >= 0 && d <= 60;
+  }).length;
+
+  // Insurance expiring within 60 days
+  const insuranceExpiring = insurancePolicies.filter(p => {
+    const d = daysUntil(p.expiration_date);
     return d !== null && d >= 0 && d <= 60;
   }).length;
 
@@ -113,12 +136,17 @@ export default function PropertiesPage() {
         {[
           { label: 'Rent Expected', value: fmt$(totalExpected), sub: thisMonth },
           { label: 'Rent Collected', value: fmt$(totalCollected), sub: totalExpected ? `${Math.round((totalCollected / totalExpected) * 100)}%` : '—' },
-          { label: 'Vacant Units', value: String(vacant), sub: vacant === 0 ? 'fully occupied' : 'needs tenant' },
+          {
+            label: 'Insurance Expiring',
+            value: String(insuranceExpiring),
+            sub: insuranceExpiring === 0 ? 'all policies current' : 'within 60 days',
+            alert: insuranceExpiring > 0,
+          },
           { label: 'Leases Expiring', value: String(expiring), sub: 'within 60 days' },
         ].map(card => (
-          <div key={card.label} className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+          <div key={card.label} className={`rounded-xl border p-4 ${'alert' in card && card.alert ? 'border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/20' : 'border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900'}`}>
             <p className="text-xs text-gray-500 dark:text-gray-400">{card.label}</p>
-            <p className="mt-1 text-2xl font-bold tabular">{card.value}</p>
+            <p className={`mt-1 text-2xl font-bold tabular ${'alert' in card && card.alert ? 'text-amber-700 dark:text-amber-400' : ''}`}>{card.value}</p>
             <p className="text-xs text-gray-400">{card.sub}</p>
           </div>
         ))}
@@ -201,11 +229,7 @@ export default function PropertiesPage() {
                                 <td className="px-5 py-3 tabular">{u.is_owner_unit ? <span className="text-gray-400">—</span> : fmt$(u.rent_amount)}</td>
                                 <td className="px-5 py-3">
                                   {u.is_owner_unit ? <span className="text-gray-400">—</span>
-                                    : u.amount_paid != null
-                                    ? <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${u.is_late ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}`}>{u.is_late ? 'Late' : 'Paid'}</span>
-                                    : u.amount_due != null
-                                    ? <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-600">Unpaid</span>
-                                    : <span className="text-gray-400 text-xs">—</span>
+                                    : <PaymentStatusBadge status={u.payment_status} amountPaid={u.amount_paid} />
                                   }
                                 </td>
                                 <td className="px-5 py-3">{u.is_owner_unit ? <span className="text-gray-400">—</span> : <LeaseStatusBadge startDate={u.lease_start_date} endDate={u.lease_end_date} />}</td>
