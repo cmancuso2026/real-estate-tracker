@@ -17,21 +17,38 @@ export async function GET(req: NextRequest) {
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
-  const rows = await query(
-    `SELECT v.*,
-            COUNT(wo.id)::int               AS total_jobs,
-            COUNT(wo.id) FILTER (WHERE wo.status = 'completed')::int AS completed_jobs,
-            ROUND(AVG(wo.rating) FILTER (WHERE wo.rating IS NOT NULL), 1) AS avg_internal_rating,
-            SUM(wo.actual_cost) FILTER (WHERE wo.actual_cost IS NOT NULL)::int AS total_spend,
-            (SELECT COUNT(DISTINCT pq.project_id) FROM project_quotes pq WHERE pq.vendor_id = v.id)::int AS project_count
-     FROM vendors v
-     LEFT JOIN work_orders wo ON wo.vendor_id = v.id
-     ${where}
-     GROUP BY v.id
-     ORDER BY v.name`,
-    values
-  );
-  return NextResponse.json(rows);
+  try {
+    const rows = await query(
+      `SELECT v.*,
+              COUNT(wo.id)::int               AS total_jobs,
+              COUNT(wo.id) FILTER (WHERE wo.status = 'completed')::int AS completed_jobs,
+              ROUND(AVG(wo.rating) FILTER (WHERE wo.rating IS NOT NULL), 1) AS avg_internal_rating,
+              SUM(wo.actual_cost) FILTER (WHERE wo.actual_cost IS NOT NULL)::int AS total_spend,
+              (SELECT COUNT(DISTINCT pq.work_order_id) FROM project_quotes pq WHERE pq.vendor_id = v.id)::int AS project_count
+       FROM vendors v
+       LEFT JOIN work_orders wo ON wo.vendor_id = v.id
+       ${where}
+       GROUP BY v.id
+       ORDER BY v.name`,
+      values
+    );
+    return NextResponse.json(rows);
+  } catch (err) {
+    // The enriched query depends on work_orders/project_quotes. If those tables
+    // don't exist yet (migration hasn't run), fall back to core vendor fields so
+    // the page still loads rather than hanging on a 500.
+    console.error('Vendors enriched query failed, falling back to core fields:', err);
+    const rows = await query(
+      `SELECT v.*,
+              0 AS total_jobs, 0 AS completed_jobs,
+              NULL AS avg_internal_rating, NULL AS total_spend, 0 AS project_count
+       FROM vendors v
+       ${where}
+       ORDER BY v.name`,
+      values
+    );
+    return NextResponse.json(rows);
+  }
 }
 
 export async function POST(req: NextRequest) {

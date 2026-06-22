@@ -47,13 +47,20 @@ export default function VendorsPage() {
 
   const load = async (q = '') => {
     setLoading(true);
-    const [vRes, sRes] = await Promise.all([
-      fetch(`/api/v2/vendors${q ? `?search=${encodeURIComponent(q)}` : ''}`),
-      fetch('/api/v2/vendors/spend'),
-    ]);
-    setVendors(await vRes.json());
-    if (sRes.ok) setSpend(await sRes.json());
-    setLoading(false);
+    try {
+      const [vRes, sRes] = await Promise.all([
+        fetch(`/api/v2/vendors${q ? `?search=${encodeURIComponent(q)}` : ''}`),
+        fetch('/api/v2/vendors/spend'),
+      ]);
+      const vData = vRes.ok ? await vRes.json() : [];
+      setVendors(Array.isArray(vData) ? vData : []);
+      if (sRes.ok) setSpend(await sRes.json());
+    } catch (e) {
+      console.error('Failed to load vendors:', e);
+      setVendors([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => { load(); }, []);
