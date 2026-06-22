@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
               COALESCE(pq.final_cost, pq.quoted_cost) AS amount,
               COALESCE(w.updated_at, w.created_at) AS activity_date
        FROM project_quotes pq
-       JOIN work_orders w ON w.id = pq.project_id
+       JOIN work_orders w ON w.id = pq.work_order_id
        JOIN vendors v ON v.id = pq.vendor_id
        JOIN owned_properties op ON op.id = w.property_id
        WHERE pq.is_selected = TRUE
@@ -40,11 +40,11 @@ export async function GET(req: NextRequest) {
     );
 
     const unitRows = await query<UnitRow>(
-      `SELECT pu.project_id, pu.unit_id, u.unit_label, pu.cost_share
+      `SELECT pu.work_order_id AS project_id, pu.unit_id, u.unit_label, pu.cost_share
        FROM project_units pu
        JOIN units u ON u.id = pu.unit_id
-       JOIN work_orders w ON w.id = pu.project_id
-       JOIN project_quotes pq ON pq.project_id = w.id AND pq.is_selected = TRUE
+       JOIN work_orders w ON w.id = pu.work_order_id
+       JOIN project_quotes pq ON pq.work_order_id = w.id AND pq.is_selected = TRUE
        ${propertyId ? 'WHERE w.property_id = $1' : ''}`,
       propertyId ? [propertyId] : []
     );

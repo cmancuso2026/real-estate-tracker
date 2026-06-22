@@ -580,19 +580,30 @@ ALTER TABLE vendors ADD COLUMN IF NOT EXISTS trade TEXT;
 -- project_quotes: one row per vendor's quote on a project. Replaces the
 -- single-vendor work-order model with multi-vendor quotes.
 -- ---------------------------------------------------------------------------
+-- Earlier design used project_id; the column is now work_order_id. Rename if present.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='project_quotes' AND column_name='project_id') THEN
+    ALTER TABLE project_quotes RENAME COLUMN project_id TO work_order_id;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='project_units' AND column_name='project_id') THEN
+    ALTER TABLE project_units RENAME COLUMN project_id TO work_order_id;
+  END IF;
+END $$;
+
 CREATE TABLE IF NOT EXISTS project_quotes (
-  id           SERIAL PRIMARY KEY,
-  project_id   INTEGER NOT NULL REFERENCES work_orders (id) ON DELETE CASCADE,
-  vendor_id    INTEGER NOT NULL REFERENCES vendors (id),
-  quoted_cost  NUMERIC(12,2),
-  final_cost   NUMERIC(12,2),
-  is_selected  BOOLEAN NOT NULL DEFAULT FALSE,   -- the winning quote
-  notes        TEXT,
-  created_at   TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
-  UNIQUE (project_id, vendor_id)
+  id            SERIAL PRIMARY KEY,
+  work_order_id INTEGER NOT NULL REFERENCES work_orders (id) ON DELETE CASCADE,
+  vendor_id     INTEGER NOT NULL REFERENCES vendors (id),
+  quoted_cost   NUMERIC(12,2),
+  final_cost    NUMERIC(12,2),
+  is_selected   BOOLEAN NOT NULL DEFAULT FALSE,   -- the winning quote
+  notes         TEXT,
+  created_at    TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+  UNIQUE (work_order_id, vendor_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_project_quotes_project ON project_quotes (project_id);
+CREATE INDEX IF NOT EXISTS idx_project_quotes_project ON project_quotes (work_order_id);
 CREATE INDEX IF NOT EXISTS idx_project_quotes_vendor  ON project_quotes (vendor_id);
 
 -- ---------------------------------------------------------------------------
@@ -600,14 +611,14 @@ CREATE INDEX IF NOT EXISTS idx_project_quotes_vendor  ON project_quotes (vendor_
 -- cost_share is a percentage 0-100; NULL means "split evenly".
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS project_units (
-  id          SERIAL PRIMARY KEY,
-  project_id  INTEGER NOT NULL REFERENCES work_orders (id) ON DELETE CASCADE,
-  unit_id     INTEGER NOT NULL REFERENCES units (id),
-  cost_share  NUMERIC(5,2),                       -- 0-100, NULL = split evenly
-  UNIQUE (project_id, unit_id)
+  id            SERIAL PRIMARY KEY,
+  work_order_id INTEGER NOT NULL REFERENCES work_orders (id) ON DELETE CASCADE,
+  unit_id       INTEGER NOT NULL REFERENCES units (id),
+  cost_share    NUMERIC(5,2),                       -- 0-100, NULL = split evenly
+  UNIQUE (work_order_id, unit_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_project_units_project ON project_units (project_id);
+CREATE INDEX IF NOT EXISTS idx_project_units_project ON project_units (work_order_id);
 
 -- ---------------------------------------------------------------------------
 -- recurring_costs: standing monthly costs tied to a vendor, shown in cash flow.

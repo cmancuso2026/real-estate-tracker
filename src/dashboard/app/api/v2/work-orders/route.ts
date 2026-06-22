@@ -22,13 +22,23 @@ export async function GET(req: NextRequest) {
             v.trade AS vendor_trade,
             v.phone AS vendor_phone,
             p.address AS property_address,
-            u.unit_label
+            u.unit_label,
+            COALESCE((
+              SELECT json_agg(json_build_object('unit_id', pu.unit_id, 'unit_label', uu.unit_label, 'cost_share', pu.cost_share))
+              FROM project_units pu JOIN units uu ON uu.id = pu.unit_id
+              WHERE pu.work_order_id = wo.id
+            ), '[]') AS units,
+            COALESCE((
+              SELECT json_agg(json_build_object('id', pq.id, 'vendor_id', pq.vendor_id, 'vendor_name', vv.name, 'vendor_trade', vv.trade, 'quoted_cost', pq.quoted_cost, 'final_cost', pq.final_cost, 'is_selected', pq.is_selected, 'notes', pq.notes) ORDER BY pq.is_selected DESC, pq.created_at)
+              FROM project_quotes pq JOIN vendors vv ON vv.id = pq.vendor_id
+              WHERE pq.work_order_id = wo.id
+            ), '[]') AS quotes
      FROM work_orders wo
-     JOIN vendors v          ON v.id = wo.vendor_id
+     LEFT JOIN vendors v          ON v.id = wo.vendor_id
      JOIN owned_properties p ON p.id = wo.property_id
      LEFT JOIN units u       ON u.id = wo.unit_id
      ${where}
-     ORDER BY wo.date_received DESC`,
+     ORDER BY wo.created_at DESC NULLS LAST, wo.id DESC`,
     values
   );
   return NextResponse.json(rows);
@@ -40,27 +50,28 @@ export async function POST(req: NextRequest) {
     property_id, unit_id, vendor_id, category, description,
     status, date_received, quoted_cost, actual_cost,
     rating, review_notes, source, attachment_url,
+    project_name, is_recurring,
   } = body;
 
-  if (!property_id || !vendor_id || !category || !description || !date_received) {
-    return NextResponse.json(
-      { error: 'property_id, vendor_id, category, description, date_received are required' },
-      { status: 400 }
-    );
+  if (!property_id) {
+    return NextResponse.json({ error: 'property_id is required' }, { status: 400 });
   }
+
+  const today = new Date().toISOString().slice(0, 10);
 
   const rows = await query(
     `INSERT INTO work_orders
-       (property_id, unit_id, vendor_id, category, description, status,
-        date_received, quoted_cost, actual_cost, rating, review_notes, source, attachment_url)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+       (property_id, unit_id, vendor_id, category, description, status, date_received,
+        quoted_cost, actual_cost, rating, review_notes, source, attachment_url, project_name, is_recurring)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
      RETURNING *`,
     [
-      property_id, unit_id ?? null, vendor_id, category, description,
-      status ?? 'received', date_received,
+      property_id, unit_id ?? null, vendor_id ?? null, category ?? null, description ?? null,
+      status ?? 'received', date_received ?? today,
       quoted_cost ?? null, actual_cost ?? null,
       rating ?? null, review_notes ?? null,
       source ?? 'manual', attachment_url ?? null,
+      project_name ?? null, is_recurring ?? false,
     ]
   );
   return NextResponse.json(rows[0], { status: 201 });

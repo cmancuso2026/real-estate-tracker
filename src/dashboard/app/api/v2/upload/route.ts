@@ -98,18 +98,17 @@ IMPORTANT: FHA MIP (FHA Mortgage Insurance Premium / FHA MIP RBP MON) is NOT pro
 }`,
   },
   vendor_quote: {
-    system: `You are parsing a vendor quote, invoice, or contractor email/PDF for a real estate property. Extract all available information. Respond with valid JSON only. No markdown. Dates YYYY-MM-DD. Amounts as decimals.`,
-    user: `Extract and return this JSON:
+    system: `You are parsing a vendor quote, invoice, or contractor email/PDF for a real estate property. Extract all available information. Respond with valid JSON only. No markdown. Dates YYYY-MM-DD. Amounts as decimals with cents.`,
+    user: `Return this JSON:
 {
   "vendor_name": "string or null",
   "vendor_phone": "string or null",
   "vendor_email": "string or null",
   "trade": "plumbing|hvac|electrical|roofing|appliance|landscaping|pest_control|general|other",
-  "project_name": "brief description of the work e.g. 'AC Repair' or null",
+  "project_name": "brief description of work e.g. AC Repair or null",
   "quoted_cost": decimal or null,
-  "scope_of_work": "string description of what's included or null",
+  "scope_of_work": "string or null",
   "quote_date": "YYYY-MM-DD or null",
-  "valid_until": "YYYY-MM-DD or null",
   "confidence_notes": "string or null"
 }`,
   },

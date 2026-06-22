@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { OverviewTab } from '@/components/OverviewTab';
 import { ProjectsTab } from '@/components/ProjectsTab';
 
-type Tab = 'overview' | 'tenants' | 'rent' | 'leases' | 'projects' | 'escrow' | 'insurance';
+type Tab = 'overview' | 'tenants' | 'rent' | 'leases' | 'work-orders' | 'projects' | 'escrow' | 'insurance';
 
 interface Property { id: number; address: string; city: string; state: string; property_type: string; unit_count: number; }
 interface Unit { id: number; unit_label: string; tenant_name: string | null; tenant_id: number | null; rent_amount: number | null; lease_start_date: string | null; lease_end_date: string | null; first_lease_start_date: string | null; amount_due: number | null; amount_paid: number | null; is_late: boolean | null; is_owner_unit: boolean; }
@@ -25,6 +25,8 @@ interface InsurancePolicy {
   extracted_by_ai: boolean;
 }
 interface ExistingTenant { id: number; first_name: string; last_name: string; unit_id: number; unit_label: string; phone: string | null; email: string | null; is_active: boolean; notes: string | null; }
+interface WorkOrder { id: number; vendor_name: string | null; vendor_trade: string | null; category: string | null; description: string | null; status: string; date_received: string | null; date_completed: string | null; quoted_cost: number | null; actual_cost: number | null; rating: number | null; unit_label: string | null; }
+interface WorkOrderExtracted { vendor_name: string | null; category: string | null; description: string | null; date_received: string | null; quoted_cost: number | null; actual_cost: number | null; confidence_notes: string | null; }
 
 interface LeaseExtracted {
   tenant_first_name: string | null; tenant_last_name: string | null;
@@ -50,6 +52,14 @@ const UTILITIES = ['electric','gas','water','trash','sewer','internet'];
 const EQUIPMENT = ['refrigerator','stove','dishwasher','washer','dryer','HVAC','microwave','A/C window unit'];
 
 function fmt$(n: number | null | undefined) { return n == null ? '—' : '$' + Math.abs(n).toLocaleString(); }
+function StatusBadge({ status }: { status: string }) {
+  const c: Record<string,string> = { received:'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400', open:'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400', completed:'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400', complete:'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' };
+  return <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${c[status]??c.received}`}>{status.charAt(0).toUpperCase()+status.slice(1)}</span>;
+}
+function Stars({ rating }: { rating: number | null }) {
+  if (!rating) return <span className="text-gray-400 text-xs">Unrated</span>;
+  return <span className="text-amber-500">{'★'.repeat(rating)}{'☆'.repeat(5-rating)}</span>;
+}
 function Field({ label, value }: { label: string; value: string | number | null | undefined }) {
   return <div><p className="text-xs text-gray-500">{label}</p><p className="font-medium">{value ?? <span className="italic text-gray-400 text-sm">Not found</span>}</p></div>;
 }
@@ -65,7 +75,7 @@ function Input({ label, value, onChange, type='text', placeholder='' }: { label:
   return <div><label className="mb-1 block text-xs font-medium text-gray-500">{label}</label><input type={type} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800" /></div>;
 }
 
-const TABS: {id:Tab;label:string}[] = [{id:'overview',label:'Overview'},{id:'tenants',label:'Tenants'},{id:'rent',label:'Rent'},{id:'leases',label:'Leases'},{id:'projects',label:'Projects'},{id:'escrow',label:'Escrow'},{id:'insurance',label:'Insurance'}];
+const TABS: {id:Tab;label:string}[] = [{id:'overview',label:'Overview'},{id:'tenants',label:'Tenants'},{id:'rent',label:'Rent'},{id:'leases',label:'Leases'},{id:'work-orders',label:'Work Orders'},{id:'projects',label:'Projects'},{id:'escrow',label:'Escrow'},{id:'insurance',label:'Insurance'}];
 
 // Lease edit form — shared between "review extracted" and "edit existing"
 function LeaseForm({
@@ -621,6 +631,9 @@ export default function PropertyDetailPage() {
   const [leases, setLeases] = useState<Lease[]>([]);
   const [escrow, setEscrow] = useState<EscrowAccount[]>([]);
   const [insurance, setInsurance] = useState<InsurancePolicy[]>([]);
+  const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
+  const [woExtracted, setWoExtracted] = useState<WorkOrderExtracted | null>(null);
+  const [uploadingWO, setUploadingWO] = useState(false);
   const [existingTenants, setExistingTenants] = useState<ExistingTenant[]>([]);
   const [editingTenant, setEditingTenant] = useState<ExistingTenant | null>(null);
   const [deletingTenantId, setDeletingTenantId] = useState<number|null>(null);
@@ -701,6 +714,9 @@ export default function PropertyDetailPage() {
     if (t === 'rent') {
       const res = await fetch(`/api/v2/rent?propertyId=${id}`);
       setRent(asArray(await res.json()));
+    } else if (t === 'work-orders') {
+      const res = await fetch(`/api/v2/work-orders?propertyId=${id}`);
+      setWorkOrders(asArray(await res.json()));
     } else if (t === 'leases') {
       const res = await fetch(`/api/v2/leases?propertyId=${id}`);
       setLeases(asArray(await res.json()));
@@ -1208,6 +1224,65 @@ export default function PropertyDetailPage() {
                 </div>
               ))
             }
+          </div>
+        </div>
+      )}
+
+      {/* ── WORK ORDERS ── */}
+      {tab==='work-orders' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="font-semibold text-gray-700 dark:text-gray-300">Work Orders</h2>
+            <div className="flex gap-2">
+              <label className={`cursor-pointer rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800 ${uploadingWO?'opacity-50':''}`}>
+                {uploadingWO?'Parsing…':'Upload PDF/Invoice'}
+                <input type="file" accept=".pdf" className="hidden" disabled={uploadingWO} onChange={async e=>{const file=e.target.files?.[0];if(!file||uploadingWO)return;const extracted=await uploadPdf(file,'work_order',setUploadingWO);if(extracted)setWoExtracted(extracted);e.target.value='';}} />
+              </label>
+              <Link href={`/properties/${id}/work-orders/new`} className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700">+ New Work Order</Link>
+            </div>
+          </div>
+          {woExtracted&&(
+            <div className="rounded-xl border-2 border-blue-300 bg-blue-50 p-5 dark:border-blue-700 dark:bg-blue-950/20">
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="font-semibold text-blue-800 dark:text-blue-300">✦ AI Extracted</h3>
+                <button onClick={()=>setWoExtracted(null)} className="text-xs text-gray-400 hover:text-gray-600">Discard</button>
+              </div>
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+                <Field label="Vendor" value={woExtracted.vendor_name} />
+                <Field label="Category" value={woExtracted.category} />
+                <Field label="Date" value={woExtracted.date_received} />
+                <Field label="Quoted Cost" value={woExtracted.quoted_cost?fmt$(woExtracted.quoted_cost):null} />
+                <Field label="Actual Cost" value={woExtracted.actual_cost?fmt$(woExtracted.actual_cost):null} />
+              </div>
+              {woExtracted.description&&<p className="mt-3 text-sm text-gray-600 dark:text-gray-400">{woExtracted.description}</p>}
+              <div className="mt-4">
+                <Link href={`/properties/${id}/work-orders/new?prefill=${encodeURIComponent(JSON.stringify(woExtracted))}`} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Continue to Work Order Form →</Link>
+              </div>
+            </div>
+          )}
+          <div className="space-y-3">
+            {workOrders.length===0&&!woExtracted?<div className="rounded-xl border border-dashed border-gray-300 p-8 text-center text-gray-400 dark:border-gray-700">No work orders yet.</div>:workOrders.map(wo=>(
+              <div key={wo.id} className="rounded-xl border border-gray-200 p-4 dark:border-gray-800">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-medium">{wo.vendor_name ?? 'No vendor'}</span>
+                      {wo.vendor_trade&&<span className="text-xs text-gray-400">{wo.vendor_trade}</span>}
+                      <StatusBadge status={wo.status} />
+                      {wo.unit_label&&<span className="text-xs text-gray-400">Unit {wo.unit_label}</span>}
+                    </div>
+                    <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">{wo.description}</p>
+                    <div className="mt-2 flex flex-wrap gap-4 text-xs text-gray-400">
+                      {wo.date_received&&<span>Received {wo.date_received}</span>}
+                      {wo.date_completed&&<span>Completed {wo.date_completed}</span>}
+                      {wo.quoted_cost&&<span>Quote: {fmt$(wo.quoted_cost)}</span>}
+                      {wo.actual_cost&&<span>Actual: {fmt$(wo.actual_cost)}</span>}
+                    </div>
+                  </div>
+                  <Stars rating={wo.rating} />
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
