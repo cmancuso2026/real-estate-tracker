@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { OverviewTab } from '@/components/OverviewTab';
@@ -269,6 +269,35 @@ interface UnitType {
   amount_due: number | null; amount_paid: number | null; is_late: boolean | null;
 }
 
+type RentStatus = 'paid' | 'late' | 'partial' | 'unpaid';
+
+interface MonthGroup {
+  key: string; unit_label: string; month: string;        // month = 'YYYY-MM'
+  expected: number; totalPaid: number; totalLateFee: number;
+  anyLate: boolean; status: RentStatus; payments: RentRowType[];
+}
+
+const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function monthLabel(ym: string) {
+  const [y, m] = ym.split('-');
+  return `${MONTH_NAMES[parseInt(m ?? '', 10) - 1] ?? m ?? ''} ${y ?? ''}`.trim();
+}
+function groupStatus(expected: number, totalPaid: number, anyLate: boolean): RentStatus {
+  if (totalPaid <= 0) return 'unpaid';
+  if (expected > 0 && totalPaid < expected) return 'partial';
+  if (anyLate) return 'late';
+  return 'paid';
+}
+const STATUS_CLASS: Record<RentStatus, string> = {
+  paid:    'bg-green-100 text-green-700',
+  late:    'bg-amber-100 text-amber-700',
+  partial: 'bg-orange-100 text-orange-700',
+  unpaid:  'bg-red-100 text-red-600',
+};
+function RentStatusBadge({ status }: { status: RentStatus }) {
+  return <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_CLASS[status]}`}>{status.charAt(0).toUpperCase() + status.slice(1)}</span>;
+}
+
 function RentTab({ id, units, rent, onRefresh, unitFilter, setUnitFilter }: {
   id: string; units: UnitType[]; rent: RentRowType[]; onRefresh: () => void;
   unitFilter: string; setUnitFilter: (v: string) => void;
@@ -277,33 +306,79 @@ function RentTab({ id, units, rent, onRefresh, unitFilter, setUnitFilter }: {
   const [editForm, setEditForm] = useState<Partial<RentRowType>>({});
   const [editSaving, setEditSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [statusFilter, setStatusFilter] = useState<Set<RentStatus>>(new Set());
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const thisMonth = new Date().toISOString().slice(0, 7);
   const today = new Date().toISOString().slice(0, 10);
+  const currentYear = String(new Date().getFullYear());
   const rentalUnits = units.filter(u => !u.is_owner_unit);
 
-  // YTD stats per unit
-  const ytdByUnit: Record<string, { paid: number; onTime: number; late: number; total: number }> = {};
-  for (const r of rent) {
-    if (!ytdByUnit[r.unit_label]) ytdByUnit[r.unit_label] = { paid: 0, onTime: 0, late: 0, total: 0 };
-    const u = ytdByUnit[r.unit_label]!;
-    u.total++;
-    if (r.amount_paid) { u.paid += r.amount_paid; if (r.is_late) u.late++; else u.onTime++; }
-  }
+  const sameUnit = (a: unknown, b: unknown) => String(a).trim() === String(b).trim();
 
-  const thisMonthPaid = new Set(rent.filter(r => r.due_date.startsWith(thisMonth) && r.amount_paid != null).map(r => r.unit_label));
+  // ── Group every rent record by (unit, month) so multiple payments in one
+  //    month collapse into a single combined row. ──
+  const allGroups = useMemo<MonthGroup[]>(() => {
+    const map = new Map<string, MonthGroup>();
+    for (const r of rent) {
+      const month = (r.due_date ?? '').slice(0, 7);
+      const key = `${r.unit_label}::${month}`;
+      let g = map.get(key);
+      if (!g) {
+        g = { key, unit_label: r.unit_label, month, expected: 0, totalPaid: 0, totalLateFee: 0, anyLate: false, status: 'unpaid', payments: [] };
+        map.set(key, g);
+      }
+      g.payments.push(r);
+      g.expected = Math.max(g.expected, r.amount_due ?? 0);   // month's expected rent (shared across rows)
+      g.totalPaid += r.amount_paid ?? 0;
+      g.totalLateFee += r.late_fee_charged ?? 0;
+      if (r.is_late) g.anyLate = true;
+    }
+    const groups = Array.from(map.values());
+    for (const g of groups) {
+      g.status = groupStatus(g.expected, g.totalPaid, g.anyLate);
+      g.payments.sort((a, b) => (a.paid_date ?? a.due_date).localeCompare(b.paid_date ?? b.due_date));
+    }
+    groups.sort((a, b) => b.month.localeCompare(a.month) || a.unit_label.localeCompare(b.unit_label));
+    return groups;
+  }, [rent]);
+
+  // ── YTD stats — current calendar year only, measured over months (not raw payments) ──
+  const ytdByUnit: Record<string, { paid: number; onTime: number; late: number; months: number }> = {};
+  for (const g of allGroups) {
+    if (!g.month.startsWith(currentYear)) continue;
+    if (!ytdByUnit[g.unit_label]) ytdByUnit[g.unit_label] = { paid: 0, onTime: 0, late: 0, months: 0 };
+    const u = ytdByUnit[g.unit_label]!;
+    u.paid += g.totalPaid;
+    u.months++;
+    if (g.status === 'paid') u.onTime++;
+    else if (g.status === 'late') u.late++;
+  }
+  const totalYTD = Object.values(ytdByUnit).reduce((s, u) => s + u.paid, 0);
+  const totalOnTime = Object.values(ytdByUnit).reduce((s, u) => s + u.onTime, 0);
+  const totalMonths = Object.values(ytdByUnit).reduce((s, u) => s + u.months, 0);
+
+  // Outstanding this month
+  const paidThisMonth = new Set(allGroups.filter(g => g.month === thisMonth && g.totalPaid > 0).map(g => g.unit_label));
   const outstandingUnits = rentalUnits.filter(u =>
     u.rent_amount && u.lease_start_date && u.lease_end_date &&
     u.lease_start_date <= today && u.lease_end_date >= today &&
-    !thisMonthPaid.has(u.unit_label)
+    !paidThisMonth.has(u.unit_label)
   );
   const totalOutstanding = outstandingUnits.reduce((s, u) => s + (u.rent_amount ?? 0), 0);
-  const totalYTD = Object.values(ytdByUnit).reduce((s, u) => s + u.paid, 0);
-  const totalOnTime = Object.values(ytdByUnit).reduce((s, u) => s + u.onTime, 0);
-  const totalPayments = Object.values(ytdByUnit).reduce((s, u) => s + u.total, 0);
 
-  // Unit filter — filter rent records
-  const filtered = unitFilter === 'all' ? rent : rent.filter(r => r.unit_label === unitFilter);
+  // Apply unit filter, then derive status counts, then apply status filter
+  const unitGroups = unitFilter === 'all' ? allGroups : allGroups.filter(g => sameUnit(g.unit_label, unitFilter));
+  const statusCounts: Record<RentStatus, number> = { paid: 0, late: 0, partial: 0, unpaid: 0 };
+  for (const g of unitGroups) statusCounts[g.status]++;
+  const visibleGroups = statusFilter.size === 0 ? unitGroups : unitGroups.filter(g => statusFilter.has(g.status));
+
+  function toggleStatus(s: RentStatus) {
+    setStatusFilter(prev => { const next = new Set(prev); next.has(s) ? next.delete(s) : next.add(s); return next; });
+  }
+  function toggleExpand(key: string) {
+    setExpanded(prev => { const next = new Set(prev); next.has(key) ? next.delete(key) : next.add(key); return next; });
+  }
 
   function startEdit(r: RentRowType) {
     setEditingRow(r);
@@ -316,7 +391,6 @@ function RentTab({ id, units, rent, onRefresh, unitFilter, setUnitFilter }: {
       notes: r.notes ?? '',
     });
   }
-
   async function saveEdit() {
     if (!editingRow || editSaving) return;
     setEditSaving(true);
@@ -330,7 +404,6 @@ function RentTab({ id, units, rent, onRefresh, unitFilter, setUnitFilter }: {
     setEditingRow(null); setEditSaving(false);
     onRefresh();
   }
-
   async function deleteRow(rowId: number) {
     if (!confirm('Delete this payment record?')) return;
     setDeletingId(rowId);
@@ -338,15 +411,74 @@ function RentTab({ id, units, rent, onRefresh, unitFilter, setUnitFilter }: {
     setDeletingId(null);
     onRefresh();
   }
-
   function exportCsv() {
     const headers = ['Unit','Due Date','Expected','Paid','Status','Late Fee','Source'];
-    const rows = rent.map(r => [r.unit_label, r.due_date, r.amount_due, r.amount_paid ?? '', r.amount_paid ? (r.is_late ? 'Late' : 'Paid') : 'Unpaid', r.late_fee_charged ?? '', r.source]);
+    const rows = rent.map(r => [r.unit_label, r.due_date, r.amount_due, r.amount_paid ?? '', r.amount_paid ? (r.is_partial ? 'Partial' : r.is_late ? 'Late' : 'Paid') : 'Unpaid', r.late_fee_charged ?? '', r.source]);
     const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
     const a = document.createElement('a');
     a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
     a.download = `rent-${thisMonth}.csv`;
     a.click();
+  }
+
+  const COLS = 8;
+
+  // Inline editor row (shared by single-payment rows and expanded child payments)
+  function editRowJsx(r: RentRowType) {
+    return (
+      <tr key={`edit-${r.id}`} className="bg-blue-50 dark:bg-blue-950/20">
+        <td className="px-2 py-2" />
+        <td className="px-4 py-2 font-medium">{r.unit_label}</td>
+        <td className="px-4 py-2 text-gray-500 text-xs">{r.due_date}</td>
+        <td className="px-4 py-2">
+          <input type="number" value={editForm.amount_due ?? ''} onChange={e => setEditForm(p => ({ ...p, amount_due: parseFloat(e.target.value) }))}
+            className="w-24 rounded border border-gray-300 px-2 py-1 text-xs dark:border-gray-700 dark:bg-gray-800" />
+        </td>
+        <td className="px-4 py-2">
+          <input type="number" value={editForm.amount_paid ?? ''} onChange={e => setEditForm(p => ({ ...p, amount_paid: e.target.value ? parseFloat(e.target.value) : null }))}
+            className="w-24 rounded border border-gray-300 px-2 py-1 text-xs dark:border-gray-700 dark:bg-gray-800" />
+        </td>
+        <td className="px-4 py-2">
+          <select value={editForm.is_late ? 'late' : 'ontime'} onChange={e => setEditForm(p => ({ ...p, is_late: e.target.value === 'late' }))}
+            className="rounded border border-gray-300 px-2 py-1 text-xs dark:border-gray-700 dark:bg-gray-800">
+            <option value="ontime">On time</option>
+            <option value="late">Late</option>
+          </select>
+        </td>
+        <td className="px-4 py-2">
+          <input type="number" value={editForm.late_fee_charged ?? ''} onChange={e => setEditForm(p => ({ ...p, late_fee_charged: e.target.value ? parseFloat(e.target.value) : null }))}
+            placeholder="0" className="w-20 rounded border border-gray-300 px-2 py-1 text-xs dark:border-gray-700 dark:bg-gray-800" />
+        </td>
+        <td className="px-4 py-2">
+          <div className="flex gap-2">
+            <button onClick={saveEdit} disabled={editSaving} className="rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-700 disabled:opacity-50">{editSaving ? '…' : 'Save'}</button>
+            <button onClick={() => setEditingRow(null)} className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-100 dark:border-gray-700">Cancel</button>
+          </div>
+        </td>
+      </tr>
+    );
+  }
+
+  // A single payment rendered as a nested child row under a combined month
+  function childRowJsx(r: RentRowType) {
+    if (editingRow?.id === r.id) return editRowJsx(r);
+    return (
+      <tr key={`child-${r.id}`} className="bg-gray-50/60 dark:bg-gray-900/30">
+        <td className="px-2 py-2" />
+        <td className="px-4 py-2" />
+        <td className="px-4 py-2 pl-8 text-xs text-gray-500 tabular">↳ {r.paid_date ?? r.due_date}</td>
+        <td className="px-4 py-2 text-gray-300 dark:text-gray-600">—</td>
+        <td className="px-4 py-2 tabular">{r.amount_paid != null ? '$' + r.amount_paid.toLocaleString() : '—'}</td>
+        <td className="px-4 py-2">{r.is_late && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">Late</span>}</td>
+        <td className="px-4 py-2 tabular">{r.late_fee_charged ? '$' + r.late_fee_charged.toLocaleString() : '—'}</td>
+        <td className="px-4 py-2">
+          <div className="flex gap-2">
+            <button onClick={() => startEdit(r)} className="text-xs text-blue-600 hover:underline dark:text-blue-400">Edit</button>
+            <button onClick={() => deleteRow(r.id)} disabled={deletingId === r.id} className="text-xs text-red-400 hover:text-red-600 disabled:opacity-50">{deletingId === r.id ? '…' : 'Delete'}</button>
+          </div>
+        </td>
+      </tr>
+    );
   }
 
   return (
@@ -364,28 +496,23 @@ function RentTab({ id, units, rent, onRefresh, unitFilter, setUnitFilter }: {
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {rentalUnits.map(u => {
           const stats = ytdByUnit[u.unit_label];
-          const pct = stats && stats.total > 0 ? Math.round((stats.onTime / stats.total) * 100) : null;
-          const thisMonthRecord = rent.find(r => r.unit_label === u.unit_label && r.due_date.startsWith(thisMonth));
-          const isPaid = thisMonthRecord?.amount_paid != null;
+          const pct = stats && stats.months > 0 ? Math.round((stats.onTime / stats.months) * 100) : null;
+          const tmGroup = allGroups.find(g => sameUnit(g.unit_label, u.unit_label) && g.month === thisMonth);
           return (
             <div key={u.id} className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
               <div className="flex items-center justify-between mb-1">
-                <p className="text-xs font-medium text-gray-500">Unit {u.unit_label} YTD</p>
-                {thisMonthRecord && (
-                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${isPaid ? (thisMonthRecord.is_late ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700') : 'bg-red-100 text-red-600'}`}>
-                    {isPaid ? (thisMonthRecord.is_late ? 'Late' : 'Paid') : 'Unpaid'}
-                  </span>
-                )}
+                <p className="text-xs font-medium text-gray-500">Unit {u.unit_label} · {currentYear}</p>
+                {tmGroup && <RentStatusBadge status={tmGroup.status} />}
               </div>
               <p className="text-xl font-bold tabular">{stats ? '$' + stats.paid.toLocaleString() : '—'}</p>
-              {pct !== null && <p className="text-xs text-gray-400">{pct}% on time · {stats?.late ?? 0} late</p>}
+              {pct !== null && <p className="text-xs text-gray-400">{pct}% on time · {stats?.late ?? 0} late · {stats?.months ?? 0} mo</p>}
             </div>
           );
         })}
         <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
-          <p className="text-xs font-medium text-gray-500">Total YTD</p>
+          <p className="text-xs font-medium text-gray-500">Total YTD ({currentYear})</p>
           <p className="text-xl font-bold tabular text-green-600">${totalYTD.toLocaleString()}</p>
-          {totalPayments > 0 && <p className="text-xs text-gray-400">{Math.round((totalOnTime / totalPayments) * 100)}% on time</p>}
+          {totalMonths > 0 && <p className="text-xs text-gray-400">{Math.round((totalOnTime / totalMonths) * 100)}% on time</p>}
         </div>
         <div className={`rounded-xl border p-4 ${totalOutstanding > 0 ? 'border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/20' : 'border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/20'}`}>
           <p className={`text-xs font-medium ${totalOutstanding > 0 ? 'text-red-500' : 'text-green-600'}`}>Outstanding {thisMonth}</p>
@@ -398,86 +525,88 @@ function RentTab({ id, units, rent, onRefresh, unitFilter, setUnitFilter }: {
       <div className="flex flex-wrap gap-2">
         {(['all', ...rentalUnits.map(u => u.unit_label)] as string[]).map(label => (
           <button key={label} onClick={() => setUnitFilter(label)}
-            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${unitFilter === label ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400'}`}>
+            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${sameUnit(unitFilter, label) || (label === 'all' && unitFilter === 'all') ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400'}`}>
             {label === 'all' ? 'All Units' : `Unit ${label}`}
           </button>
         ))}
+      </div>
+
+      {/* Status slicers */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-medium text-gray-400 mr-1">Status</span>
+        {(['paid','late','partial','unpaid'] as RentStatus[]).map(s => {
+          const active = statusFilter.has(s);
+          return (
+            <button key={s} onClick={() => toggleStatus(s)}
+              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${active ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400'}`}>
+              {s.charAt(0).toUpperCase() + s.slice(1)} ({statusCounts[s]})
+            </button>
+          );
+        })}
+        {statusFilter.size > 0 && <button onClick={() => setStatusFilter(new Set())} className="text-xs text-blue-600 hover:underline">Clear</button>}
+        <span className="ml-auto text-xs text-gray-400">{visibleGroups.length} month{visibleGroups.length === 1 ? '' : 's'}</span>
       </div>
 
       {/* Table */}
       <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 dark:bg-gray-900">
-            <tr>{['Unit','Due Date','Expected','Paid','Status','Late Fee','Source',''].map(h => <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500">{h}</th>)}</tr>
+            <tr>
+              <th className="w-8 px-2 py-3" />
+              {['Unit','Month','Expected','Paid','Status','Late Fee',''].map(h => <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500">{h}</th>)}
+            </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-            {filtered.length === 0
-              ? <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">No rent records yet</td></tr>
-              : filtered.map(r => editingRow?.id === r.id ? (
-                // EDIT ROW
-                <tr key={r.id} className="bg-blue-50 dark:bg-blue-950/20">
-                  <td className="px-4 py-2 font-medium">{r.unit_label}</td>
-                  <td className="px-4 py-2 text-gray-500 text-xs">{r.due_date}</td>
-                  <td className="px-4 py-2">
-                    <input type="number" value={editForm.amount_due ?? ''} onChange={e => setEditForm(p => ({ ...p, amount_due: parseFloat(e.target.value) }))}
-                      className="w-24 rounded border border-gray-300 px-2 py-1 text-xs dark:border-gray-700 dark:bg-gray-800" />
-                  </td>
-                  <td className="px-4 py-2">
-                    <input type="number" value={editForm.amount_paid ?? ''} onChange={e => setEditForm(p => ({ ...p, amount_paid: e.target.value ? parseFloat(e.target.value) : null }))}
-                      className="w-24 rounded border border-gray-300 px-2 py-1 text-xs dark:border-gray-700 dark:bg-gray-800" />
-                  </td>
-                  <td className="px-4 py-2">
-                    <select value={editForm.is_late ? 'late' : 'ontime'} onChange={e => setEditForm(p => ({ ...p, is_late: e.target.value === 'late' }))}
-                      className="rounded border border-gray-300 px-2 py-1 text-xs dark:border-gray-700 dark:bg-gray-800">
-                      <option value="ontime">On time</option>
-                      <option value="late">Late</option>
-                    </select>
-                  </td>
-                  <td className="px-4 py-2">
-                    <input type="number" value={editForm.late_fee_charged ?? ''} onChange={e => setEditForm(p => ({ ...p, late_fee_charged: e.target.value ? parseFloat(e.target.value) : null }))}
-                      placeholder="0" className="w-20 rounded border border-gray-300 px-2 py-1 text-xs dark:border-gray-700 dark:bg-gray-800" />
-                  </td>
-                  <td className="px-4 py-2">
-                    <input type="date" value={editForm.paid_date ?? ''} onChange={e => setEditForm(p => ({ ...p, paid_date: e.target.value || null }))}
-                      className="rounded border border-gray-300 px-2 py-1 text-xs dark:border-gray-700 dark:bg-gray-800" />
-                  </td>
-                  <td className="px-4 py-2">
-                    <div className="flex gap-2">
-                      <button onClick={saveEdit} disabled={editSaving} className="rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-700 disabled:opacity-50">{editSaving ? '…' : 'Save'}</button>
-                      <button onClick={() => setEditingRow(null)} className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-100 dark:border-gray-700">Cancel</button>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                // VIEW ROW
-                <tr key={r.id} className="hover:bg-gray-50 dark:hover:bg-gray-900/30">
-                  <td className="px-4 py-3 font-medium">{r.unit_label}</td>
-                  <td className="px-4 py-3 tabular">{r.due_date}</td>
-                  <td className="px-4 py-3 tabular">${r.amount_due.toLocaleString()}</td>
-                  <td className="px-4 py-3 tabular">{r.amount_paid != null ? '$' + r.amount_paid.toLocaleString() : '—'}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-col gap-1">
-                      {!r.amount_paid
-                        ? <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-600">Unpaid</span>
-                        : r.is_partial
-                        ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">Partial</span>
-                        : r.is_late
-                        ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">Late</span>
-                        : <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">Paid</span>
-                      }
-                      {r.late_fee_applicable && !r.late_fee_charged && <span className="text-xs text-red-500">Fee not charged</span>}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 tabular">{r.late_fee_charged ? '$' + r.late_fee_charged.toLocaleString() : '—'}</td>
-                  <td className="px-4 py-3 text-gray-400 text-xs">{r.source}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex gap-2">
-                      <button onClick={() => startEdit(r)} className="text-xs text-blue-600 hover:underline dark:text-blue-400">Edit</button>
-                      <button onClick={() => deleteRow(r.id)} disabled={deletingId === r.id} className="text-xs text-red-400 hover:text-red-600 disabled:opacity-50">{deletingId === r.id ? '…' : 'Delete'}</button>
-                    </div>
-                  </td>
-                </tr>
-              ))
+            {visibleGroups.length === 0
+              ? <tr><td colSpan={COLS} className="px-4 py-8 text-center text-gray-400">No rent records match the current filters</td></tr>
+              : visibleGroups.flatMap(g => {
+                  const multi = g.payments.length > 1;
+                  const single = g.payments[0]!;
+
+                  // Single payment in the month → edit it directly inline
+                  if (!multi) {
+                    if (editingRow?.id === single.id) return [editRowJsx(single)];
+                    return [(
+                      <tr key={g.key} className="hover:bg-gray-50 dark:hover:bg-gray-900/30">
+                        <td className="px-2 py-3" />
+                        <td className="px-4 py-3 font-medium">{g.unit_label}</td>
+                        <td className="px-4 py-3 tabular">{monthLabel(g.month)}</td>
+                        <td className="px-4 py-3 tabular">${g.expected.toLocaleString()}</td>
+                        <td className="px-4 py-3 tabular">{g.totalPaid > 0 ? '$' + g.totalPaid.toLocaleString() : '—'}</td>
+                        <td className="px-4 py-3"><RentStatusBadge status={g.status} /></td>
+                        <td className="px-4 py-3 tabular">{g.totalLateFee ? '$' + g.totalLateFee.toLocaleString() : '—'}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex gap-2">
+                            <button onClick={() => startEdit(single)} className="text-xs text-blue-600 hover:underline dark:text-blue-400">Edit</button>
+                            <button onClick={() => deleteRow(single.id)} disabled={deletingId === single.id} className="text-xs text-red-400 hover:text-red-600 disabled:opacity-50">{deletingId === single.id ? '…' : 'Delete'}</button>
+                          </div>
+                        </td>
+                      </tr>
+                    )];
+                  }
+
+                  // Multiple payments in the month → combined summary row + expandable children
+                  const isOpen = expanded.has(g.key);
+                  const rows = [(
+                    <tr key={g.key} className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-900/30" onClick={() => toggleExpand(g.key)}>
+                      <td className="px-2 py-3 text-center text-gray-400 select-none">{isOpen ? '▼' : '▶'}</td>
+                      <td className="px-4 py-3 font-medium">{g.unit_label}</td>
+                      <td className="px-4 py-3 tabular">{monthLabel(g.month)}</td>
+                      <td className="px-4 py-3 tabular">${g.expected.toLocaleString()}</td>
+                      <td className="px-4 py-3 tabular font-semibold">${g.totalPaid.toLocaleString()}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <RentStatusBadge status={g.status} />
+                          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500 dark:bg-gray-800 dark:text-gray-400">{g.payments.length} payments</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 tabular">{g.totalLateFee ? '$' + g.totalLateFee.toLocaleString() : '—'}</td>
+                      <td className="px-4 py-3 text-xs text-gray-400">{isOpen ? 'Hide' : 'Show'}</td>
+                    </tr>
+                  )];
+                  if (isOpen) for (const p of g.payments) rows.push(childRowJsx(p));
+                  return rows;
+                })
             }
           </tbody>
         </table>
