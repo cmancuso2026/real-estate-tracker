@@ -42,7 +42,16 @@ export async function GET(req: NextRequest) {
      FROM rent_collections rc
      JOIN units u            ON u.id = rc.unit_id
      JOIN owned_properties p ON p.id = u.property_id
-     LEFT JOIN tenants t     ON t.unit_id = rc.unit_id AND t.is_active = TRUE
+     -- Exactly one active tenant per rent row. A plain LEFT JOIN here fans
+     -- out each rent_collection by the number of active tenants on the unit
+     -- (e.g. 3 active tenants → every payment counted 3x), so we collapse it
+     -- to the most recent active tenant via LATERAL ... LIMIT 1.
+     LEFT JOIN LATERAL (
+       SELECT * FROM tenants
+       WHERE unit_id = rc.unit_id AND is_active = TRUE
+       ORDER BY created_at DESC
+       LIMIT 1
+     ) t ON TRUE
      ${where}
      ORDER BY rc.due_date DESC`,
     values

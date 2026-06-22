@@ -481,3 +481,23 @@ ALTER TABLE rent_collections ADD COLUMN IF NOT EXISTS late_fee_applicable BOOLEA
 -- Expanded escrow statement fields
 ALTER TABLE escrow_statements ADD COLUMN IF NOT EXISTS total_property_taxes NUMERIC(10,2);
 ALTER TABLE escrow_statements ADD COLUMN IF NOT EXISTS total_insurance NUMERIC(10,2);
+
+-- Escrow statements carry cents (e.g. shortage -930.96, new monthly escrow 1577.78),
+-- but these columns were originally INTEGER, so saving a real statement failed with
+-- "invalid input syntax for type integer". Widen them to NUMERIC. Guarded so it is a
+-- no-op once converted (safe to run on every boot).
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='escrow_statements' AND column_name='shortage_surplus_amount' AND data_type='integer') THEN
+    ALTER TABLE escrow_statements ALTER COLUMN shortage_surplus_amount TYPE NUMERIC(12,2);
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='escrow_statements' AND column_name='new_monthly_escrow' AND data_type='integer') THEN
+    ALTER TABLE escrow_statements ALTER COLUMN new_monthly_escrow TYPE NUMERIC(12,2);
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='escrow_statements' AND column_name='projected_requirement' AND data_type='integer') THEN
+    ALTER TABLE escrow_statements ALTER COLUMN projected_requirement TYPE NUMERIC(12,2);
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='escrow_statements' AND column_name='actual_disbursements' AND data_type='integer') THEN
+    ALTER TABLE escrow_statements ALTER COLUMN actual_disbursements TYPE NUMERIC(12,2);
+  END IF;
+END $$;

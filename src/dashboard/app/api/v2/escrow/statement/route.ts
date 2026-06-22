@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
      RETURNING *`,
     [
       escrow_account_id,
-      statement_date ?? null, analysis_period_start ?? null, analysis_period_end ?? null,
+      statement_date ?? '', analysis_period_start ?? '', analysis_period_end ?? '',
       total_property_taxes ?? null, total_insurance ?? null,
       projected_requirement ?? null, actual_disbursements ?? null,
       shortage_surplus_amount ?? null, new_monthly_escrow ?? null,

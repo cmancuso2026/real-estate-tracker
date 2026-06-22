@@ -36,7 +36,15 @@ export async function GET(req: NextRequest) {
      ORDER BY p.address`,
     values
   );
-  return NextResponse.json(accounts);
+  // Postgres returns NUMERIC columns as strings; coerce money fields to numbers
+  // so the UI's toLocaleString / comparisons behave correctly.
+  const moneyFields = ['total_property_taxes','total_insurance','projected_requirement','actual_disbursements','shortage_surplus_amount','new_monthly_escrow'];
+  const coerced = accounts.map(a => {
+    const row = { ...a } as Record<string, unknown>;
+    for (const f of moneyFields) if (row[f] != null) row[f] = Number(row[f]);
+    return row;
+  });
+  return NextResponse.json(coerced);
 }
 
 export async function POST(req: NextRequest) {

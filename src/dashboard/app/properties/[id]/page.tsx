@@ -320,7 +320,10 @@ function RentTab({ id, units, rent, onRefresh, unitFilter, setUnitFilter }: {
   //    month collapse into a single combined row. ──
   const allGroups = useMemo<MonthGroup[]>(() => {
     const map = new Map<string, MonthGroup>();
+    const seen = new Set<number>();            // guard against duplicate rows (e.g. a join fan-out)
     for (const r of rent) {
+      if (seen.has(r.id)) continue;
+      seen.add(r.id);
       const month = (r.due_date ?? '').slice(0, 7);
       const key = `${r.unit_label}::${month}`;
       let g = map.get(key);
@@ -697,21 +700,24 @@ export default function PropertyDetailPage() {
   }, [id]);
 
   const loadTab = useCallback(async (t: Tab) => {
+    // Always coerce list responses to arrays. A 5xx/error object would otherwise
+    // be stored as-is and crash the tab's .map()/.filter() render (blank tab).
+    const asArray = (d: unknown) => (Array.isArray(d) ? d : []);
     if (t === 'rent') {
       const res = await fetch(`/api/v2/rent?propertyId=${id}`);
-      setRent(await res.json());
+      setRent(asArray(await res.json()));
     } else if (t === 'work-orders') {
       const res = await fetch(`/api/v2/work-orders?propertyId=${id}`);
-      setWorkOrders(await res.json());
+      setWorkOrders(asArray(await res.json()));
     } else if (t === 'leases') {
       const res = await fetch(`/api/v2/leases?propertyId=${id}`);
-      setLeases(await res.json());
+      setLeases(asArray(await res.json()));
     } else if (t === 'escrow') {
       const res = await fetch(`/api/v2/escrow?propertyId=${id}`);
-      setEscrow(await res.json());
+      setEscrow(asArray(await res.json()));
     } else if (t === 'insurance') {
       const res = await fetch(`/api/v2/insurance?propertyId=${id}`);
-      setInsurance(await res.json());
+      setInsurance(asArray(await res.json()));
     }
   }, [id]);
 
@@ -829,28 +835,41 @@ export default function PropertyDetailPage() {
   async function confirmEscrow() {
     if (!escrowExtracted) return;
     setEscrowSaving(true);
-    const accRes = await fetch('/api/v2/escrow', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ property_id: parseInt(id), lender_name: escrowLender || 'Unknown Lender' }),
-    });
-    const acc = await accRes.json();
-    await fetch('/api/v2/escrow/statement', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        escrow_account_id: acc.id, extracted_by_ai: true,
-        statement_date: escrowExtracted.statement_date,
-        analysis_period_start: escrowExtracted.analysis_period_start,
-        analysis_period_end: escrowExtracted.analysis_period_end,
-        total_property_taxes: escrowExtracted.total_property_taxes,
-        total_insurance: escrowExtracted.total_insurance,
-        shortage_surplus_amount: escrowExtracted.shortage_surplus_amount,
-        new_monthly_escrow: escrowExtracted.new_monthly_escrow,
-        projected_requirement: (escrowExtracted.total_property_taxes??0) + (escrowExtracted.total_insurance??0),
-        actual_disbursements: (escrowExtracted.total_property_taxes??0) + (escrowExtracted.total_insurance??0),
-      }),
-    });
-    setEscrowExtracted(null); setEscrowSaving(false);
-    setTimeout(() => loadTab('escrow'), 300);
+    setUploadError('');
+    try {
+      const accRes = await fetch('/api/v2/escrow', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ property_id: parseInt(id), lender_name: escrowLender || 'Unknown Lender' }),
+      });
+      const acc = await accRes.json();
+      if (!accRes.ok || !acc?.id) throw new Error(acc?.error ?? 'Could not create escrow account');
+
+      const stRes = await fetch('/api/v2/escrow/statement', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          escrow_account_id: acc.id, extracted_by_ai: true,
+          statement_date: escrowExtracted.statement_date,
+          analysis_period_start: escrowExtracted.analysis_period_start,
+          analysis_period_end: escrowExtracted.analysis_period_end,
+          total_property_taxes: escrowExtracted.total_property_taxes,
+          total_insurance: escrowExtracted.total_insurance,
+          shortage_surplus_amount: escrowExtracted.shortage_surplus_amount,
+          new_monthly_escrow: escrowExtracted.new_monthly_escrow,
+          projected_requirement: (escrowExtracted.total_property_taxes ?? 0) + (escrowExtracted.total_insurance ?? 0),
+          actual_disbursements: (escrowExtracted.total_property_taxes ?? 0) + (escrowExtracted.total_insurance ?? 0),
+        }),
+      });
+      if (!stRes.ok) {
+        const err = await stRes.json().catch(() => ({}));
+        throw new Error(err?.error ?? 'Could not save escrow statement');
+      }
+      setEscrowExtracted(null);
+      setTimeout(() => loadTab('escrow'), 300);
+    } catch (e) {
+      setUploadError('Escrow save failed: ' + (e instanceof Error ? e.message : 'unknown error'));
+    } finally {
+      setEscrowSaving(false);
+    }
   }
 
   async function deleteInsurance(policyId: number) {
