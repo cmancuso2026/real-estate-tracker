@@ -462,6 +462,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_tenants_unique_name_unit
 -- Owner-occupied unit flag
 ALTER TABLE units ADD COLUMN IF NOT EXISTS is_owner_unit BOOLEAN NOT NULL DEFAULT FALSE;
 
+-- Track payment status: 'paid' | 'partial' | 'outstanding'
+ALTER TABLE rent_collections ADD COLUMN IF NOT EXISTS payment_status TEXT NOT NULL DEFAULT 'outstanding';
+
 -- Expanded insurance coverage fields
 ALTER TABLE insurance_policies ADD COLUMN IF NOT EXISTS dwelling_coverage INTEGER;
 ALTER TABLE insurance_policies ADD COLUMN IF NOT EXISTS other_structures_coverage INTEGER;
@@ -501,3 +504,38 @@ BEGIN
     ALTER TABLE escrow_statements ALTER COLUMN actual_disbursements TYPE NUMERIC(12,2);
   END IF;
 END $$;
+
+-- ---------------------------------------------------------------------------
+-- piti_history: monthly PITI breakdown from mortgage statements
+-- Claude extracts Principal, Interest, Taxes, Insurance from monthly PDFs
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS piti_history (
+  id                  SERIAL PRIMARY KEY,
+  property_id         INTEGER NOT NULL REFERENCES owned_properties (id) ON DELETE CASCADE,
+  
+  -- Statement period
+  statement_date      TEXT    NOT NULL,            -- YYYY-MM-DD (the statement month)
+  statement_year_month TEXT   NOT NULL,            -- YYYY-MM format for easy grouping
+  
+  -- Breakdown
+  principal           NUMERIC(12,2) NOT NULL,     -- monthly principal payment
+  interest            NUMERIC(12,2) NOT NULL,     -- monthly interest payment
+  property_taxes      NUMERIC(12,2) NOT NULL,     -- monthly property tax portion
+  escrow_insurance    NUMERIC(12,2) NOT NULL,     -- monthly insurance (escrow portion)
+  
+  -- Total for the month
+  total_payment       NUMERIC(12,2) NOT NULL,     -- principal + interest + taxes + insurance
+  
+  -- Source
+  pdf_url             TEXT,
+  extracted_by_ai     BOOLEAN NOT NULL DEFAULT FALSE,
+  ai_confidence_notes TEXT,
+  
+  created_at          TEXT    NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+  updated_at          TEXT    NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+  
+  UNIQUE (property_id, statement_year_month)
+);
+
+CREATE INDEX IF NOT EXISTS idx_piti_property ON piti_history (property_id);
+CREATE INDEX IF NOT EXISTS idx_piti_month ON piti_history (statement_year_month);

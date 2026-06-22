@@ -77,12 +77,18 @@ export async function POST(req: NextRequest) {
   }
 
   const is_partial = amount_paid != null && amount_paid < amount_due;
+  
+  // Compute payment_status: 'paid' | 'partial' | 'outstanding'
+  let payment_status = 'outstanding';
+  if (amount_paid != null && amount_paid > 0) {
+    payment_status = is_partial ? 'partial' : 'paid';
+  }
 
   const rows = await query(
     `INSERT INTO rent_collections
        (unit_id, lease_id, due_date, amount_due, paid_date, amount_paid,
-        is_partial, is_late, late_fee_charged, late_fee_paid, source, notes)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'manual',$11)
+        is_partial, is_late, late_fee_charged, late_fee_paid, source, notes, payment_status)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'manual',$11,$12)
      RETURNING *`,
     [
       unit_id, lease_id ?? null, due_date, amount_due,
@@ -90,6 +96,7 @@ export async function POST(req: NextRequest) {
       is_partial, is_late ?? false,
       late_fee_charged ?? null, late_fee_paid ?? null,
       notes ?? null,
+      payment_status,
     ]
   );
   return NextResponse.json(rows[0], { status: 201 });
