@@ -54,6 +54,10 @@ export default function VendorsPage() {
   const [form, setForm] = useState({ name: '', trade: 'general', phone: '', email: '', website: '' });
   const [saving, setSaving] = useState(false);
 
+  // Post-save "assign to project?" prompt
+  const [justCreated, setJustCreated] = useState<{ id: number; name: string } | null>(null);
+  const [promptCreateProject, setPromptCreateProject] = useState(false);
+
   const load = async (q = '') => {
     setLoading(true);
     try {
@@ -77,11 +81,17 @@ export default function VendorsPage() {
   const save = async () => {
     if (!form.name || !form.trade) return;
     setSaving(true);
-    await fetch('/api/v2/vendors', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) });
+    const res = await fetch('/api/v2/vendors', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) });
     setSaving(false);
     setAddMode(null);
     setForm({ name: '', trade: 'general', phone: '', email: '', website: '' });
     load();
+    if (res.ok) {
+      try {
+        const v = await res.json();
+        if (v?.id) { setJustCreated({ id: v.id, name: v.name }); setPromptCreateProject(false); }
+      } catch { /* ignore — vendor still created */ }
+    }
   };
 
   const spend90 = spend ? spend.vendors.reduce((s, v) => s + Number(v.last_90_days_spend || 0), 0) : 0;
@@ -183,6 +193,35 @@ export default function VendorsPage() {
               Cancel
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Post-save: assign to project prompt */}
+      {justCreated && (
+        <div className="mb-6 rounded-xl border border-green-200 bg-green-50 p-5 dark:border-green-800 dark:bg-green-950/20">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="font-semibold text-green-800 dark:text-green-300">Vendor “{justCreated.name}” saved</h3>
+            <button onClick={() => { setJustCreated(null); setPromptCreateProject(false); }} className="text-xs text-gray-400 hover:text-gray-600">Close</button>
+          </div>
+          {!promptCreateProject ? (
+            <>
+              <p className="mb-3 text-sm text-gray-600 dark:text-gray-300">Would you like to assign this vendor to a project?</p>
+              <div className="flex flex-wrap gap-3">
+                <button onClick={() => setPromptCreateProject(true)}
+                  className="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700">Create New Project</button>
+                <button onClick={() => { setJustCreated(null); setPromptCreateProject(false); }}
+                  className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">Skip for now</button>
+              </div>
+            </>
+          ) : (
+            <div className="max-w-md">
+              <CreateProjectInline
+                vendorId={justCreated.id}
+                onCreated={() => { setJustCreated(null); setPromptCreateProject(false); load(search); }}
+                onCancel={() => { setJustCreated(null); setPromptCreateProject(false); }}
+              />
+            </div>
+          )}
         </div>
       )}
 
@@ -402,6 +441,7 @@ function VendorDetail({ vendor, onSaved, onDeleted }: { vendor: Vendor; onSaved:
 
   // Assign-to-project UI
   const [assigning, setAssigning] = useState(false);
+  const [creatingProject, setCreatingProject] = useState(false);
   const [workOrders, setWorkOrders] = useState<WorkOrderOption[]>([]);
   const [assignWoId, setAssignWoId] = useState('');
   const [assignCost, setAssignCost] = useState('');
@@ -445,6 +485,7 @@ function VendorDetail({ vendor, onSaved, onDeleted }: { vendor: Vendor; onSaved:
 
   const openAssign = async () => {
     setAssigning(true);
+    setCreatingProject(false);
     try {
       const res = await fetch('/api/v2/work-orders');
       if (res.ok) {
@@ -453,6 +494,8 @@ function VendorDetail({ vendor, onSaved, onDeleted }: { vendor: Vendor; onSaved:
       }
     } catch (e) { console.error('Failed to load projects:', e); }
   };
+
+  const closeAssign = () => { setAssigning(false); setCreatingProject(false); setAssignWoId(''); setAssignCost(''); };
 
   const submitAssign = async () => {
     if (!assignWoId) return;
@@ -539,25 +582,37 @@ function VendorDetail({ vendor, onSaved, onDeleted }: { vendor: Vendor; onSaved:
         </div>
 
         {assigning && (
-          <div className="mb-3 rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-800 dark:bg-blue-950/20">
-            <label className="mb-1 block text-xs text-gray-500">Project</label>
-            <select value={assignWoId} onChange={e => setAssignWoId(e.target.value)}
-              className="mb-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800">
-              <option value="">Select a project…</option>
-              {workOrders.map(w => <option key={w.id} value={w.id}>{woLabel(w)}</option>)}
-            </select>
-            <label className="mb-1 block text-xs text-gray-500">Quoted Cost ($)</label>
-            <input type="number" value={assignCost} onChange={e => setAssignCost(e.target.value)}
-              className="mb-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800" />
-            <div className="flex gap-2">
-              <button onClick={submitAssign} disabled={assignSaving || !assignWoId}
-                className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50">
-                {assignSaving ? 'Saving…' : 'Assign'}
-              </button>
-              <button onClick={() => { setAssigning(false); setAssignWoId(''); setAssignCost(''); }}
-                className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">Cancel</button>
+          creatingProject ? (
+            <div className="mb-3">
+              <CreateProjectInline
+                vendorId={vendor.id}
+                onCreated={() => { closeAssign(); loadDetail(); onSaved(); }}
+                onCancel={() => setCreatingProject(false)}
+              />
             </div>
-          </div>
+          ) : (
+            <div className="mb-3 rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-800 dark:bg-blue-950/20">
+              <label className="mb-1 block text-xs text-gray-500">Project</label>
+              <select value={assignWoId} onChange={e => setAssignWoId(e.target.value)}
+                className="mb-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800">
+                <option value="">Select a project…</option>
+                {workOrders.map(w => <option key={w.id} value={w.id}>{woLabel(w)}</option>)}
+              </select>
+              <button onClick={() => setCreatingProject(true)}
+                className="mb-2 text-xs font-medium text-green-700 hover:text-green-800 dark:text-green-400">+ Create New Project</button>
+              <label className="mb-1 block text-xs text-gray-500">Quoted Cost ($)</label>
+              <input type="number" value={assignCost} onChange={e => setAssignCost(e.target.value)}
+                className="mb-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800" />
+              <div className="flex gap-2">
+                <button onClick={submitAssign} disabled={assignSaving || !assignWoId}
+                  className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50">
+                  {assignSaving ? 'Saving…' : 'Assign'}
+                </button>
+                <button onClick={closeAssign}
+                  className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">Cancel</button>
+              </div>
+            </div>
+          )
         )}
 
         {loadingQuotes ? (
@@ -591,6 +646,88 @@ function VendorDetail({ vendor, onSaved, onDeleted }: { vendor: Vendor; onSaved:
             </table>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ── Inline "create new project + assign this vendor" form (shared) ────────────────
+interface PropertyOption { id: number; address: string }
+const PROJECT_STATUSES = [
+  { value: 'received', label: 'Received' },
+  { value: 'open', label: 'Open' },
+  { value: 'completed', label: 'Completed' },
+];
+
+function CreateProjectInline({ vendorId, onCreated, onCancel }: { vendorId: number; onCreated: () => void; onCancel: () => void }) {
+  const [properties, setProperties] = useState<PropertyOption[]>([]);
+  const [projectName, setProjectName] = useState('');
+  const [propertyId, setPropertyId] = useState('');
+  const [status, setStatus] = useState('received');
+  const [quotedCost, setQuotedCost] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/v2/properties');
+        if (res.ok) {
+          const data = await res.json();
+          const list: PropertyOption[] = Array.isArray(data) ? data : [];
+          setProperties(list);
+          if (list.length === 1) setPropertyId(String(list[0].id));
+        }
+      } catch (e) { console.error('Failed to load properties:', e); }
+    })();
+  }, []);
+
+  const create = async () => {
+    if (!projectName.trim() || !propertyId) { setError('Project name and property are required.'); return; }
+    setSaving(true); setError('');
+    try {
+      const woRes = await fetch('/api/v2/work-orders', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ property_id: Number(propertyId), project_name: projectName.trim(), status }),
+      });
+      if (!woRes.ok) { setError('Failed to create project.'); return; }
+      const wo = await woRes.json();
+      await fetch('/api/v2/project-quotes', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ work_order_id: wo.id, vendor_id: vendorId, quoted_cost: quotedCost ? parseFloat(quotedCost) : null }),
+      });
+      onCreated();
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="rounded-lg border border-green-200 bg-green-50 p-3 dark:border-green-800 dark:bg-green-950/20">
+      <p className="mb-2 text-xs font-semibold text-green-800 dark:text-green-300">Create New Project</p>
+      <label className="mb-1 block text-xs text-gray-500">Project Name</label>
+      <input value={projectName} onChange={e => setProjectName(e.target.value)} placeholder="e.g. Roof replacement"
+        className="mb-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800" />
+      <label className="mb-1 block text-xs text-gray-500">Property</label>
+      <select value={propertyId} onChange={e => setPropertyId(e.target.value)}
+        className="mb-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800">
+        <option value="">Select a property…</option>
+        {properties.map(p => <option key={p.id} value={p.id}>{p.address}</option>)}
+      </select>
+      <label className="mb-1 block text-xs text-gray-500">Status</label>
+      <select value={status} onChange={e => setStatus(e.target.value)}
+        className="mb-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800">
+        {PROJECT_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+      </select>
+      <label className="mb-1 block text-xs text-gray-500">Quoted Cost ($)</label>
+      <input type="number" value={quotedCost} onChange={e => setQuotedCost(e.target.value)}
+        className="mb-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800" />
+      {error && <p className="mb-2 text-xs text-red-600">{error}</p>}
+      <div className="flex gap-2">
+        <button onClick={create} disabled={saving || !projectName.trim() || !propertyId}
+          className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50">
+          {saving ? 'Creating…' : 'Create & Assign'}
+        </button>
+        <button onClick={onCancel}
+          className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">Cancel</button>
       </div>
     </div>
   );
