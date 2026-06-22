@@ -439,6 +439,9 @@ function VendorDetail({ vendor, onSaved, onDeleted }: { vendor: Vendor; onSaved:
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  // Which project row is expanded to show all competing quotes (by work_order_id)
+  const [expandedProjectId, setExpandedProjectId] = useState<number | null>(null);
+
   // Assign-to-project UI
   const [assigning, setAssigning] = useState(false);
   const [creatingProject, setCreatingProject] = useState(false);
@@ -631,16 +634,33 @@ function VendorDetail({ vendor, onSaved, onDeleted }: { vendor: Vendor; onSaved:
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                 {quotes.map(q => (
-                  <tr key={q.id}>
-                    <td className="px-3 py-2">
-                      {quoteLabel(q)}
-                      {q.is_selected && <span className="ml-1 text-green-600">✓</span>}
-                      {q.property_address && <span className="block text-gray-400">{q.property_address}</span>}
-                    </td>
-                    <td className="px-3 py-2 tabular">{fmt$(q.quoted_cost)}</td>
-                    <td className="px-3 py-2 tabular">{fmt$(q.final_cost)}</td>
-                    <td className="px-3 py-2 text-gray-500">{q.status ? tradeLabel(q.status) : '—'}</td>
-                  </tr>
+                  <Fragment key={q.id}>
+                    <tr
+                      onClick={() => setExpandedProjectId(id => (id === q.work_order_id ? null : q.work_order_id))}
+                      className={`cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800/50 ${expandedProjectId === q.work_order_id ? 'bg-gray-100 dark:bg-gray-800/50' : ''}`}
+                    >
+                      <td className="px-3 py-2">
+                        <span className="mr-1 inline-block text-gray-400">{expandedProjectId === q.work_order_id ? '▾' : '▸'}</span>
+                        {quoteLabel(q)}
+                        {q.is_selected && <span className="ml-1 text-green-600">✓</span>}
+                        {q.property_address && <span className="ml-4 block text-gray-400">{q.property_address}</span>}
+                      </td>
+                      <td className="px-3 py-2 tabular">{fmt$(q.quoted_cost)}</td>
+                      <td className="px-3 py-2 tabular">{fmt$(q.final_cost)}</td>
+                      <td className="px-3 py-2 text-gray-500">{q.status ? tradeLabel(q.status) : '—'}</td>
+                    </tr>
+                    {expandedProjectId === q.work_order_id && (
+                      <tr className="bg-gray-50 dark:bg-gray-900/40">
+                        <td colSpan={4} className="px-3 py-3">
+                          <ProjectQuotes
+                            workOrderId={q.work_order_id}
+                            projectLabel={quoteLabel(q)}
+                            onChanged={() => { loadDetail(); onSaved(); }}
+                          />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
@@ -729,6 +749,99 @@ function CreateProjectInline({ vendorId, onCreated, onCancel }: { vendorId: numb
         <button onClick={onCancel}
           className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">Cancel</button>
       </div>
+    </div>
+  );
+}
+
+// ── All competing quotes on a single project, with inline per-quote status ────────
+interface ProjectQuoteRow {
+  id: number; vendor_id: number; vendor_name: string; vendor_trade: string | null;
+  quoted_cost: number | null; final_cost: number | null;
+  is_selected: boolean; status: string | null;
+}
+
+function ProjectQuotes({ workOrderId, projectLabel, onChanged }: { workOrderId: number; projectLabel: string; onChanged: () => void }) {
+  const [rows, setRows] = useState<ProjectQuoteRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [savingId, setSavingId] = useState<number | null>(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/v2/work-orders/${workOrderId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setRows(Array.isArray(data.quotes) ? data.quotes : []);
+      }
+    } catch (e) {
+      console.error('Failed to load project quotes:', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [workOrderId]);
+
+  const updateStatus = async (quoteId: number, status: string) => {
+    setRows(prev => prev.map(r => (r.id === quoteId ? { ...r, status } : r))); // optimistic
+    setSavingId(quoteId);
+    try {
+      await fetch(`/api/v2/project-quotes/${quoteId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+      onChanged();
+    } finally { setSavingId(null); }
+  };
+
+  return (
+    <div>
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+        All Quotes — {projectLabel}
+      </p>
+      {loading ? (
+        <p className="text-xs text-gray-400">Loading quotes…</p>
+      ) : rows.length === 0 ? (
+        <p className="text-xs text-gray-400">No quotes on this project yet.</p>
+      ) : (
+        <div className="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
+          <table className="w-full text-xs">
+            <thead className="bg-gray-100 dark:bg-gray-800">
+              <tr>
+                {['Vendor', 'Quoted', 'Final', 'Status', 'Selected'].map(h => (
+                  <th key={h} className="px-3 py-2 text-left font-medium text-gray-500">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+              {rows.map(r => (
+                <tr key={r.id}>
+                  <td className="px-3 py-2">
+                    {r.vendor_name}
+                    {r.vendor_trade && <span className="block text-gray-400">{tradeLabel(r.vendor_trade)}</span>}
+                  </td>
+                  <td className="px-3 py-2 tabular">{fmt$(r.quoted_cost)}</td>
+                  <td className="px-3 py-2 tabular">{fmt$(r.final_cost)}</td>
+                  <td className="px-3 py-2">
+                    <select
+                      value={r.status ?? 'received'}
+                      disabled={savingId === r.id}
+                      onChange={e => updateStatus(r.id, e.target.value)}
+                      className="rounded-md border border-gray-300 px-2 py-1 text-xs focus:border-blue-500 focus:outline-none disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800"
+                    >
+                      {PROJECT_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                    </select>
+                  </td>
+                  <td className="px-3 py-2">
+                    {r.is_selected
+                      ? <span className="rounded-full bg-green-100 px-2 py-0.5 text-green-700 dark:bg-green-900/40 dark:text-green-400">✓ Selected</span>
+                      : <span className="text-gray-300 dark:text-gray-600">—</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

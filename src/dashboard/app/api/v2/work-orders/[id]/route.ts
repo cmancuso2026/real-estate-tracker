@@ -3,6 +3,39 @@ import { query } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
+// GET /api/v2/work-orders/[id] — the project plus EVERY vendor's quote on it.
+// Used by the Vendors page to show competing bids when a project row is opened.
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const rows = await query(
+    `SELECT wo.*, p.address AS property_address
+     FROM work_orders wo
+     LEFT JOIN owned_properties p ON p.id = wo.property_id
+     WHERE wo.id = $1`,
+    [id]
+  );
+  if (!rows.length) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+  let quotes: unknown[] = [];
+  try {
+    quotes = await query(
+      `SELECT pq.id, pq.vendor_id, pq.quoted_cost, pq.final_cost,
+              pq.is_selected, pq.status, pq.notes,
+              v.name  AS vendor_name,
+              v.trade AS vendor_trade
+       FROM project_quotes pq
+       JOIN vendors v ON v.id = pq.vendor_id
+       WHERE pq.work_order_id = $1
+       ORDER BY pq.is_selected DESC, pq.created_at`,
+      [id]
+    );
+  } catch (err) {
+    console.error('Project quotes query failed, returning empty list:', err);
+  }
+
+  return NextResponse.json({ ...rows[0], quotes });
+}
+
 // PATCH /api/v2/work-orders/[id] — update project/work-order fields.
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

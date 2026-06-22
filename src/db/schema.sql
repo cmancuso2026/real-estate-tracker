@@ -598,10 +598,15 @@ CREATE TABLE IF NOT EXISTS project_quotes (
   quoted_cost   NUMERIC(12,2),
   final_cost    NUMERIC(12,2),
   is_selected   BOOLEAN NOT NULL DEFAULT FALSE,   -- the winning quote
+  status        TEXT NOT NULL DEFAULT 'received',  -- per-quote status, separate from work_orders.status
   notes         TEXT,
   created_at    TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
   UNIQUE (work_order_id, vendor_id)
 );
+
+-- Per-quote status (received / open / completed) — distinct from the project's
+-- own work_orders.status. Added here for databases created before this column.
+ALTER TABLE project_quotes ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'received';
 
 CREATE INDEX IF NOT EXISTS idx_project_quotes_project ON project_quotes (work_order_id);
 CREATE INDEX IF NOT EXISTS idx_project_quotes_vendor  ON project_quotes (vendor_id);
