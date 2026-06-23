@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 
 interface Unit { is_owner_unit: boolean;
   id: number;
@@ -103,8 +102,7 @@ function PaymentStatusBadge({ status, amount, amountDue }: { status?: string | n
   return null;
 }
 
-export function OverviewTab({ id, units, onRefresh }: { id: string; units: Unit[]; onRefresh: () => void }) {
-  const router = useRouter();
+export function OverviewTab({ id, units, onRefresh, onSwitchTab }: { id: string; units: Unit[]; onRefresh: () => void; onSwitchTab: (tab: string) => void }) {
   const [selectedUnit, setSelectedUnit] = useState<string>('all');
   const [togglingId, setTogglingId] = useState<number|null>(null);
   const [metrics, setMetrics] = useState<Metrics | null>(null);
@@ -256,9 +254,9 @@ export function OverviewTab({ id, units, onRefresh }: { id: string; units: Unit[
           <Link href={`/properties/${id}/tenants/new`} className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">
             + Add Tenant
           </Link>
-          <Link href={`/properties/${id}?tab=leases`} onClick={e=>{e.preventDefault();router.push(`/properties/${id}?tab=leases`);}} className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700">
+          <button type="button" onClick={()=>onSwitchTab('leases')} className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700">
             + Add Lease
-          </Link>
+          </button>
         </div>
       </div>
 

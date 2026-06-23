@@ -1002,7 +1002,7 @@ export default function PropertyDetailPage() {
 
       {/* ── OVERVIEW ── */}
       {tab==='overview' && (
-        <OverviewTab id={id} units={units} onRefresh={load} />
+        <OverviewTab id={id} units={units} onRefresh={load} onSwitchTab={(t)=>switchTab(t as Tab)} />
       )}
 
       {/* ── RENT ── */}
