@@ -49,6 +49,14 @@ export default function VendorsPage() {
   const [loading, setLoading] = useState(true);
   const [addMode, setAddMode] = useState<AddMode>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [collapsedTrades, setCollapsedTrades] = useState<Set<string>>(new Set());
+
+  const toggleTrade = (trade: string) =>
+    setCollapsedTrades(prev => {
+      const next = new Set(prev);
+      next.has(trade) ? next.delete(trade) : next.add(trade);
+      return next;
+    });
 
   // Manual add form
   const [form, setForm] = useState({ name: '', trade: 'general', phone: '', email: '', website: '' });
@@ -96,6 +104,18 @@ export default function VendorsPage() {
 
   const spend90 = spend ? spend.vendors.reduce((s, v) => s + Number(v.last_90_days_spend || 0), 0) : 0;
   const spendAll = spend ? spend.by_property.reduce((s, p) => s + Number(p.total_spend || 0), 0) : 0;
+
+  // Group vendors by trade: known trades first (in TRADES order), then any extras alphabetically.
+  const vendorsByTrade = (() => {
+    const map = new Map<string, Vendor[]>();
+    for (const v of vendors) {
+      const t = v.trade || 'other';
+      (map.get(t) ?? map.set(t, []).get(t)!).push(v);
+    }
+    const known = TRADES.filter(t => map.has(t));
+    const extras = [...map.keys()].filter(t => !TRADES.includes(t)).sort();
+    return [...known, ...extras].map(t => ({ trade: t, vendors: map.get(t)! }));
+  })();
 
   return (
     <>
@@ -253,45 +273,62 @@ export default function VendorsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-              {vendors.map(v => (
-                <Fragment key={v.id}>
-                  <tr
-                    onClick={() => setExpandedId(id => (id === v.id ? null : v.id))}
-                    className={`cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-900/50 ${expandedId === v.id ? 'bg-gray-50 dark:bg-gray-900/50' : ''}`}
-                  >
-                    <td className="px-5 py-3 font-medium">
-                      <span className="mr-2 inline-block text-gray-400">{expandedId === v.id ? '▾' : '▸'}</span>
-                      {v.name}
-                    </td>
-                    <td className="px-5 py-3 text-gray-500">{tradeLabel(v.trade)}</td>
-                    <td className="px-5 py-3">
-                      {v.google_rating
-                        ? <span><Stars rating={v.google_rating} /> <span className="text-xs text-gray-400">({v.google_review_count})</span></span>
-                        : <span className="text-xs text-gray-400">Not found</span>
-                      }
-                    </td>
-                    <td className="px-5 py-3"><Stars rating={v.manual_rating} /></td>
-                    <td className="px-5 py-3 tabular">{v.project_count ?? 0}</td>
-                    <td className="px-5 py-3 tabular">{v.completed_jobs}/{v.total_jobs}</td>
-                    <td className="px-5 py-3 tabular">{fmt$(v.total_spend)}</td>
-                    <td className="px-5 py-3 text-gray-400 text-xs">
-                      {v.phone && <p>{v.phone}</p>}
-                      {v.email && <p>{v.email}</p>}
-                    </td>
-                  </tr>
-                  {expandedId === v.id && (
-                    <tr className="bg-gray-50 dark:bg-gray-900/30">
-                      <td colSpan={8} className="px-5 py-4">
-                        <VendorDetail
-                          vendor={v}
-                          onSaved={() => load(search)}
-                          onDeleted={() => { setExpandedId(null); load(search); }}
-                        />
+              {vendorsByTrade.map(({ trade, vendors: tradeVendors }) => {
+                const collapsed = collapsedTrades.has(trade);
+                return (
+                  <Fragment key={trade}>
+                    <tr
+                      onClick={() => toggleTrade(trade)}
+                      className="cursor-pointer bg-gray-100 hover:bg-gray-200/70 dark:bg-gray-800/60 dark:hover:bg-gray-800"
+                    >
+                      <td colSpan={8} className="px-5 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">
+                        <span className="mr-2 inline-block text-gray-400">{collapsed ? '▸' : '▾'}</span>
+                        {tradeLabel(trade)}
+                        <span className="ml-2 font-normal normal-case text-gray-400">({tradeVendors.length})</span>
                       </td>
                     </tr>
-                  )}
-                </Fragment>
-              ))}
+                    {!collapsed && tradeVendors.map(v => (
+                      <Fragment key={v.id}>
+                        <tr
+                          onClick={() => setExpandedId(id => (id === v.id ? null : v.id))}
+                          className={`cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-900/50 ${expandedId === v.id ? 'bg-gray-50 dark:bg-gray-900/50' : ''}`}
+                        >
+                          <td className="px-5 py-3 pl-10 font-medium">
+                            <span className="mr-2 inline-block text-gray-400">{expandedId === v.id ? '▾' : '▸'}</span>
+                            {v.name}
+                          </td>
+                          <td className="px-5 py-3 text-gray-500">{tradeLabel(v.trade)}</td>
+                          <td className="px-5 py-3">
+                            {v.google_rating
+                              ? <span><Stars rating={v.google_rating} /> <span className="text-xs text-gray-400">({v.google_review_count})</span></span>
+                              : <span className="text-xs text-gray-400">Not found</span>
+                            }
+                          </td>
+                          <td className="px-5 py-3"><Stars rating={v.manual_rating} /></td>
+                          <td className="px-5 py-3 tabular">{v.project_count ?? 0}</td>
+                          <td className="px-5 py-3 tabular">{v.completed_jobs}/{v.total_jobs}</td>
+                          <td className="px-5 py-3 tabular">{fmt$(v.total_spend)}</td>
+                          <td className="px-5 py-3 text-gray-400 text-xs">
+                            {v.phone && <p>{v.phone}</p>}
+                            {v.email && <p>{v.email}</p>}
+                          </td>
+                        </tr>
+                        {expandedId === v.id && (
+                          <tr className="bg-gray-50 dark:bg-gray-900/30">
+                            <td colSpan={8} className="px-5 py-4">
+                              <VendorDetail
+                                vendor={v}
+                                onSaved={() => load(search)}
+                                onDeleted={() => { setExpandedId(null); load(search); }}
+                              />
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    ))}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>
