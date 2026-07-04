@@ -41,7 +41,7 @@ button.sec:hover{background:var(--surface2);}
 .col-green{color:var(--green);}.col-red{color:var(--red);}.col-text{color:var(--text);}
 .note-box{background:var(--orange-light);border:1px solid #ffa94d;border-radius:8px;padding:12px 16px;font-size:12px;color:#7c4a00;margin-bottom:18px;line-height:1.7;}
 
-.sources-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;}
+.sources-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px;}
 .src-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;box-shadow:var(--shadow);}
 .src-lbl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text3);margin-bottom:4px;}
 .src-num{font-size:20px;font-weight:700;}
@@ -151,6 +151,7 @@ table.txns tr.inc-row td{background:rgba(47,158,68,.03);}
         <option value="amex_gold">Amex Gold</option>
         <option value="amex_blue">Amex Blue</option>
         <option value="sofi">SoFi</option>
+        <option value="capitalone">Capital One</option>
       </select>
       <label class="fld-lbl" style="margin-top:14px">File (.csv or .xlsx)</label>
       <input id="uploadFile" type="file" accept=".csv,.xlsx,.xls" style="width:100%">
@@ -184,6 +185,7 @@ table.txns tr.inc-row td{background:rgba(47,158,68,.03);}
       <div class="src-card"><div class="src-lbl">Amex Gold (Cole)</div><div class="src-num" id="src-ag">—</div><div class="src-sub">charges</div></div>
       <div class="src-card"><div class="src-lbl">Amex Blue (Family)</div><div class="src-num" id="src-ab">—</div><div class="src-sub">charges</div></div>
       <div class="src-card"><div class="src-lbl">SoFi Savings</div><div class="src-num" id="src-sf">—</div><div class="src-sub">transactions</div></div>
+      <div class="src-card"><div class="src-lbl">Capital One</div><div class="src-num" id="src-co">—</div><div class="src-sub">charges</div></div>
     </div>
     <div class="chart-card">
       <div class="chart-toolbar">
@@ -279,6 +281,7 @@ table.txns tr.inc-row td{background:rgba(47,158,68,.03);}
           <option value="Amex Gold">Amex Gold</option>
           <option value="Amex Blue">Amex Blue</option>
           <option value="SoFi">SoFi</option>
+          <option value="Capital One">Capital One</option>
         </select>
         <span id="txnCount" style="font-size:12px;color:var(--text3);"></span>
       </div>
@@ -484,6 +487,7 @@ function updateHeroCards() {
   document.getElementById('src-ag').textContent =rows.filter(t=>t.src==='Amex Gold').length;
   document.getElementById('src-ab').textContent =rows.filter(t=>t.src==='Amex Blue').length;
   document.getElementById('src-sf').textContent =rows.filter(t=>t.src==='SoFi').length;
+  document.getElementById('src-co').textContent =rows.filter(t=>t.src==='Capital One').length;
 }
 
 // ══════════════════════════════════════════════

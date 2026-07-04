@@ -6,6 +6,7 @@ const { fileToRows } = require('./util');
 const bankofamerica = require('./bankofamerica');
 const amex = require('./amex');
 const sofi = require('./sofi');
+const capitalone = require('./capitalone');
 
 // Valid `source` values accepted by POST /api/upload -> display label + parser.
 const SOURCES = {
@@ -13,6 +14,7 @@ const SOURCES = {
   amex_gold: { display: 'Amex Gold', parse: (rows) => amex.parseRows(rows, 'Amex Gold') },
   amex_blue: { display: 'Amex Blue', parse: (rows) => amex.parseRows(rows, 'Amex Blue') },
   sofi: { display: 'SoFi', parse: (rows) => sofi.parseRows(rows) },
+  capitalone: { display: 'Capital One', parse: (rows) => capitalone.parseRows(rows) },
 };
 
 function displayFor(sourceKey) {
