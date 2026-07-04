@@ -7,7 +7,7 @@
  *
  * Form fields:
  *   file        — the PDF (required)
- *   type        — 'lease' | 'work_order' | 'escrow' | 'insurance' (required)
+ *   type        — 'lease' | 'escrow' | 'insurance' | 'vendor_quote' (required)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -35,22 +35,6 @@ Dates must be YYYY-MM-DD. Dollar amounts must be integers. Arrays must be presen
   "utilities_landlord": [],
   "utilities_tenant": [],
   "equipment_included": [],
-  "confidence_notes": "string or null"
-}`,
-  },
-
-  work_order: {
-    system: `You are a real estate maintenance document parser. Extract data from contractor invoices and quotes.
-Always respond with valid JSON only. Dates must be YYYY-MM-DD. Amounts must be integers.
-For category choose from: plumbing | hvac | electrical | roofing | appliance | general | other`,
-    user: `Extract and return this JSON from the contractor document:
-{
-  "vendor_name": "string or null",
-  "category": "plumbing|hvac|electrical|roofing|appliance|general|other",
-  "description": "string",
-  "date_received": "YYYY-MM-DD or null",
-  "quoted_cost": integer_or_null,
-  "actual_cost": integer_or_null,
   "confidence_notes": "string or null"
 }`,
   },
@@ -167,7 +151,7 @@ export async function POST(req: NextRequest) {
   }
   if (!type || !PROMPTS[type]) {
     return NextResponse.json(
-      { error: 'type must be one of: lease, work_order, escrow, insurance, vendor_quote' },
+      { error: 'type must be one of: lease, escrow, insurance, vendor_quote' },
       { status: 400 }
     );
   }

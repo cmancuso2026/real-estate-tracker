@@ -225,11 +225,6 @@ export default function UnitDetailPage() {
               <span>Add Rent Payment</span>
               <span className="text-gray-400">→</span>
             </Link>
-            <Link href={`/properties/${propertyId}?tab=work-orders`}
-              className="flex w-full items-center justify-between rounded-lg border border-gray-200 px-3 py-2.5 text-sm hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">
-              <span>New Work Order</span>
-              <span className="text-gray-400">→</span>
-            </Link>
           </div>
         </div>
       </div>
