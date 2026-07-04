@@ -45,6 +45,20 @@ test('SoFi: keeps signed amounts, skips internal transfer, parses ISO dates', ()
   assert.equal(capone.amount, -868.09); // withdrawal stays negative
 });
 
+test('Capital One: debit->negative, credit refund->positive, skips card payment', () => {
+  const { source, transactions } = parseFile(fixture('capitalone.csv'), 'capitalone.csv', 'capitalone');
+  assert.equal(source, 'Capital One');
+  assert.equal(transactions.length, 4); // 5 data rows minus the Payment/Credit
+  assert.ok(!transactions.some((t) => /PAYMENT\/CREDIT/i.test(t.rawCategory)), 'card payment skipped');
+
+  const gas = byDesc(transactions, '7-11');
+  assert.equal(gas.date, '2026-06-21');
+  assert.equal(gas.amount, -31.74); // debit -> negative
+
+  const refund = byDesc(transactions, 'HOME DEPOT');
+  assert.equal(refund.amount, 48.05); // credit refund -> positive (comma in description parsed)
+});
+
 test('unknown source throws a 400-tagged error', () => {
   assert.throws(() => parseFile(Buffer.from('x'), 'x.csv', 'nope'), /Unknown source/);
 });

@@ -83,11 +83,39 @@ function sofiRules(desc, raw) {
   return 'Uncategorized';
 }
 
+// ── Capital One ───────────────────────────────────────────────────────────
+// Capital One exports a reliable bank Category column (`raw` here), so we map
+// that into the taxonomy, with a few merchant overrides that beat the generic
+// category. Card payments ('Payment/Credit') are dropped in the parser.
+const CAPONE_CATEGORY_MAP = {
+  'GAS/AUTOMOTIVE': 'Gas',
+  DINING: 'Eating Out',
+  MERCHANDISE: 'Shopping',
+  'HEALTH CARE': 'Healthcare',
+  ENTERTAINMENT: 'Entertainment',
+  AIRFARE: 'Flights',
+  LODGING: 'Hotel',
+  'PROFESSIONAL SERVICES': 'Repairs',
+  'PHONE/CABLE': 'Phone',
+};
+
+function capitalOneRules(desc, raw) {
+  // Merchant overrides (more specific than the bank category).
+  if (has(desc, 'LAI FAN CHI')) return 'Healthcare'; // acupuncture
+  if (has(desc, 'HOME DEPOT')) return 'Home Depot';
+  if (has(desc, 'AMAZON', 'AMZN')) return 'Amazon';
+  if (has(desc, 'UBER EATS')) return 'Eating Out';
+  if (has(desc, 'UBER')) return 'Lyft';
+  // Fall back to the bank-provided category.
+  return CAPONE_CATEGORY_MAP[raw] || 'Uncategorized';
+}
+
 // Map any source label/key to a ruleset.
 function rulesetFor(source) {
   const s = (source || '').toLowerCase();
   if (s.includes('amex')) return 'amex';
   if (s.includes('sofi')) return 'sofi';
+  if (s.includes('capital')) return 'capitalone'; // 'capital one', 'capitalone'
   return 'bankofamerica'; // 'bank of america', 'bankofamerica', 'boa'
 }
 
@@ -107,6 +135,9 @@ function categorize(description, rawCategory, source) {
       break;
     case 'sofi':
       category = sofiRules(desc, raw);
+      break;
+    case 'capitalone':
+      category = capitalOneRules(desc, raw);
       break;
     default:
       category = bankofamericaRules(desc, raw);
