@@ -58,21 +58,24 @@ button.sec:hover{background:var(--surface2);}
 .chart-toolbar{padding:12px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
 .chart-toolbar .chart-title{font-size:13px;font-weight:600;margin-right:auto;}
 .chart-body{padding:16px;position:relative;height:300px;}
-.two-col{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:24px;}
 .card{background:var(--surface);border-radius:12px;box-shadow:var(--shadow);border:1px solid var(--border);overflow:hidden;}
-.card-hdr{padding:12px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
-.card-title{font-size:13px;font-weight:600;}
-.card-total{font-size:13px;font-weight:700;}
-.cat-sec{padding:4px 18px 10px;}
-.cat-row{display:grid;grid-template-columns:130px 1fr 80px;gap:10px;align-items:center;padding:4px 0;}
-.cat-name{font-size:12px;color:var(--text2);}
-.bar-track{background:var(--surface2);border-radius:4px;height:6px;overflow:hidden;}
-.bar-fill{height:100%;border-radius:4px;transition:width .6s cubic-bezier(.4,0,.2,1);}
-.bf-exp{background:linear-gradient(90deg,#e03131,#f06595);}
-.bf-inc{background:linear-gradient(90deg,#2f9e44,#51cf66);}
-.bf-neu{background:linear-gradient(90deg,#3b5bdb,#748ffc);}
-.cat-amt{font-size:12px;font-weight:600;text-align:right;}
-.cat-amt.exp{color:var(--red);}.cat-amt.inc{color:var(--green);}
+/* categories table */
+.cat-toolbar{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--border);flex-wrap:wrap;}
+.cat-toolbar .ct-lbl{font-size:12px;color:var(--text3);font-weight:500;}
+.cat-toolbar .ct-note{font-size:12px;color:var(--text3);margin-left:auto;}
+table.cattbl{width:100%;border-collapse:collapse;}
+table.cattbl th{padding:9px 12px;text-align:right;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);background:var(--surface2);border-bottom:2px solid var(--border);white-space:nowrap;position:sticky;top:0;z-index:1;}
+table.cattbl th:first-child{text-align:left;}
+table.cattbl td{padding:6px 12px;border-bottom:1px solid var(--border);text-align:right;white-space:nowrap;font-size:13px;}
+table.cattbl td:first-child{text-align:left;}
+table.cattbl tr.grp-row td{background:#f7f8fd;font-weight:700;color:var(--text);border-bottom:1px solid var(--border2);cursor:pointer;}
+table.cattbl tr.grp-row .grp-caret{display:inline-block;width:12px;color:var(--text3);font-size:9px;margin-right:6px;}
+table.cattbl tr.cat-tr td.cat-cell{padding-left:34px;color:var(--text2);}
+table.cattbl tr.cat-tr:hover td{background:#fafbff;}
+table.cattbl tr.total-row td{background:var(--surface2);font-weight:700;color:var(--text);border-top:2px solid var(--border2);border-bottom:none;font-size:13px;}
+.amt-pos{color:var(--green);}.amt-neg{color:var(--red);}.amt-zero{color:var(--text3);}
+th.cmp-col,td.cmp-col{background:rgba(59,91,219,.04);}
+th.delta-col,td.delta-col{border-left:1px solid var(--border);}
 /* transactions */
 .txn-toolbar{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--border);flex-wrap:wrap;}
 .bulk-bar{display:flex;align-items:center;gap:10px;padding:10px 16px;background:var(--accent-light);border-bottom:1px solid var(--border);flex-wrap:wrap;}
@@ -128,7 +131,7 @@ table.txns tr.inc-row td{background:rgba(47,158,68,.03);}
 .sum-item .sum-lbl{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text3);font-weight:600;margin-bottom:2px;}
 .sum-item .sum-val{font-size:15px;font-weight:700;}
 .empty-state{text-align:center;padding:40px;color:var(--text3);}
-@media(max-width:900px){.hero-grid{grid-template-columns:1fr 1fr;}.two-col{grid-template-columns:1fr;}.sources-grid{grid-template-columns:1fr 1fr;}.container{padding:14px;}.topbar{padding:0 14px;flex-wrap:wrap;height:auto;padding:10px 14px;gap:6px;}}
+@media(max-width:900px){.hero-grid{grid-template-columns:1fr 1fr;}.sources-grid{grid-template-columns:1fr 1fr;}.container{padding:14px;}.topbar{padding:0 14px;flex-wrap:wrap;height:auto;padding:10px 14px;gap:6px;}}
 /* overlay + modal + spinner */
 .overlay{position:fixed;inset:0;background:rgba(26,27,46,.45);display:flex;align-items:center;justify-content:center;z-index:500;}
 .spinner-box{background:var(--surface);border-radius:12px;padding:24px 32px;box-shadow:var(--shadow);display:flex;flex-direction:column;align-items:center;gap:12px;font-size:13px;color:var(--text2);}
@@ -282,39 +285,25 @@ table.txns tr.inc-row td{background:rgba(47,158,68,.03);}
 
   <!-- ═══ CATEGORIES ═══ -->
   <div id="sec-categories" style="display:none">
-    <div class="two-col">
-      <div class="card">
-        <div class="card-hdr"><div class="card-title">👶 Baby</div><div class="card-total col-red" id="ct-baby">—</div></div>
-        <div class="cat-sec" id="cb-baby"></div>
+    <div class="card">
+      <div class="cat-toolbar">
+        <span class="ct-lbl">View:</span>
+        <select id="catView" onchange="updateCategoryTab()">
+          <option value="aggregate" selected>Aggregate</option>
+          <option value="monthly">By month (columns)</option>
+        </select>
+        <span class="ct-lbl">Compare to:</span>
+        <select id="catCompare" onchange="updateCategoryTab()">
+          <option value="">None</option>
+        </select>
+        <span id="catNote" class="ct-note"></span>
       </div>
-      <div class="card">
-        <div class="card-hdr"><div class="card-title">💳 Financials</div><div class="card-total col-red" id="ct-fin">—</div></div>
-        <div class="cat-sec" id="cb-fin"></div>
-        <div style="padding:2px 18px 10px;font-size:11px;color:var(--text3);">* CapOne rows = SoFi→CapOne transfers (internal)</div>
-      </div>
-      <div class="card">
-        <div class="card-hdr"><div class="card-title">🛒 Food Expenses</div><div class="card-total col-red" id="ct-food">—</div></div>
-        <div class="cat-sec" id="cb-food"></div>
-      </div>
-      <div class="card">
-        <div class="card-hdr"><div class="card-title">🏠 Investments</div><div class="card-total col-red" id="ct-invest">—</div></div>
-        <div class="cat-sec" id="cb-invest"></div>
-      </div>
-      <div class="card">
-        <div class="card-hdr"><div class="card-title">🏡 Living</div><div class="card-total col-red" id="ct-living">—</div></div>
-        <div class="cat-sec" id="cb-living"></div>
-      </div>
-      <div class="card">
-        <div class="card-hdr"><div class="card-title">🎭 Other</div><div class="card-total col-red" id="ct-other">—</div></div>
-        <div class="cat-sec" id="cb-other"></div>
-      </div>
-      <div class="card">
-        <div class="card-hdr"><div class="card-title">🚗 Travel Expenses</div><div class="card-total col-red" id="ct-travel">—</div></div>
-        <div class="cat-sec" id="cb-travel"></div>
-      </div>
-      <div class="card">
-        <div class="card-hdr"><div class="card-title">💰 W2 Income</div><div class="card-total col-green" id="ct-income">—</div></div>
-        <div class="cat-sec" id="cb-income"></div>
+      <div style="overflow-x:auto;max-height:70vh;overflow-y:auto;">
+        <table class="cattbl">
+          <thead id="catHead"></thead>
+          <tbody id="catBody"></tbody>
+        </table>
+        <div id="catEmpty" class="empty-state" style="display:none">No activity for the selected period.</div>
       </div>
     </div>
   </div>
@@ -481,6 +470,7 @@ async function loadAllData() {
     TXNS = (txnRes.transactions || []).map(mapTxn);
     buildYearPills();   // sets activeYears = all
     buildMonthPills();  // sets activeMonths = all
+    buildCompareOptions();  // populate the categories "Compare to" dropdown
     applyFilters();
   } catch (err) {
     console.error(err);
@@ -653,42 +643,123 @@ function updatePeriodNote() {
 
 
 // ══════════════════════════════════════════════
-// CATEGORIES TAB — fully dynamic
+// CATEGORIES TAB — tabular, multi-column, comparison
 // ══════════════════════════════════════════════
+const GROUP_ICON = {
+  'Baby':'👶','Financials':'💳','Food':'🛒','Investments':'🏠','Living':'🏡',
+  'Other':'🎭','Travel':'🚗','W2 Income':'💰',
+};
+let catCollapsed = new Set();      // group names whose subcategories are hidden
+
+function ymOf(t){ return t.date.slice(0,7); }               // 'YYYY-MM'
+function ymLabel(ym){ const [y,m]=ym.split('-'); return MON_SHORT[parseInt(m)]+' '+y; }
+// A "compare" value is either 'YYYY-MM' (single month) or 'YYYY' (full year).
+function cmpLabel(v){ return v.length===4 ? v : ymLabel(v); }
+function matchesCompare(t,v){ return v.length===4 ? t.date.slice(0,4)===v : ymOf(t)===v; }
+
+// Populate the "Compare to" dropdown from the periods present in the data.
+function buildCompareOptions(){
+  const sel=document.getElementById('catCompare');
+  if(!sel) return;
+  const cur=sel.value;
+  const years=[...new Set(TXNS.map(t=>t.date.slice(0,4)))].sort((a,b)=>b.localeCompare(a));
+  const yms  =[...new Set(TXNS.map(ymOf))].sort((a,b)=>b.localeCompare(a));
+  let html='<option value="">None</option>';
+  years.forEach(y=>{ html+=`<option value="${y}">${y} (full year)</option>`; });
+  yms.forEach(ym=>{ html+=`<option value="${ym}">${ymLabel(ym)}</option>`; });
+  sel.innerHTML=html;
+  if(cur && [...sel.options].some(o=>o.value===cur)) sel.value=cur;
+}
+
+// Signed-amount cell. `delta` colors by sign; otherwise green=income, red=expense.
+function catAmtCell(v, cls){
+  cls = cls || '';
+  if(Math.abs(v)<0.01) return `<td class="amt-zero ${cls}">—</td>`;
+  return `<td class="${v>0?'amt-pos':'amt-neg'} ${cls}">${fmt(v)}</td>`;
+}
+
 function updateCategoryTab() {
-  const rows = getFilteredTxns();
-  const bycat={};
-  rows.forEach(t=>{ bycat[t.cat]=(bycat[t.cat]||0)+t.amt; });
+  const head=document.getElementById('catHead');
+  const body=document.getElementById('catBody');
+  if(!head||!body) return;
+  const view    = document.getElementById('catView').value;      // 'aggregate' | 'monthly'
+  const compare = document.getElementById('catCompare').value;   // '' | 'YYYY-MM' | 'YYYY'
+  const rows    = getFilteredTxns();
+
+  // Build the list of data columns. Each has {label, bycat, cls?, delta?}
+  const cols=[];
+  const mkBycat=(rs)=>{ const m={}; rs.forEach(t=>{ m[t.cat]=(m[t.cat]||0)+t.amt; }); return m; };
+  const curBycat=mkBycat(rows);   // aggregate of the current selection (used for Δ)
+
+  if(view==='monthly'){
+    const yms=[...new Set(rows.map(ymOf))].sort();
+    yms.forEach(ym=> cols.push({label:ymLabel(ym), bycat:mkBycat(rows.filter(t=>ymOf(t)===ym))}));
+    if(yms.length!==1) cols.push({label:'Total', bycat:curBycat, cls:'total-col'});
+  } else {
+    cols.push({label:'Total', bycat:curBycat});
+  }
+
+  let cmpBycat=null;
+  if(compare){
+    cmpBycat=mkBycat(TXNS.filter(t=>matchesCompare(t,compare)));
+    cols.push({label:cmpLabel(compare), bycat:cmpBycat, cls:'cmp-col'});
+    cols.push({label:'Δ vs '+cmpLabel(compare), delta:true, cls:'delta-col'});
+  }
+
+  const colVal=(col,cat)=> col.delta ? (curBycat[cat]||0)-(cmpBycat[cat]||0) : (col.bycat[cat]||0);
+
+  // Header
+  head.innerHTML='<tr><th>Category</th>'+
+    cols.map(c=>`<th class="${c.cls||''}">${esc(c.label)}</th>`).join('')+'</tr>';
+
+  // Rows — only groups/subcategories with activity in some displayed column.
+  const anyVal=(cat)=> cols.some(c=>Math.abs(colVal(c,cat))>=0.01);
+  const grandTotals=cols.map(()=>0);
+  let bodyHtml='';
+  let shown=0;
 
   Object.entries(GROUPS).forEach(([grp, cats])=>{
-    const grpKey = grp.toLowerCase().replace(/\s+/g,'').replace(/\//g,'');
-    const idMap = {'w2income':'income','investments':'invest','travelexpenses':'travel',
-                   'foodexpenses':'food','living':'living','baby':'baby','financials':'fin','other':'other'};
-    const id = idMap[grpKey] || grpKey;
+    const liveCats=cats.filter(anyVal);
+    if(!liveCats.length) return;
+    shown++;
+    const collapsed=catCollapsed.has(grp);
+    const grpTotals=cols.map(c=> cats.reduce((s,cat)=> s+colVal(c,cat),0));
+    grpTotals.forEach((v,i)=>{ grandTotals[i]+=v; });
 
-    const vals = cats.map(c=>({c, v:bycat[c]||0}));
-    const total = vals.reduce((s,x)=>s+x.v,0);
-    const maxAbs = Math.max(...vals.map(x=>Math.abs(x.v)),1);
-    const isIncome = grp==='W2 Income';
+    bodyHtml+=`<tr class="grp-row" onclick="toggleCatGroup('${esc(grp)}')">`+
+      `<td><span class="grp-caret">${collapsed?'▸':'▾'}</span>${GROUP_ICON[grp]||''} ${esc(grp)}</td>`+
+      grpTotals.map((v,i)=>catAmtCell(v, cols[i].cls)).join('')+`</tr>`;
 
-    const tot=document.getElementById('ct-'+id);
-    if(tot){ tot.textContent=fmt(total); tot.className='card-total '+(isIncome?'col-green':'col-red'); }
-
-    const body=document.getElementById('cb-'+id);
-    if(body){
-      body.innerHTML=cats.map(c=>{
-        const v=bycat[c]||0;
-        const pct=Math.min(100,Math.abs(v)/maxAbs*100);
-        const cl=isIncome?'bf-inc':(c==='Capital One'||c==='Venmo'||c==='Amex'?'bf-neu':'bf-exp');
-        const amtCls=v>0?'inc':'exp';
-        return `<div class="cat-row">
-          <div class="cat-name">${c}</div>
-          <div class="bar-track"><div class="bar-fill ${cl}" style="width:${pct}%"></div></div>
-          <div class="cat-amt ${amtCls}">${Math.abs(v)<0.01?'—':fmt(v)}</div>
-        </div>`;
-      }).join('');
+    if(!collapsed){
+      liveCats.forEach(cat=>{
+        bodyHtml+=`<tr class="cat-tr"><td class="cat-cell">${esc(cat)}</td>`+
+          cols.map(c=>catAmtCell(colVal(c,cat), c.cls)).join('')+`</tr>`;
+      });
     }
   });
+
+  // Grand total (net) row
+  if(shown){
+    bodyHtml+=`<tr class="total-row"><td>Net total</td>`+
+      grandTotals.map((v,i)=>catAmtCell(v, cols[i].cls)).join('')+`</tr>`;
+  }
+
+  body.innerHTML=bodyHtml;
+  document.getElementById('catEmpty').style.display = shown ? 'none' : '';
+  head.style.display = shown ? '' : 'none';
+
+  // Note
+  const note=document.getElementById('catNote');
+  if(note){
+    let n = view==='monthly' ? 'One column per selected month' : 'Aggregate of selected period';
+    if(compare) n += ` · vs ${cmpLabel(compare)}`;
+    note.textContent=n;
+  }
+}
+
+function toggleCatGroup(grp){
+  if(catCollapsed.has(grp)) catCollapsed.delete(grp); else catCollapsed.add(grp);
+  updateCategoryTab();
 }
 
 // ══════════════════════════════════════════════
