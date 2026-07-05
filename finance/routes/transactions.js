@@ -1,11 +1,9 @@
 const express = require('express');
 
 const { applyFilters, isoDate } = require('./_query');
-const { groupFor, GROUPS } = require('../lib/taxonomy');
+const { resolveGroup } = require('../lib/categoryStore');
 
 const router = express.Router();
-
-const ALL_CATEGORIES = new Set(Object.values(GROUPS).flat());
 
 function serialize(row) {
   return {
@@ -61,12 +59,12 @@ router.put('/bulk-category', async (req, res, next) => {
       e.status = 400;
       throw e;
     }
-    if (!category || !ALL_CATEGORIES.has(category)) {
+    const categoryGroup = category ? await resolveGroup(knex, category) : null;
+    if (!categoryGroup) {
       const e = new Error(`Invalid category '${category}'`);
       e.status = 400;
       throw e;
     }
-    const categoryGroup = groupFor(category);
     ids = [...new Set(ids.map(Number).filter((n) => Number.isInteger(n)))];
 
     const rows = await knex('transactions')
@@ -107,15 +105,15 @@ router.put('/:id/category', async (req, res, next) => {
   try {
     const knex = req.app.locals.db;
     const id = Number(req.params.id);
-    let { category, category_group: categoryGroup } = req.body || {};
+    const { category } = req.body || {};
 
-    if (!category || !ALL_CATEGORIES.has(category)) {
+    // Trust the taxonomy (built-in + custom) for the group, not the client.
+    const categoryGroup = category ? await resolveGroup(knex, category) : null;
+    if (!categoryGroup) {
       const e = new Error(`Invalid category '${category}'`);
       e.status = 400;
       throw e;
     }
-    // Trust the taxonomy for the group rather than the client.
-    categoryGroup = groupFor(category);
 
     const existing = await knex('transactions').where({ id }).first();
     if (!existing) {

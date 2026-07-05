@@ -74,6 +74,10 @@ button.sec:hover{background:var(--surface2);}
 .btn-primary:disabled{opacity:.6;cursor:default;}
 .ck-col{width:34px;text-align:center;padding-left:12px;padding-right:0;}
 .ck-col input{width:15px;height:15px;cursor:pointer;accent-color:var(--accent);}
+table.txns th.sortable{cursor:pointer;user-select:none;}
+table.txns th.sortable:hover{color:var(--text2);}
+table.txns th.sorted{color:var(--accent);}
+.sort-ind{font-size:9px;margin-left:4px;}
 .search-box{flex:1;min-width:160px;padding:7px 11px;border:1px solid var(--border2);border-radius:8px;font-family:'Inter',sans-serif;font-size:13px;outline:none;}
 .search-box:focus{border-color:var(--accent);}
 table.txns{width:100%;border-collapse:collapse;}
@@ -167,6 +171,27 @@ table.txns tr.inc-row td{background:rgba(47,158,68,.03);}
     <div class="modal-ftr">
       <button class="sec" onclick="closeUpload()">Cancel</button>
       <button id="uploadBtn" onclick="doUpload()">Upload</button>
+    </div>
+  </div>
+</div>
+
+<!-- New-category modal -->
+<div id="catModal" class="overlay" style="display:none">
+  <div class="modal">
+    <div class="modal-hdr">
+      <div class="modal-title">New category</div>
+      <button class="modal-x" onclick="closeAddCat()" aria-label="Close">×</button>
+    </div>
+    <div class="modal-body">
+      <label class="fld-lbl">Name</label>
+      <input id="newCatName" type="text" placeholder="e.g. Coffee" style="width:100%" onkeydown="if(event.key==='Enter')doAddCat()">
+      <label class="fld-lbl" style="margin-top:14px">Group</label>
+      <select id="newCatGroup" style="width:100%"></select>
+      <div id="catResult" class="upload-result" style="display:none"></div>
+    </div>
+    <div class="modal-ftr">
+      <button class="sec" onclick="closeAddCat()">Cancel</button>
+      <button id="addCatBtn" onclick="doAddCat()">Add category</button>
     </div>
   </div>
 </div>
@@ -290,6 +315,7 @@ table.txns tr.inc-row td{background:rgba(47,158,68,.03);}
           <option value="SoFi">SoFi</option>
           <option value="Capital One">Capital One</option>
         </select>
+        <button class="sec" onclick="openAddCat()">＋ Category</button>
         <span id="txnCount" style="font-size:12px;color:var(--text3);"></span>
       </div>
       <div id="bulkBar" class="bulk-bar" style="display:none">
@@ -303,8 +329,12 @@ table.txns tr.inc-row td{background:rgba(47,158,68,.03);}
         <table class="txns">
           <thead><tr>
             <th class="ck-col"><input type="checkbox" id="txnSelAll" onchange="toggleSelAll(this)" title="Select all"></th>
-            <th>Date</th><th>Description</th><th>Source</th>
-            <th>Group</th><th>Category</th><th>Amount</th>
+            <th class="sortable" data-k="date" onclick="sortTxns('date')">Date<span class="sort-ind"></span></th>
+            <th class="sortable" data-k="desc" onclick="sortTxns('desc')">Description<span class="sort-ind"></span></th>
+            <th class="sortable" data-k="src" onclick="sortTxns('src')">Source<span class="sort-ind"></span></th>
+            <th class="sortable" data-k="group" onclick="sortTxns('group')">Group<span class="sort-ind"></span></th>
+            <th class="sortable" data-k="cat" onclick="sortTxns('cat')">Category<span class="sort-ind"></span></th>
+            <th class="sortable" data-k="amt" onclick="sortTxns('amt')">Amount<span class="sort-ind"></span></th>
           </tr></thead>
           <tbody id="txnBody"></tbody>
         </table>
@@ -366,6 +396,7 @@ let TXNS = [];
 // STATE
 // ══════════════════════════════════════════════
 const catChanges = {};
+let txnSort = { key:'date', dir:'desc' }; // transaction table sort
 let activeMonths = new Set();  // built dynamically from year
 let chart = null;
 let currentYear = '2026';
@@ -382,6 +413,11 @@ const API = {
   async put(path, body){
     const r = await fetch(path,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     if(!r.ok){ const e=await r.json().catch(()=>({})); throw new Error(e.error||('PUT '+path+' failed ('+r.status+')')); }
+    return r.json();
+  },
+  async post(path, body){
+    const r = await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(!r.ok){ const e=await r.json().catch(()=>({})); throw new Error(e.error||('POST '+path+' failed ('+r.status+')')); }
     return r.json();
   },
 };
@@ -701,6 +737,71 @@ async function changeCat(i,el){
   }
 }
 
+// ── Sorting ─────────────────────────────────────────────────────────────────
+function txnComparator(a,b){
+  const {key,dir}=txnSort;
+  const mul = dir==='asc' ? 1 : -1;
+  let av,bv;
+  switch(key){
+    case 'desc': av=a.desc.toLowerCase(); bv=b.desc.toLowerCase(); break;
+    case 'src':  av=a.src.toLowerCase();  bv=b.src.toLowerCase();  break;
+    case 'group':av=(CAT_TO_GROUP[a.cat]||'Other'); bv=(CAT_TO_GROUP[b.cat]||'Other'); break;
+    case 'cat':  av=a.cat.toLowerCase();  bv=b.cat.toLowerCase();  break;
+    case 'amt':  av=a.amt; bv=b.amt; break;
+    default:     av=a.date; bv=b.date; // ISO strings sort chronologically
+  }
+  if(av<bv) return -1*mul;
+  if(av>bv) return  1*mul;
+  return b.date.localeCompare(a.date); // stable tie-break: newest first
+}
+function sortTxns(key){
+  if(txnSort.key===key){
+    txnSort.dir = txnSort.dir==='asc' ? 'desc' : 'asc';
+  }else{
+    // Sensible default per column: dates/amounts high→low, text A→Z.
+    txnSort.key = key;
+    txnSort.dir = (key==='date'||key==='amt') ? 'desc' : 'asc';
+  }
+  renderTxns();
+}
+function updateSortIndicators(){
+  document.querySelectorAll('#sec-transactions th.sortable').forEach(th=>{
+    const active = th.dataset.k===txnSort.key;
+    th.classList.toggle('sorted', active);
+    const ind=th.querySelector('.sort-ind');
+    if(ind) ind.textContent = active ? (txnSort.dir==='asc'?'▲':'▼') : '';
+  });
+}
+
+// ── Add a custom category ────────────────────────────────────────────────────
+function openAddCat(){
+  const sel=document.getElementById('newCatGroup');
+  sel.innerHTML=Object.keys(GROUPS).map(g=>`<option>${g}</option>`).join('');
+  document.getElementById('newCatName').value='';
+  const res=document.getElementById('catResult'); res.style.display='none';
+  document.getElementById('catModal').style.display='flex';
+  setTimeout(()=>document.getElementById('newCatName').focus(),50);
+}
+function closeAddCat(){ document.getElementById('catModal').style.display='none'; }
+async function doAddCat(){
+  const name=document.getElementById('newCatName').value.trim();
+  const group=document.getElementById('newCatGroup').value;
+  const res=document.getElementById('catResult');
+  const show=(cls,msg)=>{ res.style.display=''; res.className='upload-result '+cls; res.textContent=msg; };
+  if(!name){ show('err','Enter a category name.'); return; }
+  const btn=document.getElementById('addCatBtn'); btn.disabled=true;
+  try{
+    const data=await API.post('/api/categories',{name,group});
+    if(data && data.groups){ GROUPS=data.groups; rebuildTaxonomy(); }
+    onTxnGroupChange();      // repopulate filter + row dropdowns and re-render
+    const bulkSel=document.getElementById('bulkCat'); if(bulkSel) bulkSel.value=name; // preselect for quick assign
+    show('ok',`Added “${name}” to ${group}. Select rows and assign it.`);
+    setTimeout(closeAddCat,900);
+  }catch(err){
+    show('err','Failed: '+err.message);
+  }finally{ btn.disabled=false; }
+}
+
 function renderTxns(){
   const search=(document.getElementById('txnSearch').value||'').toLowerCase();
   const grpF  =document.getElementById('txnGrpF').value;
@@ -715,7 +816,7 @@ function renderTxns(){
     if(srcF && t.src!==srcF) return false;
     if(search && !t.desc.toLowerCase().includes(search) && !t.cat.toLowerCase().includes(search) && !t.src.toLowerCase().includes(search)) return false;
     return true;
-  }).map(t=>({...t,i:TXNS.indexOf(t)})).sort((a,b)=>b.date.localeCompare(a.date));
+  }).map(t=>({...t,i:TXNS.indexOf(t)})).sort(txnComparator);
 
   const tbody=document.getElementById('txnBody');
   const empty=document.getElementById('txnEmpty');
@@ -742,6 +843,7 @@ function renderTxns(){
   }
   renderSummaryBar(rows);
   updateBulkBar(); // rows were re-rendered unchecked → resync the bulk bar
+  updateSortIndicators();
 }
 
 // ── Bulk category editing ───────────────────────────────────────────────────
