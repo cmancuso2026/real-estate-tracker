@@ -16,6 +16,14 @@ body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;font-
 .topbar-title{font-weight:600;font-size:15px;}
 .topbar-sub{font-size:12px;color:var(--text3);}
 .topbar-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.msel{position:relative;display:inline-block;}
+.msel-btn{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;min-width:110px;justify-content:space-between;font-size:13px;}
+.msel-caret{font-size:9px;color:var(--text3);}
+.msel-panel{position:absolute;top:calc(100% + 4px);left:0;z-index:400;background:var(--surface);border:1px solid var(--border2);border-radius:8px;box-shadow:var(--shadow);padding:5px;min-width:150px;max-height:300px;overflow-y:auto;}
+.msel-opt{display:flex;align-items:center;gap:8px;padding:6px 9px;border-radius:6px;font-size:13px;color:var(--text);cursor:pointer;white-space:nowrap;user-select:none;}
+.msel-opt:hover{background:var(--surface2);}
+.msel-opt input{width:15px;height:15px;cursor:pointer;accent-color:var(--accent);margin:0;}
+.msel-opt.msel-all{border-bottom:1px solid var(--border);border-radius:0;margin-bottom:3px;padding-bottom:8px;font-weight:600;}
 .pill-group{display:flex;gap:4px;flex-wrap:wrap;}
 .pill{padding:5px 11px;border-radius:20px;font-size:12px;font-weight:500;cursor:pointer;border:1px solid var(--border2);background:var(--surface);color:var(--text2);transition:all .15s;white-space:nowrap;user-select:none;}
 .pill:hover{border-color:var(--accent);color:var(--accent);}
@@ -130,16 +138,19 @@ table.txns tr.inc-row td{background:rgba(47,158,68,.03);}
     </div>
   </div>
   <div class="topbar-filters">
-    <select id="filterYear" onchange="onYearChange()">
-      <option value="2026" selected>2026</option>
-      <option value="2025">2025</option>
-    </select>
+    <span style="font-size:12px;color:var(--text3);font-weight:500;">Years:</span>
+    <div class="msel" id="yearMsel">
+      <button class="msel-btn" id="yearDropBtn" onclick="toggleDrop('year')">All years <span class="msel-caret">▾</span></button>
+      <div class="msel-panel" id="yearDropPanel" style="display:none"></div>
+    </div>
     <div class="pill-sep"></div>
     <span style="font-size:12px;color:var(--text3);font-weight:500;">Months:</span>
-    <div class="pill-group" id="monthPills"></div>
+    <div class="msel" id="monthMsel">
+      <button class="msel-btn" id="monthDropBtn" onclick="toggleDrop('month')">All months <span class="msel-caret">▾</span></button>
+      <div class="msel-panel" id="monthDropPanel" style="display:none"></div>
+    </div>
     <div class="pill-sep"></div>
     <button onclick="openUpload()">⬆ Upload CSV</button>
-    <button class="sec" onclick="exportChanges()">Export Changes</button>
   </div>
 </div>
 
@@ -345,7 +356,6 @@ table.txns tr.inc-row td{background:rgba(47,158,68,.03);}
         <div class="sum-item"><div class="sum-lbl">Expenses</div><div class="sum-val col-red" id="sumExp">—</div></div>
         <div class="sum-item"><div class="sum-lbl">Income</div><div class="sum-val col-green" id="sumInc">—</div></div>
         <div class="sum-item"><div class="sum-lbl">⚠️ Uncategorized</div><div class="sum-val" style="color:var(--orange)" id="sumUncat">—</div></div>
-        <div style="margin-left:auto"><button onclick="exportChanges()">Export Changes</button></div>
       </div>
     </div>
   </div>
@@ -397,9 +407,9 @@ let TXNS = [];
 // ══════════════════════════════════════════════
 const catChanges = {};
 let txnSort = { key:'date', dir:'desc' }; // transaction table sort
-let activeMonths = new Set();  // built dynamically from year
+let activeYears = new Set();    // multi-select; built from the loaded data
+let activeMonths = new Set();   // multi-select; built from the loaded data
 let chart = null;
-let currentYear = '2026';
 
 // ══════════════════════════════════════════════
 // API HELPERS
@@ -431,20 +441,16 @@ function mapTxn(t){
 }
 
 // ══════════════════════════════════════════════
-// YEAR CHANGE — load that year's transactions + month pills from the API
+// DATA LOADING — load ALL transactions once, then filter years/months
+// client-side (both are multi-select, so "all years at once" just works).
 // ══════════════════════════════════════════════
-async function onYearChange() {
-  currentYear = document.getElementById('filterYear').value;
+async function loadAllData() {
   setLoading(true);
   try {
-    const [monthsRes, txnRes] = await Promise.all([
-      API.get(`/api/months?year=${currentYear}`),
-      API.get(`/api/transactions?year=${currentYear}&limit=2000`),
-    ]);
+    const txnRes = await API.get(`/api/transactions?limit=100000`);
     TXNS = (txnRes.transactions || []).map(mapTxn);
-    const monthsWithData = new Set((monthsRes.months || []).map(m => String(m)));
-    activeMonths = new Set(monthsWithData); // start with all active
-    buildMonthPills(monthsWithData);
+    buildYearPills();   // sets activeYears = all
+    buildMonthPills();  // sets activeMonths = all
     applyFilters();
   } catch (err) {
     console.error(err);
@@ -454,47 +460,87 @@ async function onYearChange() {
   }
 }
 
-function buildMonthPills(monthsWithData) {
-  const container = document.getElementById('monthPills');
-  const months = [...monthsWithData].sort((a,b)=>parseInt(a)-parseInt(b));
-  let html = `<div class="pill active" data-month="all" onclick="toggleMonth('all')">All</div>`;
-  months.forEach(m => {
-    html += `<div class="pill active" data-month="${m}" onclick="toggleMonth('${m}')">${MON_SHORT[parseInt(m)]}</div>`;
-  });
-  container.innerHTML = html;
+function yearsInData() {
+  return [...new Set(TXNS.map(t => t.date.slice(0,4)))].sort((a,b)=>b.localeCompare(a));
+}
+function monthsInData() {
+  return [...new Set(TXNS.map(t => String(parseInt(t.date.split('-')[1]))))]
+    .sort((a,b)=>parseInt(a)-parseInt(b));
 }
 
-function toggleMonth(m) {
-  const pills = document.getElementById('monthPills');
-  const allMonths = [...pills.querySelectorAll('.pill[data-month]')]
-    .map(p=>p.dataset.month).filter(x=>x!=='all');
+// ── Multi-select dropdowns (Years / Months) ───────────────────────────────
+// kind is 'year' or 'month'. State lives in activeYears / activeMonths.
+function mselValues(kind){ return kind==='year' ? yearsInData() : monthsInData(); }
+function mselSet(kind){ return kind==='year' ? activeYears : activeMonths; }
+function mselOptLabel(kind, v){ return kind==='year' ? v : MON_SHORT[parseInt(v)]; }
 
-  if (m === 'all') {
-    const allActive = allMonths.every(x=>activeMonths.has(x));
-    if (allActive) { activeMonths.clear(); }
-    else { allMonths.forEach(x=>activeMonths.add(x)); }
+function buildYearPills(){ buildMsel('year'); }   // called by loadAllData
+function buildMonthPills(){ buildMsel('month'); } // (names kept for the loader)
+
+function buildMsel(kind){
+  const values = mselValues(kind);
+  if (kind==='year') activeYears = new Set(values); else activeMonths = new Set(values); // default: all selected
+  const panel = document.getElementById(kind+'DropPanel');
+  let html = `<label class="msel-opt msel-all"><input type="checkbox" data-v="all" checked onchange="onMselToggle('${kind}','all',this.checked)"><span>All</span></label>`;
+  values.forEach(v => {
+    html += `<label class="msel-opt"><input type="checkbox" data-v="${v}" checked onchange="onMselToggle('${kind}','${v}',this.checked)"><span>${mselOptLabel(kind,v)}</span></label>`;
+  });
+  panel.innerHTML = html;
+  syncMselLabel(kind);
+}
+
+function onMselToggle(kind, v, checked){
+  const set = mselSet(kind);
+  const values = mselValues(kind);
+  if (v === 'all'){
+    if (checked) values.forEach(x=>set.add(x)); else set.clear();
   } else {
-    if (activeMonths.has(m)) activeMonths.delete(m);
-    else activeMonths.add(m);
+    if (checked) set.add(v); else set.delete(v);
   }
-  syncPills();
+  syncMselChecks(kind);
+  syncMselLabel(kind);
   applyFilters();
 }
 
-function syncPills() {
-  const pills = document.getElementById('monthPills');
-  const allMonths = [...pills.querySelectorAll('.pill[data-month]')]
-    .map(p=>p.dataset.month).filter(x=>x!=='all');
-  const allActive = allMonths.every(x=>activeMonths.has(x));
-  pills.querySelectorAll('.pill').forEach(p => {
-    const m = p.dataset.month;
-    p.classList.toggle('active', m==='all' ? allActive : activeMonths.has(m));
+function syncMselChecks(kind){
+  const set = mselSet(kind), values = mselValues(kind);
+  const allChecked = values.length>0 && values.every(x=>set.has(x));
+  const anyChecked = values.some(x=>set.has(x));
+  document.querySelectorAll(`#${kind}DropPanel input[type=checkbox]`).forEach(cb=>{
+    const v = cb.dataset.v;
+    if (v === 'all'){ cb.checked = allChecked; cb.indeterminate = anyChecked && !allChecked; }
+    else cb.checked = set.has(v);
   });
 }
 
+function syncMselLabel(kind){
+  const set = mselSet(kind), values = mselValues(kind);
+  const sel = values.filter(x=>set.has(x));
+  let txt;
+  if (sel.length === values.length) txt = kind==='year' ? 'All years' : 'All months';
+  else if (sel.length === 0) txt = kind==='year' ? 'No years' : 'No months';
+  else if (kind==='year') txt = sel.slice().sort().join(', ');
+  else txt = sel.length + ' months';
+  document.getElementById(kind+'DropBtn').innerHTML = `${txt} <span class="msel-caret">▾</span>`;
+}
+
+function toggleDrop(kind){
+  const panel = document.getElementById(kind+'DropPanel');
+  const other = document.getElementById((kind==='year'?'month':'year')+'DropPanel');
+  if (other) other.style.display='none';
+  panel.style.display = panel.style.display==='none' ? 'block' : 'none';
+}
+
+// Close any open dropdown when clicking outside it.
+document.addEventListener('click', (e)=>{
+  if (!e.target.closest('.msel')){
+    document.querySelectorAll('.msel-panel').forEach(p=>{ p.style.display='none'; });
+  }
+});
+
 function getFilteredTxns(grpOverride, catOverride) {
   return TXNS.filter(t => {
-    if (!t.date.startsWith(currentYear+'-')) return false;
+    if (!activeYears.has(t.date.slice(0,4))) return false;
     const mo = String(parseInt(t.date.split('-')[1]));
     if (!activeMonths.has(mo)) return false;
     const grp = CAT_TO_GROUP[t.cat] || 'Other';
@@ -560,10 +606,15 @@ function updatePeriodNote() {
   const bycat={};
   rows.filter(t=>t.amt<0).forEach(t=>{ bycat[t.cat]=(bycat[t.cat]||0)+Math.abs(t.amt); });
   const topCat = Object.entries(bycat).sort((a,b)=>b[1]-a[1])[0];
-  const months = [...activeMonths].sort((a,b)=>parseInt(a)-parseInt(b)).map(m=>MON_SHORT[parseInt(m)]).join(', ');
-  const periodLabel = months || 'selected period';
+  const allYears = yearsInData();
+  const selYears = [...activeYears].sort();
+  const yearLabel = (selYears.length===allYears.length) ? 'All years'
+    : (selYears.length ? selYears.join(', ') : 'no years');
+  const selMonths = [...activeMonths].sort((a,b)=>parseInt(a)-parseInt(b));
+  const monthLabel = (selMonths.length===monthsInData().length) ? 'All months'
+    : (selMonths.map(m=>MON_SHORT[parseInt(m)]).join(', ') || 'no months');
 
-  let note = `📊 <strong>${periodLabel} ${currentYear} summary:</strong> `;
+  let note = `📊 <strong>${monthLabel} · ${yearLabel} summary:</strong> `;
   note += `Total income ${fmt(income)} · Total spending ${fmt(-spend)} · `;
   note += `Cash flow <strong style="color:${flow>=0?'#2f9e44':'#e03131'}">${fmt(flow)}</strong>. `;
   if (topCat) note += `Top expense category: <strong>${topCat[0]}</strong> at ${fmt(-topCat[1])}.`;
@@ -908,21 +959,6 @@ function showSection(name,btn){
   if(name==='overview') renderChart();
 }
 
-function exportChanges(){
-  const changed=Object.keys(catChanges);
-  if(!changed.length){alert('No category changes to export yet.');return;}
-  let csv='Date,Description,Source,Group,New Category,Amount\n';
-  changed.forEach(i=>{
-    const t=TXNS[i];
-    const grp=CAT_TO_GROUP[t.cat]||'Other';
-    csv+=`"${t.date}","${t.desc}","${t.src}","${grp}","${t.cat}","${t.amt}"\n`;
-  });
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
-  a.download='category_changes.csv';
-  a.click();
-}
-
 // ══════════════════════════════════════════════
 // INIT
 // ══════════════════════════════════════════════
@@ -957,16 +993,8 @@ async function doUpload(){
     resultEl.style.display=''; resultEl.className='upload-result ok';
     resultEl.innerHTML=`✅ <strong>${data.new_rows}</strong> new transaction(s) added to <strong>${data.source}</strong>, `+
       `<strong>${data.skipped}</strong> duplicate(s) skipped (of ${data.total_rows} parsed).`;
-    // Refresh year list + current view so the new rows show up.
-    try{
-      const yearsRes=await API.get('/api/years');
-      if(yearsRes.years && yearsRes.years.length){
-        const sel=document.getElementById('filterYear');
-        sel.innerHTML=yearsRes.years.map(y=>`<option value="${y}">${y}</option>`).join('');
-        sel.value=currentYear;
-      }
-    }catch(e){ /* non-fatal */ }
-    await onYearChange();
+    // Reload everything so the new rows (and any new years/months) show up.
+    await loadAllData();
   }catch(err){
     console.error(err);
     resultEl.style.display=''; resultEl.className='upload-result err';
@@ -984,14 +1012,6 @@ async function init(){
       const cats = await API.get('/api/categories');
       if (cats && cats.groups) { GROUPS = cats.groups; rebuildTaxonomy(); }
     } catch (e) { console.warn('categories fetch failed; using built-in fallback', e); }
-
-    // Populate the year dropdown from years that actually have data.
-    const yearsRes = await API.get('/api/years');
-    const years = (yearsRes.years && yearsRes.years.length) ? yearsRes.years : [Number(currentYear)];
-    const sel = document.getElementById('filterYear');
-    sel.innerHTML = years.map(y => `<option value="${y}">${y}</option>`).join('');
-    currentYear = String(years[0]);
-    sel.value = currentYear;
   } catch (err) {
     console.error(err);
     alert('Failed to initialize: ' + err.message);
@@ -1000,7 +1020,7 @@ async function init(){
   }
   onChartGroupChange(); // populate chart cat dropdown (needs taxonomy)
   onTxnGroupChange();   // populate txn cat dropdown
-  await onYearChange(); // load data + build pills + render
+  await loadAllData();  // load all transactions + build year/month pills + render
 }
 window.addEventListener('load', init);
 </script>
