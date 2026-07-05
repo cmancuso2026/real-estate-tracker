@@ -86,6 +86,26 @@ table.txns th.sortable{cursor:pointer;user-select:none;}
 table.txns th.sortable:hover{color:var(--text2);}
 table.txns th.sorted{color:var(--accent);}
 .sort-ind{font-size:9px;margin-left:4px;}
+table.txns tr.txn-row{cursor:pointer;}
+table.txns tr.txn-row.flagged td{background:var(--orange-light);}
+table.txns tr.txn-row.expanded td{background:var(--accent-light);}
+.exp-caret{display:inline-block;width:12px;color:var(--text3);font-size:9px;margin-right:4px;}
+.badge-review{display:inline-block;margin-left:8px;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700;background:#fff4e6;color:var(--orange);border:1px solid #ffd8a8;white-space:nowrap;}
+#flagBtn.active{background:var(--orange);color:#fff;border-color:var(--orange);}
+.detail-row td{background:var(--accent-light)!important;padding:0!important;border-bottom:2px solid var(--border)!important;}
+.tdd{padding:14px 16px;font-size:13px;}
+.tdd-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px 24px;}
+.tdd-k{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text3);margin-bottom:2px;}
+.tdd-v{color:var(--text);word-break:break-word;}
+.tdd-v.exp{color:var(--red);font-weight:600;} .tdd-v.inc{color:var(--green);font-weight:600;}
+.tdd-sub{color:var(--text3);font-weight:400;}
+.tdd-flags{margin-top:12px;padding-top:12px;border-top:1px dashed var(--border2);}
+.tdd-flag{background:#fff;border:1px solid #ffd8a8;border-left:3px solid var(--orange);border-radius:6px;padding:7px 10px;margin-top:6px;color:var(--text2);}
+.tdd-rel{margin-top:6px;background:#fff;border:1px solid var(--border);border-radius:6px;overflow:hidden;}
+.tdd-rel-row{display:grid;grid-template-columns:70px 1fr 130px 120px;gap:10px;padding:6px 10px;font-size:12px;border-top:1px solid var(--border);color:var(--text2);}
+.tdd-rel-row:first-child{border-top:none;}
+.tdd-rel-row.diff{background:var(--orange-light);}
+.tdd-rel-row span:nth-child(3){font-weight:600;color:var(--text);}
 .search-box{flex:1;min-width:160px;padding:7px 11px;border:1px solid var(--border2);border-radius:8px;font-family:'Inter',sans-serif;font-size:13px;outline:none;}
 .search-box:focus{border-color:var(--accent);}
 table.txns{width:100%;border-collapse:collapse;}
@@ -327,6 +347,7 @@ table.txns tr.inc-row td{background:rgba(47,158,68,.03);}
           <option value="Capital One">Capital One</option>
         </select>
         <button class="sec" onclick="openAddCat()">＋ Category</button>
+        <button class="sec" id="flagBtn" onclick="toggleFlagged()" title="Show only possibly miscategorized transactions">⚠ Review</button>
         <span id="txnCount" style="font-size:12px;color:var(--text3);"></span>
       </div>
       <div id="bulkBar" class="bulk-bar" style="display:none">
@@ -407,6 +428,9 @@ let TXNS = [];
 // ══════════════════════════════════════════════
 const catChanges = {};
 let txnSort = { key:'date', dir:'desc' }; // transaction table sort
+let expandedRows = new Set();             // txn ids whose detail panel is open
+let showFlaggedOnly = false;              // "Review" filter in the txn table
+let DISC = { flags:new Map(), byMerchant:new Map() }; // discrepancy analysis
 let activeYears = new Set();    // multi-select; built from the loaded data
 let activeMonths = new Set();   // multi-select; built from the loaded data
 let chart = null;
@@ -437,7 +461,7 @@ function setLoading(on){
 }
 // API transaction shape -> the {date,desc,src,amt,cat,id} shape the UI uses.
 function mapTxn(t){
-  return { id:t.id, date:t.date, desc:t.description, src:t.source, amt:Number(t.amount), cat:t.category };
+  return { id:t.id, date:t.date, desc:t.description, src:t.source, amt:Number(t.amount), cat:t.category, manual:!!t.is_manual };
 }
 
 // ══════════════════════════════════════════════
@@ -853,7 +877,112 @@ async function doAddCat(){
   }finally{ btn.disabled=false; }
 }
 
+// ── Discrepancy detection ────────────────────────────────────────────────────
+// Two heuristics flag "possibly miscategorized" transactions:
+//   1) inconsistent — the same merchant appears under more than one category.
+//   2) oddgroup     — the merchant name strongly implies a group it isn't in.
+function esc(s){ return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+function merchantKey(desc){
+  let s = ' ' + String(desc).toUpperCase() + ' ';
+  s = s.replace(/\b(APLPAY|TST|SQ|DD|PY|PAYPAL|POS|PURCHASE|DEBIT|CHECKCARD|RECURRING)\b/g,' ');
+  s = s.replace(/[^A-Z ]+/g,' ');
+  const stop = new Set(['THE','INC','LLC','CO','AND','OF','AT','US','USA','COM']);
+  const toks = s.split(/\s+/).filter(t => t.length>=3 && !stop.has(t));
+  // First two significant words: precise enough to separate distinct merchants
+  // ("HOME DEPOT" vs "HOME MTG") while still grouping one merchant across sources.
+  return toks.slice(0,2).join(' ');
+}
+
+const NAME_HINTS = [
+  { re:/\b(RESTAURANT|CAFE|COFFEE|STARBUCKS|DUNKIN|PIZZA|SUSHI|TACO|BURGER|GRILL|DINER|BAKERY|KITCHEN|CHIPOTLE|MCDONALD|SUBWAY|POPEYES|PANERA|WINGSTOP|DOORDASH|GRUBHUB)\b/, group:'Food',   label:'looks like dining' },
+  { re:/\b(SHELL|CHEVRON|EXXON|MOBIL|MARATHON|SUNOCO|CITGO|FUEL|PARKING|VALET|SUNPASS|JETBLUE|DELTA|AIRLINE|SOUTHWEST AIR|HOTEL|MOTEL|LODGE|CAR RENTAL)\b/, group:'Travel', label:'looks like travel' },
+  { re:/\b(PHARMACY|WALGREENS|CVS|CLINIC|HOSPITAL|DENTAL|DENTIST|MEDICAL|PEDIATRIC|URGENT CARE)\b/, group:'Living', label:'looks like healthcare' },
+];
+
+function computeDiscrepancies(){
+  const byMerchant = new Map();
+  TXNS.forEach(t => {
+    const key = merchantKey(t.desc);
+    if(!key) return;
+    if(!byMerchant.has(key)) byMerchant.set(key, []);
+    byMerchant.get(key).push(t);
+  });
+  const flags = new Map();
+  const add = (id, reason) => { if(!flags.has(id)) flags.set(id, []); flags.get(id).push(reason); };
+
+  // 1) same merchant, multiple categories
+  byMerchant.forEach((list, key) => {
+    const cats = [...new Set(list.map(t => t.cat))];
+    if(cats.length > 1) list.forEach(t => add(t.id, { type:'inconsistent', key, cats }));
+  });
+  // 2) name implies a different group than the one assigned
+  TXNS.forEach(t => {
+    const g = CAT_TO_GROUP[t.cat] || 'Other';
+    const up = t.desc.toUpperCase();
+    for(const h of NAME_HINTS){
+      if(h.re.test(up)){ if(g !== h.group) add(t.id, { type:'oddgroup', expected:h.group, label:h.label, actual:g }); break; }
+    }
+  });
+  DISC = { flags, byMerchant };
+}
+
+function reasonText(r){
+  if(r.type==='inconsistent') return `Similar-named transactions are split across categories: <strong>${esc(r.cats.join(', '))}</strong>.`;
+  return `Name ${esc(r.label)}, but it's filed under <strong>${esc(r.actual)}</strong> (expected ${esc(r.expected)}).`;
+}
+
+function toggleExpand(id){
+  if(expandedRows.has(id)) expandedRows.delete(id); else expandedRows.add(id);
+  renderTxns();
+}
+function onRowClick(e, id){
+  if(e.target.closest('input,select,button,label,a')) return; // don't hijack the controls
+  toggleExpand(id);
+}
+function toggleFlagged(){
+  showFlaggedOnly = !showFlaggedOnly;
+  const btn=document.getElementById('flagBtn');
+  btn.classList.toggle('active', showFlaggedOnly);
+  renderTxns();
+}
+
+function txnDetailHTML(t){
+  const grp = CAT_TO_GROUP[t.cat] || 'Other';
+  const full = new Date(t.date+'T00:00:00').toLocaleDateString('en-US',{weekday:'short',year:'numeric',month:'long',day:'numeric'});
+  const reasons = DISC.flags.get(t.id) || [];
+  let html = `<div class="tdd"><div class="tdd-grid">
+    <div><div class="tdd-k">Full description</div><div class="tdd-v">${esc(t.desc)}</div></div>
+    <div><div class="tdd-k">Date</div><div class="tdd-v">${full}</div></div>
+    <div><div class="tdd-k">Amount</div><div class="tdd-v ${t.amt<0?'exp':'inc'}">${fmt(t.amt)}</div></div>
+    <div><div class="tdd-k">Source</div><div class="tdd-v">${esc(t.src)}</div></div>
+    <div><div class="tdd-k">Category</div><div class="tdd-v">${esc(t.cat)} <span class="tdd-sub">· ${esc(grp)}</span></div></div>
+    <div><div class="tdd-k">Categorized</div><div class="tdd-v">${t.manual?'Manually (edited)':'Auto'}</div></div>
+  </div>`;
+  if(reasons.length){
+    html += `<div class="tdd-flags"><div class="tdd-k">⚠ Possible issues</div>`;
+    reasons.forEach(r => { html += `<div class="tdd-flag">${reasonText(r)}</div>`; });
+    const inc = reasons.find(r => r.type==='inconsistent');
+    if(inc){
+      const rel = (DISC.byMerchant.get(inc.key) || []).filter(x => x.id !== t.id)
+        .sort((a,b)=>b.date.localeCompare(a.date)).slice(0,10);
+      if(rel.length){
+        html += `<div class="tdd-k" style="margin-top:10px">Similar transactions</div><div class="tdd-rel">`;
+        rel.forEach(x => {
+          const diff = x.cat !== t.cat;
+          const d = new Date(x.date+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'});
+          html += `<div class="tdd-rel-row${diff?' diff':''}"><span>${d}</span><span>${esc(x.desc)}</span><span>${esc(x.cat)}</span><span>${esc(x.src)}</span></div>`;
+        });
+        html += `</div>`;
+      }
+    }
+    html += `</div>`;
+  }
+  return html + `</div>`;
+}
+
 function renderTxns(){
+  computeDiscrepancies();
   const search=(document.getElementById('txnSearch').value||'').toLowerCase();
   const grpF  =document.getElementById('txnGrpF').value;
   const catF  =document.getElementById('txnCatF').value;
@@ -865,13 +994,17 @@ function renderTxns(){
     if(grpF && grp!==grpF) return false;
     if(catF && t.cat!==catF) return false;
     if(srcF && t.src!==srcF) return false;
+    if(showFlaggedOnly && !DISC.flags.has(t.id)) return false;
     if(search && !t.desc.toLowerCase().includes(search) && !t.cat.toLowerCase().includes(search) && !t.src.toLowerCase().includes(search)) return false;
     return true;
   }).map(t=>({...t,i:TXNS.indexOf(t)})).sort(txnComparator);
 
   const tbody=document.getElementById('txnBody');
   const empty=document.getElementById('txnEmpty');
+  const flaggedInBase = base.filter(t=>DISC.flags.has(t.id)).length;
   document.getElementById('txnCount').textContent=`${rows.length} of ${base.length}`;
+  const flagBtn=document.getElementById('flagBtn');
+  if(flagBtn) flagBtn.textContent = `⚠ Review (${flaggedInBase})`;
 
   if(!rows.length){ tbody.innerHTML=''; empty.style.display=''; }
   else{
@@ -880,16 +1013,20 @@ function renderTxns(){
       const isInc=t.amt>0;
       const isU=t.cat==='Uncategorized';
       const grp=CAT_TO_GROUP[t.cat]||'Other';
+      const flagged=DISC.flags.has(t.id);
+      const open=expandedRows.has(t.id);
       const ds=new Date(t.date+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'});
-      return `<tr class="${isInc?'inc-row':''}">
+      let html=`<tr class="txn-row${isInc?' inc-row':''}${flagged?' flagged':''}${open?' expanded':''}" onclick="onRowClick(event,${t.id})">
         <td class="ck-col"><input type="checkbox" class="txnck" data-i="${t.i}" onchange="updateBulkBar()"></td>
-        <td class="tddate">${ds}</td>
-        <td><div class="tddesc">${t.desc}${isU?'<span class="badge-uncat">needs category</span>':''}</div><div class="tddesc-sub">${t.src}</div></td>
+        <td class="tddate"><span class="exp-caret">${open?'▾':'▸'}</span>${ds}</td>
+        <td><div class="tddesc">${t.desc}${isU?'<span class="badge-uncat">needs category</span>':''}${flagged?'<span class="badge-review">⚠ review</span>':''}</div><div class="tddesc-sub">${t.src}</div></td>
         <td class="tddesc-sub">${t.src}</td>
         <td><span class="grp-badge">${grp}</span></td>
         <td>${catSelectHTML(t.i,t.cat)}</td>
         <td class="tdamt ${isInc?'inc':'exp'}">${fmt(t.amt)}</td>
       </tr>`;
+      if(open) html+=`<tr class="detail-row"><td></td><td colspan="6">${txnDetailHTML(t)}</td></tr>`;
+      return html;
     }).join('');
   }
   renderSummaryBar(rows);
