@@ -46,6 +46,8 @@ function bankofamericaRules(desc, raw) {
 
 // ── Amex (Gold + Blue Cash) ─────────────────────────────────────────────────
 function amexRules(desc) {
+  // Card-side bill payment ("… PAYMENT - THANK YOU") -> Amex wash category.
+  if (/PAYMENT/.test(desc) && /THANK\s*YOU/.test(desc)) return 'Amex';
   if (has(desc, 'LAWNSTARTER')) return 'Lawn Care';
   if (has(desc, 'DIAMOND PLUMBING', 'OASIS PLUMBING')) return 'Repairs';
   if (has(desc, 'HOME DEPOT')) return 'Home Depot';
@@ -88,8 +90,9 @@ function sofiRules(desc, raw) {
 // ── Capital One ───────────────────────────────────────────────────────────
 // Capital One exports a reliable bank Category column (`raw` here), so we map
 // that into the taxonomy, with a few merchant overrides that beat the generic
-// category. Card payments ('Payment/Credit') are dropped in the parser.
+// category.
 const CAPONE_CATEGORY_MAP = {
+  'PAYMENT/CREDIT': 'Capital One', // card-side bill payment -> wash category
   'GAS/AUTOMOTIVE': 'Gas',
   DINING: 'Eating Out',
   MERCHANDISE: 'Shopping',
