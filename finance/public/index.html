@@ -103,6 +103,9 @@ table.txns tr.txn-row.expanded td{background:var(--accent-light);}
 .tdd-v.exp{color:var(--red);font-weight:600;} .tdd-v.inc{color:var(--green);font-weight:600;}
 .tdd-sub{color:var(--text3);font-weight:400;}
 .tdd-flags{margin-top:12px;padding-top:12px;border-top:1px dashed var(--border2);}
+.tdd-clear-hdr{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+.pill-ok{border-color:var(--green);color:var(--green);}
+.pill-ok:hover{background:#ebfbee;border-color:var(--green);color:var(--green);}
 .tdd-flag{background:#fff;border:1px solid #ffd8a8;border-left:3px solid var(--orange);border-radius:6px;padding:7px 10px;margin-top:6px;color:var(--text2);}
 .tdd-rel{margin-top:6px;background:#fff;border:1px solid var(--border);border-radius:6px;overflow:hidden;}
 .tdd-rel-row{display:grid;grid-template-columns:70px 1fr 130px 120px;gap:10px;padding:6px 10px;font-size:12px;border-top:1px solid var(--border);color:var(--text2);}
@@ -344,7 +347,8 @@ table.txns tr.inc-row td{background:rgba(47,158,68,.03);}
         <span style="font-size:12px;color:var(--text3);">Set category to</span>
         <select id="bulkCat"></select>
         <button class="btn-primary" onclick="applyBulk()" id="bulkApply">Apply</button>
-        <button class="pill" onclick="clearBulk()">Clear</button>
+        <button class="pill pill-ok" id="bulkReviewBtn" onclick="bulkReview(true)" title="Mark selected as fine — remove from Review">✓ Mark reviewed</button>
+        <button class="pill" onclick="clearBulk()">Clear selection</button>
       </div>
       <div style="overflow-x:auto;max-height:60vh;overflow-y:auto;">
         <table class="txns">
@@ -456,7 +460,7 @@ function setLoading(on){
 }
 // API transaction shape -> the {date,desc,src,amt,cat,id} shape the UI uses.
 function mapTxn(t){
-  return { id:t.id, date:t.date, desc:t.description, src:t.source, amt:Number(t.amount), cat:t.category, manual:!!t.is_manual };
+  return { id:t.id, date:t.date, desc:t.description, src:t.source, amt:Number(t.amount), cat:t.category, manual:!!t.is_manual, cleared:!!t.review_cleared };
 }
 
 // ══════════════════════════════════════════════
@@ -960,14 +964,29 @@ async function doAddCat(){
 //   2) oddgroup     — the merchant name strongly implies a group it isn't in.
 function esc(s){ return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
+// Tokens that describe the payment *rail* or are transfer boilerplate — they
+// say nothing about who/what the money went to. Stripping them means a generic
+// rail like Zelle keys off the actual counterparty ("ZELLE TO JOHN SMITH" ->
+// "JOHN SMITH"), so payments to different people no longer collapse together.
+const KEY_NOISE = new Set([
+  // rails / processors
+  'ZELLE','VENMO','PAYPAL','PYPL','CASHAPP','SQUARE','SQ','APLPAY','APPLEPAY','GPAY',
+  'PAYPALINST','XFER','TST','DD','PY','POS','ACH','WIRE','BILLPAY',
+  // transfer / payment boilerplate
+  'PAYMENT','PAYMENTS','PMT','PAY','TRANSFER','SENT','RECEIVED','FROM','FOR','WITH',
+  'PURCHASE','DEBIT','CREDIT','CHECKCARD','RECURRING','WEB','ID','IND','ENTRY','DES',
+  'PPD','CCD','TEL','CONF','REF','TRACE','TXN','TRN','AUTH','MEMO','NOTE','ONLINE',
+  // generic english stop words
+  'THE','INC','LLC','AND','OF','AT','TO','US','USA','COM','CO',
+]);
+
 function merchantKey(desc){
   let s = ' ' + String(desc).toUpperCase() + ' ';
-  s = s.replace(/\b(APLPAY|TST|SQ|DD|PY|PAYPAL|POS|PURCHASE|DEBIT|CHECKCARD|RECURRING)\b/g,' ');
-  s = s.replace(/[^A-Z ]+/g,' ');
-  const stop = new Set(['THE','INC','LLC','CO','AND','OF','AT','US','USA','COM']);
-  const toks = s.split(/\s+/).filter(t => t.length>=3 && !stop.has(t));
+  s = s.replace(/[^A-Z ]+/g,' ');          // drop digits/punctuation
+  const toks = s.split(/\s+/).filter(t => t.length>=3 && !KEY_NOISE.has(t));
   // First two significant words: precise enough to separate distinct merchants
-  // ("HOME DEPOT" vs "HOME MTG") while still grouping one merchant across sources.
+  // ("HOME DEPOT" vs "HOME MTG") and distinct Zelle recipients, while still
+  // grouping one merchant across sources.
   return toks.slice(0,2).join(' ');
 }
 
@@ -988,13 +1007,15 @@ function computeDiscrepancies(){
   const flags = new Map();
   const add = (id, reason) => { if(!flags.has(id)) flags.set(id, []); flags.get(id).push(reason); };
 
-  // 1) same merchant, multiple categories
+  // 1) same merchant, multiple categories. Cleared rows still count toward the
+  //    category set (so a lone odd one out still surfaces) but never get flagged.
   byMerchant.forEach((list, key) => {
     const cats = [...new Set(list.map(t => t.cat))];
-    if(cats.length > 1) list.forEach(t => add(t.id, { type:'inconsistent', key, cats }));
+    if(cats.length > 1) list.forEach(t => { if(!t.cleared) add(t.id, { type:'inconsistent', key, cats }); });
   });
   // 2) name implies a different group than the one assigned
   TXNS.forEach(t => {
+    if(t.cleared) return;
     const g = CAT_TO_GROUP[t.cat] || 'Other';
     const up = t.desc.toUpperCase();
     for(const h of NAME_HINTS){
@@ -1037,7 +1058,8 @@ function txnDetailHTML(t){
     <div><div class="tdd-k">Categorized</div><div class="tdd-v">${t.manual?'Manually (edited)':'Auto'}</div></div>
   </div>`;
   if(reasons.length){
-    html += `<div class="tdd-flags"><div class="tdd-k">⚠ Possible issues</div>`;
+    html += `<div class="tdd-flags"><div class="tdd-clear-hdr"><div class="tdd-k">⚠ Possible issues</div>`+
+      `<button class="pill pill-ok" onclick="event.stopPropagation();clearReview(${t.id},true)">✓ Looks fine — clear</button></div>`;
     reasons.forEach(r => { html += `<div class="tdd-flag">${reasonText(r)}</div>`; });
     const inc = reasons.find(r => r.type==='inconsistent');
     if(inc){
@@ -1054,8 +1076,25 @@ function txnDetailHTML(t){
       }
     }
     html += `</div>`;
+  } else if(t.cleared){
+    html += `<div class="tdd-flags"><div class="tdd-clear-hdr">`+
+      `<div class="tdd-k" style="color:var(--green)">✓ Cleared from review</div>`+
+      `<button class="pill" onclick="event.stopPropagation();clearReview(${t.id},false)">Restore to review</button></div></div>`;
   }
   return html + `</div>`;
+}
+
+// Mark a transaction "reviewed / fine" (or restore it), persist, and re-render.
+async function clearReview(id, cleared){
+  try{
+    await API.put(`/api/transactions/${id}/review`, { cleared });
+    const t = TXNS.find(x => x.id === id);
+    if(t) t.cleared = cleared;
+    renderTxns();
+  }catch(err){
+    console.error(err);
+    alert('Failed to update review status: ' + err.message);
+  }
 }
 
 function renderTxns(){
@@ -1146,6 +1185,21 @@ async function applyBulk(){
   }catch(err){
     console.error(err); alert('Failed to update categories: '+err.message);
   }finally{ btn.disabled=false; }
+}
+// Bulk "these are fine" — clear the selected rows from the review list.
+async function bulkReview(cleared){
+  const boxes=[...document.querySelectorAll('.txnck:checked')];
+  if(!boxes.length) return;
+  const idxs=boxes.map(c=>+c.dataset.i);
+  const ids=idxs.map(i=>TXNS[i].id);
+  const btn=document.getElementById('bulkReviewBtn'); if(btn) btn.disabled=true;
+  try{
+    await API.put('/api/transactions/bulk-review',{ids,cleared});
+    idxs.forEach(i=>{ TXNS[i].cleared=cleared; });
+    clearBulk(); renderTxns();
+  }catch(err){
+    console.error(err); alert('Failed to update review status: '+err.message);
+  }finally{ if(btn) btn.disabled=false; }
 }
 
 function renderSummaryBar(rows){
