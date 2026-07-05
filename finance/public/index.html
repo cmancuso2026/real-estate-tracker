@@ -256,14 +256,14 @@ table.txns tr.inc-row td{background:rgba(47,158,68,.03);}
         <span style="font-size:12px;color:var(--text3);">Group:</span>
         <select id="chartGroup" onchange="onChartGroupChange()">
           <option value="">All</option>
-          <option value="W2 Income">W2 Income</option>
-          <option value="Investments">Investments</option>
-          <option value="Travel">Travel</option>
-          <option value="Food">Food</option>
-          <option value="Living">Living</option>
           <option value="Baby">Baby</option>
           <option value="Financials">Financials</option>
+          <option value="Food">Food</option>
+          <option value="Investments">Investments</option>
+          <option value="Living">Living</option>
           <option value="Other">Other</option>
+          <option value="Travel">Travel</option>
+          <option value="W2 Income">W2 Income</option>
         </select>
         <span style="font-size:12px;color:var(--text3);">Category:</span>
         <select id="chartCat" onchange="renderChart()">
@@ -284,26 +284,6 @@ table.txns tr.inc-row td{background:rgba(47,158,68,.03);}
   <div id="sec-categories" style="display:none">
     <div class="two-col">
       <div class="card">
-        <div class="card-hdr"><div class="card-title">💰 W2 Income</div><div class="card-total col-green" id="ct-income">—</div></div>
-        <div class="cat-sec" id="cb-income"></div>
-      </div>
-      <div class="card">
-        <div class="card-hdr"><div class="card-title">🏠 Investments</div><div class="card-total col-red" id="ct-invest">—</div></div>
-        <div class="cat-sec" id="cb-invest"></div>
-      </div>
-      <div class="card">
-        <div class="card-hdr"><div class="card-title">🚗 Travel Expenses</div><div class="card-total col-red" id="ct-travel">—</div></div>
-        <div class="cat-sec" id="cb-travel"></div>
-      </div>
-      <div class="card">
-        <div class="card-hdr"><div class="card-title">🛒 Food Expenses</div><div class="card-total col-red" id="ct-food">—</div></div>
-        <div class="cat-sec" id="cb-food"></div>
-      </div>
-      <div class="card">
-        <div class="card-hdr"><div class="card-title">🏡 Living</div><div class="card-total col-red" id="ct-living">—</div></div>
-        <div class="cat-sec" id="cb-living"></div>
-      </div>
-      <div class="card">
         <div class="card-hdr"><div class="card-title">👶 Baby</div><div class="card-total col-red" id="ct-baby">—</div></div>
         <div class="cat-sec" id="cb-baby"></div>
       </div>
@@ -313,8 +293,28 @@ table.txns tr.inc-row td{background:rgba(47,158,68,.03);}
         <div style="padding:2px 18px 10px;font-size:11px;color:var(--text3);">* CapOne rows = SoFi→CapOne transfers (internal)</div>
       </div>
       <div class="card">
+        <div class="card-hdr"><div class="card-title">🛒 Food Expenses</div><div class="card-total col-red" id="ct-food">—</div></div>
+        <div class="cat-sec" id="cb-food"></div>
+      </div>
+      <div class="card">
+        <div class="card-hdr"><div class="card-title">🏠 Investments</div><div class="card-total col-red" id="ct-invest">—</div></div>
+        <div class="cat-sec" id="cb-invest"></div>
+      </div>
+      <div class="card">
+        <div class="card-hdr"><div class="card-title">🏡 Living</div><div class="card-total col-red" id="ct-living">—</div></div>
+        <div class="cat-sec" id="cb-living"></div>
+      </div>
+      <div class="card">
         <div class="card-hdr"><div class="card-title">🎭 Other</div><div class="card-total col-red" id="ct-other">—</div></div>
         <div class="cat-sec" id="cb-other"></div>
+      </div>
+      <div class="card">
+        <div class="card-hdr"><div class="card-title">🚗 Travel Expenses</div><div class="card-total col-red" id="ct-travel">—</div></div>
+        <div class="cat-sec" id="cb-travel"></div>
+      </div>
+      <div class="card">
+        <div class="card-hdr"><div class="card-title">💰 W2 Income</div><div class="card-total col-green" id="ct-income">—</div></div>
+        <div class="cat-sec" id="cb-income"></div>
       </div>
     </div>
   </div>
@@ -326,14 +326,14 @@ table.txns tr.inc-row td{background:rgba(47,158,68,.03);}
         <input class="search-box" type="text" id="txnSearch" placeholder="Search…" oninput="renderTxns()">
         <select onchange="onTxnGroupChange()" id="txnGrpF">
           <option value="">All Groups</option>
-          <option value="W2 Income">W2 Income</option>
-          <option value="Investments">Investments</option>
-          <option value="Travel">Travel</option>
-          <option value="Food">Food</option>
-          <option value="Living">Living</option>
           <option value="Baby">Baby</option>
           <option value="Financials">Financials</option>
+          <option value="Food">Food</option>
+          <option value="Investments">Investments</option>
+          <option value="Living">Living</option>
           <option value="Other">Other</option>
+          <option value="Travel">Travel</option>
+          <option value="W2 Income">W2 Income</option>
         </select>
         <select onchange="renderTxns()" id="txnCatF">
           <option value="">All Categories</option>
@@ -403,9 +403,15 @@ let GROUPS = {
 let CAT_TO_GROUP = {};
 let ALL_SUBCATS = [];
 function rebuildTaxonomy(){
+  // Sort groups and their categories alphabetically so every dropdown/list is ordered.
+  const sorted = {};
+  Object.keys(GROUPS).sort((a,b)=>a.localeCompare(b)).forEach(g=>{
+    sorted[g] = [...GROUPS[g]].sort((a,b)=>a.localeCompare(b));
+  });
+  GROUPS = sorted;
   CAT_TO_GROUP = {};
   Object.entries(GROUPS).forEach(([g,cats])=>cats.forEach(c=>{ CAT_TO_GROUP[c]=g; }));
-  ALL_SUBCATS = Object.values(GROUPS).flat();
+  ALL_SUBCATS = Object.values(GROUPS).flat().sort((a,b)=>a.localeCompare(b));
   const bulkSel=document.getElementById('bulkCat');
   if(bulkSel){
     const cur=bulkSel.value;
