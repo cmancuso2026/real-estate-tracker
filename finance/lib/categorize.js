@@ -23,6 +23,7 @@ function has(haystack, ...needles) {
 // ── Bank of America ────────────────────────────────────────────────────────
 function bankofamericaRules(desc, raw) {
   if (has(desc, 'CAPITAL ONE')) return 'Capital One';
+  if (has(desc, 'AMERICAN EXPRESS', 'AMEX')) return 'Amex'; // card payment (bank-side outflow)
   if (has(desc, 'COMCAST', 'XFINITY')) return 'Wifi';
   if (has(desc, 'STARBUCKS', 'DOORDASH', 'UBER *EATS')) return 'Eating Out';
   if (has(desc, 'FAMILY DOLLAR')) return 'Family Dollar';
@@ -75,6 +76,7 @@ function amexRules(desc) {
 function sofiRules(desc, raw) {
   if (has(desc, 'FRANCHISE WORLD') && has(raw, 'DEPOSIT')) return 'Paycheck';
   if (has(desc, 'CAPITAL ONE')) return 'Capital One';
+  if (has(desc, 'AMERICAN EXPRESS', 'AMEX')) return 'Amex'; // card payment (bank-side outflow)
   if (has(desc, 'FREEDOM')) return '20 PITI';
   if (has(desc, 'FIGURE LENDING')) return 'Uncategorized';
   if (has(desc, 'WF HOME MTG')) return 'Other';

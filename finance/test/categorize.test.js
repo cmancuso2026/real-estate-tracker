@@ -9,6 +9,8 @@ const CASES = [
   ['UM MY CHART BILLING', '', 'bankofamerica', 'Healthcare', 'Living'],
   ['MAX APPLIANCE REPAIRUS', '', 'bankofamerica', 'Repairs', 'Investments'],
   ['CAPITAL ONE ONLINE PYMT', '', 'bankofamerica', 'Capital One', 'Financials'],
+  ['AMERICAN EXPRESS ACH PMT', '', 'bankofamerica', 'Amex', 'Financials'],
+  ['AMEX EPAYMENT', '', 'bankofamerica', 'Amex', 'Financials'],
   ["MR C'S VALET", '', 'bankofamerica', 'Parking', 'Travel'],
   ['COMCAST / XFINITY', '', 'bankofamerica', 'Wifi', 'Living'],
   ['DD *DOORDASH SHOKUDO', '', 'bankofamerica', 'Eating Out', 'Food'],
@@ -52,6 +54,8 @@ const CASES = [
   ['Franchise World', 'Direct Deposit', 'sofi', 'Paycheck', 'W2 Income'],
   ['Franchise World', 'Withdrawal', 'sofi', 'Uncategorized', 'Other'], // not a deposit
   ['CAPITAL ONE', 'Withdrawal', 'sofi', 'Capital One', 'Financials'],
+  ['AMERICAN EXPRESS ACH PMT', 'Withdrawal', 'sofi', 'Amex', 'Financials'],
+  ['AMEX EPAYMENT', 'Withdrawal', 'sofi', 'Amex', 'Financials'],
   ['FREEDOM MORTGAGE', 'Withdrawal', 'sofi', '20 PITI', 'Investments'],
   ['FIGURE LENDING LLC', 'Withdrawal', 'sofi', 'Uncategorized', 'Other'],
   ['WF HOME MTG', 'Withdrawal', 'sofi', 'Other', 'Other'],
