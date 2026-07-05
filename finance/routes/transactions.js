@@ -48,6 +48,59 @@ router.get('/', async (req, res, next) => {
   }
 });
 
+// PUT /api/transactions/bulk-category — override many transactions at once.
+// Body: { ids: number[], category }. Persists overrides so re-uploads keep them.
+// (Single-segment path, so it never collides with '/:id/category'.)
+router.put('/bulk-category', async (req, res, next) => {
+  try {
+    const knex = req.app.locals.db;
+    let { ids, category } = req.body || {};
+
+    if (!Array.isArray(ids) || ids.length === 0) {
+      const e = new Error('Body must include a non-empty "ids" array');
+      e.status = 400;
+      throw e;
+    }
+    if (!category || !ALL_CATEGORIES.has(category)) {
+      const e = new Error(`Invalid category '${category}'`);
+      e.status = 400;
+      throw e;
+    }
+    const categoryGroup = groupFor(category);
+    ids = [...new Set(ids.map(Number).filter((n) => Number.isInteger(n)))];
+
+    const rows = await knex('transactions')
+      .whereIn('id', ids)
+      .select('id', 'dedup_hash', 'description');
+
+    await knex.transaction(async (trx) => {
+      if (rows.length) {
+        await trx('transactions')
+          .whereIn('id', rows.map((r) => r.id))
+          .update({ category, category_group: categoryGroup, is_manual: true });
+      }
+      // Upsert an override per distinct dedup_hash so edits survive re-uploads.
+      for (const r of rows) {
+        if (!r.dedup_hash) continue;
+        await trx('category_overrides')
+          .insert({
+            dedup_hash: r.dedup_hash,
+            description: r.description,
+            category,
+            category_group: categoryGroup,
+            updated_at: trx.fn.now(),
+          })
+          .onConflict('dedup_hash')
+          .merge();
+      }
+    });
+
+    res.json({ success: true, updated: rows.length, category, category_group: categoryGroup });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // PUT /api/transactions/:id/category — override a transaction's category and
 // persist it so re-uploads keep the change.
 router.put('/:id/category', async (req, res, next) => {

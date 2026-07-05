@@ -128,6 +128,46 @@ test('API integration (pg-mem)', async (t) => {
       assert.equal(check.transactions[0].is_manual, true);
     });
 
+    await t.test('PUT bulk-category updates many rows and persists overrides', async () => {
+      const list = await getJson('/api/transactions?year=2026');
+      const ids = list.transactions.slice(0, 3).map((r) => r.id);
+      assert.equal(ids.length, 3);
+
+      const put = await fetch(`${base}/api/transactions/bulk-category`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids, category: 'Eating Out' }),
+      });
+      const result = await put.json();
+      assert.equal(result.updated, 3);
+      assert.equal(result.category_group, 'Food'); // derived server-side
+
+      for (const id of ids) {
+        const row = await knex('transactions').where({ id }).first();
+        assert.equal(row.category, 'Eating Out');
+        assert.equal(row.category_group, 'Food');
+        assert.equal(!!row.is_manual, true);
+        const ov = await knex('category_overrides').where({ dedup_hash: row.dedup_hash }).first();
+        assert.equal(ov.category, 'Eating Out'); // override persisted for re-uploads
+      }
+    });
+
+    await t.test('PUT bulk-category rejects bad input', async () => {
+      const noIds = await fetch(`${base}/api/transactions/bulk-category`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: [], category: 'Eating Out' }),
+      });
+      assert.equal(noIds.status, 400);
+
+      const badCat = await fetch(`${base}/api/transactions/bulk-category`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: [1], category: 'Nonsense' }),
+      });
+      assert.equal(badCat.status, 400);
+    });
+
     await t.test('PUT rejects an invalid category', async () => {
       const list = await getJson('/api/transactions?year=2026&search=publix');
       const { id } = list.transactions[0];
