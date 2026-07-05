@@ -23,7 +23,7 @@ router.get('/', async (req, res, next) => {
   try {
     const knex = req.app.locals.db;
     const { year, months, group, category, source, search } = req.query;
-    const limit = Math.min(Number(req.query.limit) || 500, 2000);
+    const limit = Math.min(Number(req.query.limit) || 500, 100000);
     const offset = Number(req.query.offset) || 0;
 
     const filters = { year, months, group, category, source, search };
