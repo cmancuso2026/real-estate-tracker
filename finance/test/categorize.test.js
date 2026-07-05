@@ -28,6 +28,8 @@ const CASES = [
   ['SOME DINER', 'DINING', 'bankofamerica', 'Eating Out', 'Food'], // raw category fallback
 
   // Amex (Gold + Blue share rules)
+  ['ONLINE PAYMENT - THANK YOU', '', 'amex_gold', 'Amex', 'Financials'], // card-side payment offset
+  ['MOBILE PAYMENT - THANK YOU', '', 'amex_blue', 'Amex', 'Financials'],
   ['UBER EATS', '', 'amex_gold', 'Eating Out', 'Food'],
   ['UBER TRIP HELP.UBER.COM', '', 'amex_gold', 'Lyft', 'Travel'], // Uber w/o EATS = ride
   ['PUBLIX #1236', '', 'amex_gold', 'Groceries', 'Food'],
@@ -49,6 +51,10 @@ const CASES = [
   ['TARGET PLUS', '', 'amex_blue', 'Shopping', 'Living'],
   ['PHOTO ENFORCEMENT FL', '', 'amex_blue', 'Other', 'Other'],
   ['SP HILL HOUSE HOME', '', 'amex_blue', 'Shopping', 'Living'],
+
+  // Capital One (rawCategory carries the bank-provided Category column)
+  ['7-11 #32231', 'Gas/Automotive', 'capitalone', 'Gas', 'Travel'],
+  ['CAPITAL ONE ONLINE PYMT', 'Payment/Credit', 'capitalone', 'Capital One', 'Financials'], // card-side payment offset
 
   // SoFi (rawCategory carries the Type column)
   ['Franchise World', 'Direct Deposit', 'sofi', 'Paycheck', 'W2 Income'],

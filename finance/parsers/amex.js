@@ -4,7 +4,11 @@
 // Columns: Date, Description, Card Member, Account #, Amount, [Extended Details,
 //          Appears On Statement, Address, City/State, Zip, Country, Reference, Category]
 //   * Amount is positive for a charge (expense) -> flip sign to negative
-//   * skip rows whose Description contains both 'Payment' and 'Thank You'
+//   * "Payment - Thank You" rows are the card-side of a bill payment; their
+//     Amount is negative -> flips to positive. They are KEPT and land in the
+//     'Amex' wash category, offsetting the negative bank-side payment (the
+//     BofA/SoFi outflow) so the category nets to ~zero. Skipping them would
+//     leave the bank-side payment double-counting against the real charges.
 //   * dates are MM/DD/YYYY
 const { toISODate, parseAmount, findHeaderRow, columnMap } = require('./util');
 
@@ -25,9 +29,6 @@ function parseRows(rows, source = 'Amex Gold') {
     const description = String(row[cDesc] ?? '').trim();
     const date = toISODate(row[cDate]);
     if (!date || !description) continue;
-
-    // Internal payment — not a real expense.
-    if (/payment/i.test(description) && /thank\s*you/i.test(description)) continue;
 
     const raw = parseAmount(row[cAmount]);
     if (Number.isNaN(raw)) continue;

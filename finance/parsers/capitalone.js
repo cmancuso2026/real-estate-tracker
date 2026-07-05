@@ -4,9 +4,11 @@
 //   * Debit is a purchase (expense)  -> store as negative
 //   * Credit is a refund/return      -> store as positive
 //   * dates are YYYY-MM-DD
-//   * skip rows whose Category is 'Payment/Credit' — these are card payments
-//     (the mirror of SoFi's "CAPITAL ONE" withdrawals), not real spending, so
-//     importing them would double-count against the SoFi side.
+//   * 'Payment/Credit' rows are the card-side of a bill payment; they land in
+//     the Credit column (positive) and are KEPT, categorized into the 'Capital
+//     One' wash category. They offset the negative bank-side payment (the
+//     SoFi/BofA "CAPITAL ONE" outflow) so the category nets to ~zero. Dropping
+//     them would leave the bank-side payment double-counting the real charges.
 // The bank-provided Category column is passed through as rawCategory so
 // categorize() can lean on it.
 const { toISODate, parseAmount, findHeaderRow, columnMap } = require('./util');
@@ -32,8 +34,6 @@ function parseRows(rows) {
     if (!date || !description) continue;
 
     const rawCategory = cCat != null ? String(row[cCat] ?? '').trim() : '';
-    // Card payment (money moved from a bank account to pay the card) — internal.
-    if (/payment\/credit/i.test(rawCategory)) continue;
 
     const debit = parseAmount(row[cDebit]);
     const credit = parseAmount(row[cCredit]);

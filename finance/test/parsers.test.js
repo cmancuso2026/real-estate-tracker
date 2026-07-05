@@ -19,15 +19,18 @@ test('Bank of America: skips CapOne credit, negates debits, skips preamble', () 
   assert.equal(um.source, 'Bank of America');
 });
 
-test('Amex: dynamic header skip, sign flip, payment+thankyou skipped', () => {
+test('Amex: dynamic header skip, sign flip, payment kept as positive offset', () => {
   const { source, transactions } = parseFile(fixture('amex_gold.csv'), 'amex_gold.csv', 'amex_gold');
   assert.equal(source, 'Amex Gold');
-  assert.equal(transactions.length, 6); // 7 data rows minus the ONLINE PAYMENT - THANK YOU
-  assert.ok(!transactions.some((t) => /THANK YOU/i.test(t.description)), 'payment skipped');
+  assert.equal(transactions.length, 7); // all 7 data rows, incl. the payment
 
   const uber = byDesc(transactions, 'UBER EATS');
   assert.equal(uber.date, '2026-04-27');
   assert.equal(uber.amount, -92.87); // positive charge -> negative
+
+  // Card-side bill payment kept: negative Amount flips to a positive offset.
+  const payment = byDesc(transactions, 'THANK YOU');
+  assert.equal(payment.amount, 382.79);
 });
 
 test('SoFi: keeps signed amounts, skips internal transfer, parses ISO dates', () => {
@@ -45,11 +48,10 @@ test('SoFi: keeps signed amounts, skips internal transfer, parses ISO dates', ()
   assert.equal(capone.amount, -868.09); // withdrawal stays negative
 });
 
-test('Capital One: debit->negative, credit refund->positive, skips card payment', () => {
+test('Capital One: debit->negative, credit refund->positive, payment kept as offset', () => {
   const { source, transactions } = parseFile(fixture('capitalone.csv'), 'capitalone.csv', 'capitalone');
   assert.equal(source, 'Capital One');
-  assert.equal(transactions.length, 4); // 5 data rows minus the Payment/Credit
-  assert.ok(!transactions.some((t) => /PAYMENT\/CREDIT/i.test(t.rawCategory)), 'card payment skipped');
+  assert.equal(transactions.length, 5); // all 5 data rows, incl. the Payment/Credit
 
   const gas = byDesc(transactions, '7-11');
   assert.equal(gas.date, '2026-06-21');
@@ -57,6 +59,11 @@ test('Capital One: debit->negative, credit refund->positive, skips card payment'
 
   const refund = byDesc(transactions, 'HOME DEPOT');
   assert.equal(refund.amount, 48.05); // credit refund -> positive (comma in description parsed)
+
+  // Card-side bill payment kept: Credit column -> positive offset.
+  const payment = byDesc(transactions, 'ONLINE PYMT');
+  assert.equal(payment.amount, 2019.45);
+  assert.equal(payment.rawCategory, 'Payment/Credit');
 });
 
 test('unknown source throws a 400-tagged error', () => {

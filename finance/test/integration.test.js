@@ -55,7 +55,7 @@ test('API integration (pg-mem)', async (t) => {
     });
 
     await t.test('upload Amex + SoFi', async () => {
-      assert.equal((await uploadFixture('amex_gold.csv', 'amex_gold')).body.new_rows, 6);
+      assert.equal((await uploadFixture('amex_gold.csv', 'amex_gold')).body.new_rows, 7);
       assert.equal((await uploadFixture('sofi.csv', 'sofi')).body.new_rows, 5);
     });
 
@@ -68,11 +68,11 @@ test('API integration (pg-mem)', async (t) => {
 
     await t.test('GET /api/transactions with filters + pagination', async () => {
       const all = await getJson('/api/transactions?year=2026&limit=2000');
-      assert.equal(all.total, 18); // 7 + 6 + 5
-      assert.equal(all.transactions.length, 18);
+      assert.equal(all.total, 19); // 7 + 7 + 5
+      assert.equal(all.transactions.length, 19);
 
       const april = await getJson('/api/transactions?year=2026&months=4');
-      assert.equal(april.total, 17); // all but the January interest row
+      assert.equal(april.total, 18); // all but the January interest row
 
       const food = await getJson('/api/transactions?year=2026&group=Food');
       assert.ok(food.total > 0);
@@ -83,7 +83,7 @@ test('API integration (pg-mem)', async (t) => {
 
       const page = await getJson('/api/transactions?year=2026&limit=5&offset=0');
       assert.equal(page.transactions.length, 5);
-      assert.equal(page.total, 18);
+      assert.equal(page.total, 19);
     });
 
     await t.test('GET /api/summary aggregates and balances', async () => {
