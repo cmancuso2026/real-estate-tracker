@@ -15,6 +15,7 @@ function serialize(row) {
     category: row.category,
     category_group: row.category_group,
     is_manual: !!row.is_manual,
+    review_cleared: !!row.review_cleared,
   };
 }
 
@@ -94,6 +95,50 @@ router.put('/bulk-category', async (req, res, next) => {
     });
 
     res.json({ success: true, updated: rows.length, category, category_group: categoryGroup });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /api/transactions/bulk-review — mark many transactions reviewed/cleared
+// (or restore them). Body: { ids: number[], cleared: boolean }.
+// (Single-segment path, so it never collides with '/:id/review'.)
+router.put('/bulk-review', async (req, res, next) => {
+  try {
+    const knex = req.app.locals.db;
+    let { ids, cleared } = req.body || {};
+    if (!Array.isArray(ids) || ids.length === 0) {
+      const e = new Error('Body must include a non-empty "ids" array');
+      e.status = 400;
+      throw e;
+    }
+    ids = [...new Set(ids.map(Number).filter((n) => Number.isInteger(n)))];
+    const updated = await knex('transactions')
+      .whereIn('id', ids)
+      .update({ review_cleared: !!cleared });
+    res.json({ success: true, updated, cleared: !!cleared });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /api/transactions/:id/review — dismiss a transaction from the review list
+// ("this is fine") or restore it. Body: { cleared: boolean }.
+router.put('/:id/review', async (req, res, next) => {
+  try {
+    const knex = req.app.locals.db;
+    const id = Number(req.params.id);
+    const cleared = !!(req.body && req.body.cleared);
+
+    const existing = await knex('transactions').where({ id }).first();
+    if (!existing) {
+      const e = new Error(`Transaction ${id} not found`);
+      e.status = 404;
+      throw e;
+    }
+    await knex('transactions').where({ id }).update({ review_cleared: cleared });
+    const updated = await knex('transactions').where({ id }).first();
+    res.json(serialize(updated));
   } catch (err) {
     next(err);
   }
