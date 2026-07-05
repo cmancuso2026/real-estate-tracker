@@ -67,6 +67,13 @@ button.sec:hover{background:var(--surface2);}
 .cat-amt.exp{color:var(--red);}.cat-amt.inc{color:var(--green);}
 /* transactions */
 .txn-toolbar{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--border);flex-wrap:wrap;}
+.bulk-bar{display:flex;align-items:center;gap:10px;padding:10px 16px;background:var(--accent-light);border-bottom:1px solid var(--border);flex-wrap:wrap;}
+.bulk-count{font-size:13px;font-weight:700;color:var(--accent);}
+.btn-primary{background:var(--accent);color:#fff;border:1px solid var(--accent);padding:7px 14px;font-weight:600;}
+.btn-primary:hover{filter:brightness(1.08);}
+.btn-primary:disabled{opacity:.6;cursor:default;}
+.ck-col{width:34px;text-align:center;padding-left:12px;padding-right:0;}
+.ck-col input{width:15px;height:15px;cursor:pointer;accent-color:var(--accent);}
 .search-box{flex:1;min-width:160px;padding:7px 11px;border:1px solid var(--border2);border-radius:8px;font-family:'Inter',sans-serif;font-size:13px;outline:none;}
 .search-box:focus{border-color:var(--accent);}
 table.txns{width:100%;border-collapse:collapse;}
@@ -285,9 +292,17 @@ table.txns tr.inc-row td{background:rgba(47,158,68,.03);}
         </select>
         <span id="txnCount" style="font-size:12px;color:var(--text3);"></span>
       </div>
+      <div id="bulkBar" class="bulk-bar" style="display:none">
+        <span id="bulkCount" class="bulk-count">0 selected</span>
+        <span style="font-size:12px;color:var(--text3);">Set category to</span>
+        <select id="bulkCat"></select>
+        <button class="btn-primary" onclick="applyBulk()" id="bulkApply">Apply</button>
+        <button class="pill" onclick="clearBulk()">Clear</button>
+      </div>
       <div style="overflow-x:auto;max-height:60vh;overflow-y:auto;">
         <table class="txns">
           <thead><tr>
+            <th class="ck-col"><input type="checkbox" id="txnSelAll" onchange="toggleSelAll(this)" title="Select all"></th>
             <th>Date</th><th>Description</th><th>Source</th>
             <th>Group</th><th>Category</th><th>Amount</th>
           </tr></thead>
@@ -330,6 +345,12 @@ function rebuildTaxonomy(){
   CAT_TO_GROUP = {};
   Object.entries(GROUPS).forEach(([g,cats])=>cats.forEach(c=>{ CAT_TO_GROUP[c]=g; }));
   ALL_SUBCATS = Object.values(GROUPS).flat();
+  const bulkSel=document.getElementById('bulkCat');
+  if(bulkSel){
+    const cur=bulkSel.value;
+    bulkSel.innerHTML=ALL_SUBCATS.map(c=>`<option>${c}</option>`).join('');
+    if(cur && ALL_SUBCATS.includes(cur)) bulkSel.value=cur;
+  }
 }
 rebuildTaxonomy();
 const MONTH_NAMES = ['','January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -709,6 +730,7 @@ function renderTxns(){
       const grp=CAT_TO_GROUP[t.cat]||'Other';
       const ds=new Date(t.date+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'});
       return `<tr class="${isInc?'inc-row':''}">
+        <td class="ck-col"><input type="checkbox" class="txnck" data-i="${t.i}" onchange="updateBulkBar()"></td>
         <td class="tddate">${ds}</td>
         <td><div class="tddesc">${t.desc}${isU?'<span class="badge-uncat">needs category</span>':''}</div><div class="tddesc-sub">${t.src}</div></td>
         <td class="tddesc-sub">${t.src}</td>
@@ -719,6 +741,44 @@ function renderTxns(){
     }).join('');
   }
   renderSummaryBar(rows);
+  updateBulkBar(); // rows were re-rendered unchecked → resync the bulk bar
+}
+
+// ── Bulk category editing ───────────────────────────────────────────────────
+function toggleSelAll(el){
+  document.querySelectorAll('.txnck').forEach(c=>{ c.checked=el.checked; });
+  updateBulkBar();
+}
+function clearBulk(){
+  document.querySelectorAll('.txnck').forEach(c=>{ c.checked=false; });
+  const all=document.getElementById('txnSelAll'); if(all){ all.checked=false; all.indeterminate=false; }
+  updateBulkBar();
+}
+function updateBulkBar(){
+  const boxes=[...document.querySelectorAll('.txnck')];
+  const checked=boxes.filter(c=>c.checked);
+  const n=checked.length;
+  const bar=document.getElementById('bulkBar');
+  bar.style.display = n ? 'flex' : 'none';
+  document.getElementById('bulkCount').textContent = n+' selected';
+  document.getElementById('bulkApply').textContent = 'Apply to '+n;
+  const all=document.getElementById('txnSelAll');
+  if(all){ all.checked = n>0 && n===boxes.length; all.indeterminate = n>0 && n<boxes.length; }
+}
+async function applyBulk(){
+  const boxes=[...document.querySelectorAll('.txnck:checked')];
+  if(!boxes.length) return;
+  const newCat=document.getElementById('bulkCat').value;
+  const idxs=boxes.map(c=>+c.dataset.i);
+  const ids=idxs.map(i=>TXNS[i].id);
+  const btn=document.getElementById('bulkApply'); btn.disabled=true;
+  try{
+    await API.put('/api/transactions/bulk-category',{ids,category:newCat});
+    idxs.forEach(i=>{ TXNS[i].cat=newCat; catChanges[i]=newCat; });
+    renderTxns(); updateCategoryTab(); renderSummaryBar();
+  }catch(err){
+    console.error(err); alert('Failed to update categories: '+err.message);
+  }finally{ btn.disabled=false; }
 }
 
 function renderSummaryBar(rows){
