@@ -103,6 +103,53 @@ test('API integration (pg-mem)', async (t) => {
       assert.equal(c.cat_to_group.Groceries, 'Food');
     });
 
+    await t.test('POST /api/categories adds a custom category and it is assignable', async () => {
+      const post = await fetch(`${base}/api/categories`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Coffee', group: 'Food' }),
+      });
+      assert.equal(post.status, 201);
+      const tax = await post.json();
+      assert.ok(tax.groups.Food.includes('Coffee'));
+      assert.equal(tax.cat_to_group.Coffee, 'Food');
+
+      // The new category must now be assignable to a transaction.
+      const list = await getJson('/api/transactions?year=2026&search=publix');
+      const { id } = list.transactions[0];
+      const put = await fetch(`${base}/api/transactions/${id}/category`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ category: 'Coffee' }),
+      });
+      const updated = await put.json();
+      assert.equal(updated.category, 'Coffee');
+      assert.equal(updated.category_group, 'Food'); // group resolved from custom_categories
+    });
+
+    await t.test('POST /api/categories rejects bad input', async () => {
+      const badGroup = await fetch(`${base}/api/categories`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Nope', group: 'NotAGroup' }),
+      });
+      assert.equal(badGroup.status, 400);
+
+      const dup = await fetch(`${base}/api/categories`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Groceries', group: 'Food' }), // built-in dup
+      });
+      assert.equal(dup.status, 400);
+
+      const noName = await fetch(`${base}/api/categories`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: '  ', group: 'Food' }),
+      });
+      assert.equal(noName.status, 400);
+    });
+
     await t.test('PUT category override persists across re-upload', async () => {
       const list = await getJson('/api/transactions?year=2026&search=openai');
       assert.equal(list.total, 1);
