@@ -16,6 +16,7 @@ function serialize(row) {
     category_group: row.category_group,
     is_manual: !!row.is_manual,
     review_cleared: !!row.review_cleared,
+    note: row.note || '',
   };
 }
 
@@ -137,6 +138,29 @@ router.put('/:id/review', async (req, res, next) => {
       throw e;
     }
     await knex('transactions').where({ id }).update({ review_cleared: cleared });
+    const updated = await knex('transactions').where({ id }).first();
+    res.json(serialize(updated));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /api/transactions/:id/note — attach/update/clear a free-text note.
+// Body: { note: string }. An empty string clears it.
+router.put('/:id/note', async (req, res, next) => {
+  try {
+    const knex = req.app.locals.db;
+    const id = Number(req.params.id);
+    const note = req.body && typeof req.body.note === 'string' ? req.body.note.trim() : '';
+
+    const existing = await knex('transactions').where({ id }).first();
+    if (!existing) {
+      const e = new Error(`Transaction ${id} not found`);
+      e.status = 404;
+      throw e;
+    }
+
+    await knex('transactions').where({ id }).update({ note: note || null });
     const updated = await knex('transactions').where({ id }).first();
     res.json(serialize(updated));
   } catch (err) {

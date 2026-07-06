@@ -41,11 +41,11 @@ button.sec:hover{background:var(--surface2);}
 .nav-tab{padding:8px 20px;border-radius:7px;font-size:13px;font-weight:500;color:var(--text3);cursor:pointer;border:none;background:transparent;transition:all .15s;}
 .nav-tab:hover{color:var(--text);}
 .nav-tab.active{background:var(--surface);color:var(--accent);box-shadow:var(--shadow);}
-.hero-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px;}
-.hcard{background:var(--surface);border-radius:12px;padding:18px 20px;box-shadow:var(--shadow);border:1px solid var(--border);}
-.hcard .lbl{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--text3);margin-bottom:6px;}
-.hcard .val{font-size:24px;font-weight:700;line-height:1;margin-bottom:4px;}
-.hcard .sub{font-size:11px;color:var(--text3);}
+.hero-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-bottom:24px;}
+.hcard{background:var(--surface);border-radius:14px;padding:28px 30px;box-shadow:var(--shadow);border:1px solid var(--border);}
+.hcard .lbl{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--text3);margin-bottom:10px;}
+.hcard .val{font-size:36px;font-weight:700;line-height:1;margin-bottom:6px;}
+.hcard .sub{font-size:12px;color:var(--text3);}
 .col-green{color:var(--green);}.col-red{color:var(--red);}.col-text{color:var(--text);}
 .note-box{background:var(--orange-light);border:1px solid #ffa94d;border-radius:8px;padding:12px 16px;font-size:12px;color:#7c4a00;margin-bottom:18px;line-height:1.7;}
 
@@ -71,9 +71,17 @@ table.cattbl td:first-child{text-align:left;}
 table.cattbl tr.grp-row td{background:#f7f8fd;font-weight:700;color:var(--text);border-bottom:1px solid var(--border2);cursor:pointer;}
 table.cattbl tr.grp-row .grp-caret{display:inline-block;width:12px;color:var(--text3);font-size:9px;margin-right:6px;}
 table.cattbl tr.cat-tr td.cat-cell{padding-left:34px;color:var(--text2);}
+table.cattbl tr.prop-row td{background:#fbfcff;font-weight:600;color:var(--text);border-bottom:1px solid var(--border);cursor:pointer;}
+table.cattbl tr.prop-row td:first-child{padding-left:32px;}
+table.cattbl tr.prop-row:hover td{background:#f3f6ff;}
+table.cattbl tr.prop-row .grp-caret{display:inline-block;width:12px;color:var(--text3);font-size:9px;margin-right:6px;}
+table.cattbl tr.cat-tr td.cat-cell.nested{padding-left:58px;}
 table.cattbl tr.cat-tr:hover td{background:#fafbff;}
 table.cattbl tr.total-row td{background:var(--surface2);font-weight:700;color:var(--text);border-top:2px solid var(--border2);border-bottom:none;font-size:13px;}
 .amt-pos{color:var(--green);}.amt-neg{color:var(--red);}.amt-zero{color:var(--text3);}
+table.cattbl td.has-note{cursor:help;box-shadow:inset 0 -2px 0 rgba(59,91,219,.45);}
+.has-note{cursor:help;}
+.cell-tip{position:fixed;z-index:9999;background:#1a1b2e;color:#fff;padding:8px 11px;border-radius:8px;font-size:12px;line-height:1.55;max-width:340px;white-space:pre-line;box-shadow:0 4px 18px rgba(0,0,0,.28);pointer-events:none;}
 th.cmp-col,td.cmp-col{background:rgba(59,91,219,.04);}
 th.delta-col,td.delta-col{border-left:1px solid var(--border);}
 /* transactions */
@@ -112,6 +120,12 @@ table.txns tr.txn-row.expanded td{background:var(--accent-light);}
 .tdd-rel-row:first-child{border-top:none;}
 .tdd-rel-row.diff{background:var(--orange-light);}
 .tdd-rel-row span:nth-child(3){font-weight:600;color:var(--text);}
+.tdd-note{margin-top:12px;padding-top:12px;border-top:1px dashed var(--border2);}
+.tdd-note-row{display:flex;gap:8px;margin-top:6px;align-items:flex-start;}
+.tdd-note-input{flex:1;padding:8px 10px;border:1px solid var(--border2);border-radius:8px;font-family:'Inter',sans-serif;font-size:13px;resize:vertical;outline:none;background:#fff;color:var(--text);}
+.tdd-note-input:focus{border-color:var(--accent);}
+.tdd-note-save{align-self:stretch;white-space:nowrap;}
+.badge-note{display:inline-block;margin-left:8px;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700;background:var(--accent-light);color:var(--accent);border:1px solid #c5cdf7;white-space:nowrap;}
 .search-box{flex:1;min-width:160px;padding:7px 11px;border:1px solid var(--border2);border-radius:8px;font-family:'Inter',sans-serif;font-size:13px;outline:none;}
 .search-box:focus{border-color:var(--accent);}
 table.txns{width:100%;border-collapse:collapse;}
@@ -246,15 +260,6 @@ table.txns tr.inc-row td{background:rgba(47,158,68,.03);}
       <div class="hcard"><div class="lbl">Income</div><div class="val col-green" id="h-income">—</div><div class="sub" id="h-income-sub">—</div></div>
       <div class="hcard"><div class="lbl">Total Spending</div><div class="val col-red" id="h-spend">—</div><div class="sub" id="h-spend-sub">—</div></div>
       <div class="hcard"><div class="lbl">Cash Flow</div><div class="val" id="h-flow">—</div><div class="sub" id="h-flow-sub">Net for period</div></div>
-      <div class="hcard"><div class="lbl">Transactions</div><div class="val col-text" id="h-count">—</div><div class="sub">Across all accounts</div></div>
-    </div>
-    <div class="note-box" id="periodNote">—</div>
-    <div class="sources-grid">
-      <div class="src-card"><div class="src-lbl">Bank of America</div><div class="src-num" id="src-boa">—</div><div class="src-sub">transactions</div></div>
-      <div class="src-card"><div class="src-lbl">Amex Gold (Cole)</div><div class="src-num" id="src-ag">—</div><div class="src-sub">charges</div></div>
-      <div class="src-card"><div class="src-lbl">Amex Blue (Family)</div><div class="src-num" id="src-ab">—</div><div class="src-sub">charges</div></div>
-      <div class="src-card"><div class="src-lbl">SoFi Savings</div><div class="src-num" id="src-sf">—</div><div class="src-sub">transactions</div></div>
-      <div class="src-card"><div class="src-lbl">Capital One</div><div class="src-num" id="src-co">—</div><div class="src-sub">charges</div></div>
     </div>
     <div class="chart-card">
       <div class="chart-toolbar">
@@ -375,6 +380,8 @@ table.txns tr.inc-row td{background:rgba(47,158,68,.03);}
   </div>
 </div>
 
+<div id="cellTip" class="cell-tip" style="display:none"></div>
+
 <script>
 // ══════════════════════════════════════════════════════
 // CATEGORY TAXONOMY
@@ -413,6 +420,28 @@ function rebuildTaxonomy(){
   }
 }
 rebuildTaxonomy();
+
+// ══════════════════════════════════════════════════════
+// REAL-ESTATE PROPERTIES
+// Each property groups the unit-number categories that belong to it, so the
+// Categories tab and the Overview chart can show a per-property net (rent +
+// costs). A category's unit is the leading number in its name, e.g.
+// "1821 PITI" -> unit 1821, "1207 Rent" -> unit 1207.
+// ══════════════════════════════════════════════════════
+const PROPERTIES = {
+  '1821 Property': ['1821','1825'],
+  '1205 Property': ['1205','1207'],
+  '20 Property':   ['20','22'],
+};
+// cat -> property name (or null if the category isn't a unit-specific one).
+function propertyOfCat(cat){
+  const m = String(cat).match(/^(\d+)\b/);
+  if(!m) return null;
+  const unit = m[1];
+  for(const p in PROPERTIES){ if(PROPERTIES[p].includes(unit)) return p; }
+  return null;
+}
+
 const MONTH_NAMES = ['','January','February','March','April','May','June','July','August','September','October','November','December'];
 const MON_SHORT   = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -460,7 +489,7 @@ function setLoading(on){
 }
 // API transaction shape -> the {date,desc,src,amt,cat,id} shape the UI uses.
 function mapTxn(t){
-  return { id:t.id, date:t.date, desc:t.description, src:t.source, amt:Number(t.amount), cat:t.category, manual:!!t.is_manual, cleared:!!t.review_cleared };
+  return { id:t.id, date:t.date, desc:t.description, src:t.source, amt:Number(t.amount), cat:t.category, manual:!!t.is_manual, cleared:!!t.review_cleared, note:t.note||'' };
 }
 
 // ══════════════════════════════════════════════
@@ -562,6 +591,34 @@ document.addEventListener('click', (e)=>{
   }
 });
 
+// Custom hover tooltip for note cells/badges (any element with [data-note]).
+// A native title tooltip is slow to appear and unreliable; this shows instantly.
+function initCellTip(){
+  const tip=document.getElementById('cellTip');
+  if(!tip) return;
+  const hide=()=>{ tip.style.display='none'; };
+  document.addEventListener('mouseover', (e)=>{
+    const el=e.target.closest('[data-note]');
+    if(!el){ return; }
+    const n=el.getAttribute('data-note');
+    if(!n){ hide(); return; }
+    tip.textContent=n;
+    tip.style.display='block';
+  });
+  document.addEventListener('mousemove', (e)=>{
+    if(tip.style.display==='none') return;
+    if(!e.target.closest('[data-note]')){ hide(); return; }
+    const x=Math.min(e.clientX+14, window.innerWidth - tip.offsetWidth - 12);
+    const y=Math.min(e.clientY+16, window.innerHeight - tip.offsetHeight - 12);
+    tip.style.left=Math.max(8,x)+'px';
+    tip.style.top =Math.max(8,y)+'px';
+  });
+  document.addEventListener('mouseout', (e)=>{
+    if(e.target.closest('[data-note]')) hide();
+  });
+  window.addEventListener('scroll', hide, true);
+}
+
 function getFilteredTxns(grpOverride, catOverride) {
   return TXNS.filter(t => {
     if (!activeYears.has(t.date.slice(0,4))) return false;
@@ -578,7 +635,6 @@ function applyFilters() {
   updateHeroCards();
   updateCategoryTab();
   renderChart();
-  updatePeriodNote();
   if (document.getElementById('sec-transactions').style.display !== 'none') renderTxns();
 }
 
@@ -609,42 +665,7 @@ function updateHeroCards() {
   document.getElementById('h-spend-sub').textContent = rows.filter(t=>t.amt<0).length+' expense transactions';
   const fe=document.getElementById('h-flow');
   fe.textContent=fmt(flow); fe.className='val '+(flow>=0?'col-green':'col-red');
-  document.getElementById('h-count').textContent=rows.length;
-  document.getElementById('src-boa').textContent=rows.filter(t=>t.src==='Bank of America').length;
-  document.getElementById('src-ag').textContent =rows.filter(t=>t.src==='Amex Gold').length;
-  document.getElementById('src-ab').textContent =rows.filter(t=>t.src==='Amex Blue').length;
-  document.getElementById('src-sf').textContent =rows.filter(t=>t.src==='SoFi').length;
-  document.getElementById('src-co').textContent =rows.filter(t=>t.src==='Capital One').length;
 }
-
-// ══════════════════════════════════════════════
-// DYNAMIC NOTE
-// ══════════════════════════════════════════════
-function updatePeriodNote() {
-  const rows = getFilteredTxns();
-  const income = rows.filter(t=>t.amt>0).reduce((s,t)=>s+t.amt,0);
-  const spend  = rows.filter(t=>t.amt<0).reduce((s,t)=>s+Math.abs(t.amt),0);
-  const flow   = income-spend;
-
-  // find top spending category
-  const bycat={};
-  rows.filter(t=>t.amt<0).forEach(t=>{ bycat[t.cat]=(bycat[t.cat]||0)+Math.abs(t.amt); });
-  const topCat = Object.entries(bycat).sort((a,b)=>b[1]-a[1])[0];
-  const allYears = yearsInData();
-  const selYears = [...activeYears].sort();
-  const yearLabel = (selYears.length===allYears.length) ? 'All years'
-    : (selYears.length ? selYears.join(', ') : 'no years');
-  const selMonths = [...activeMonths].sort((a,b)=>parseInt(a)-parseInt(b));
-  const monthLabel = (selMonths.length===monthsInData().length) ? 'All months'
-    : (selMonths.map(m=>MON_SHORT[parseInt(m)]).join(', ') || 'no months');
-
-  let note = `📊 <strong>${monthLabel} · ${yearLabel} summary:</strong> `;
-  note += `Total income ${fmt(income)} · Total spending ${fmt(-spend)} · `;
-  note += `Cash flow <strong style="color:${flow>=0?'#2f9e44':'#e03131'}">${fmt(flow)}</strong>. `;
-  if (topCat) note += `Top expense category: <strong>${topCat[0]}</strong> at ${fmt(-topCat[1])}.`;
-  document.getElementById('periodNote').innerHTML = note;
-}
-
 
 // ══════════════════════════════════════════════
 // CATEGORIES TAB — tabular, multi-column, comparison
@@ -654,6 +675,7 @@ const GROUP_ICON = {
   'Other':'🎭','Travel':'🚗','W2 Income':'💰',
 };
 let catCollapsed = new Set();      // group names whose subcategories are hidden
+let propCollapsed = new Set(Object.keys(PROPERTIES)); // properties start collapsed (show net only)
 
 function ymOf(t){ return t.date.slice(0,7); }               // 'YYYY-MM'
 function ymLabel(ym){ const [y,m]=ym.split('-'); return MON_SHORT[parseInt(m)]+' '+y; }
@@ -675,11 +697,26 @@ function buildCompareOptions(){
   if(cur && [...sel.options].some(o=>o.value===cur)) sel.value=cur;
 }
 
+// The (up to) three largest-absolute-value noted transactions in a set — used
+// to surface notes on hover without overwhelming a cell/tooltip.
+function topNotes(rows){
+  return rows.filter(t=>t.note && t.note.trim())
+    .sort((a,b)=>Math.abs(b.amt)-Math.abs(a.amt))
+    .slice(0,3);
+}
+function noteTitle(list){
+  return list.map(t=>`${fmt(t.amt)} · ${t.note}`).join('\n');
+}
+
 // Signed-amount cell. `delta` colors by sign; otherwise green=income, red=expense.
-function catAmtCell(v, cls){
+// `note` (optional) turns the cell into a hover target that shows its notes in
+// the custom tooltip (see initCellTip).
+function catAmtCell(v, cls, note){
   cls = cls || '';
-  if(Math.abs(v)<0.01) return `<td class="amt-zero ${cls}">—</td>`;
-  return `<td class="${v>0?'amt-pos':'amt-neg'} ${cls}">${fmt(v)}</td>`;
+  const noteAttr = note ? ` data-note="${esc(note)}"` : '';
+  const noteCls  = note ? ' has-note' : '';
+  if(Math.abs(v)<0.01) return `<td class="amt-zero ${cls}${noteCls}"${noteAttr}>—</td>`;
+  return `<td class="${v>0?'amt-pos':'amt-neg'} ${cls}${noteCls}"${noteAttr}>${fmt(v)}</td>`;
 }
 
 function updateCategoryTab() {
@@ -697,20 +734,31 @@ function updateCategoryTab() {
 
   if(view==='monthly'){
     const yms=[...new Set(rows.map(ymOf))].sort();
-    yms.forEach(ym=> cols.push({label:ymLabel(ym), bycat:mkBycat(rows.filter(t=>ymOf(t)===ym))}));
-    if(yms.length!==1) cols.push({label:'Total', bycat:curBycat, cls:'total-col'});
+    yms.forEach(ym=>{ const r=rows.filter(t=>ymOf(t)===ym); cols.push({label:ymLabel(ym), bycat:mkBycat(r), rows:r}); });
+    if(yms.length!==1) cols.push({label:'Total', bycat:curBycat, rows, cls:'total-col'});
   } else {
-    cols.push({label:'Total', bycat:curBycat});
+    cols.push({label:'Total', bycat:curBycat, rows});
   }
 
   let cmpBycat=null;
   if(compare){
-    cmpBycat=mkBycat(TXNS.filter(t=>matchesCompare(t,compare)));
-    cols.push({label:cmpLabel(compare), bycat:cmpBycat, cls:'cmp-col'});
+    const cmpRows=TXNS.filter(t=>matchesCompare(t,compare));
+    cmpBycat=mkBycat(cmpRows);
+    cols.push({label:cmpLabel(compare), bycat:cmpBycat, rows:cmpRows, cls:'cmp-col'});
     cols.push({label:'Δ vs '+cmpLabel(compare), delta:true, cls:'delta-col'});
   }
 
   const colVal=(col,cat)=> col.delta ? (curBycat[cat]||0)-(cmpBycat[cat]||0) : (col.bycat[cat]||0);
+
+  // Precompute noted transactions per column, indexed by category, so note
+  // tooltips cost O(noted) rather than O(rows) per cell.
+  cols.forEach(c=>{
+    if(!c.rows) return;
+    c.notedByCat={};
+    c.rows.forEach(t=>{ if(t.note && t.note.trim()){ (c.notedByCat[t.cat]=c.notedByCat[t.cat]||[]).push(t); } });
+  });
+  const cellNote=(c,cat)=> c.notedByCat ? noteTitle(topNotes(c.notedByCat[cat]||[])) : '';
+  const grpNote =(c,cats)=> c.notedByCat ? noteTitle(topNotes(cats.flatMap(cat=>c.notedByCat[cat]||[]))) : '';
 
   // Header
   head.innerHTML='<tr><th>Category</th>'+
@@ -732,13 +780,34 @@ function updateCategoryTab() {
 
     bodyHtml+=`<tr class="grp-row" onclick="toggleCatGroup('${esc(grp)}')">`+
       `<td><span class="grp-caret">${collapsed?'▸':'▾'}</span>${GROUP_ICON[grp]||''} ${esc(grp)}</td>`+
-      grpTotals.map((v,i)=>catAmtCell(v, cols[i].cls)).join('')+`</tr>`;
+      grpTotals.map((v,i)=>catAmtCell(v, cols[i].cls, grpNote(cols[i], cats))).join('')+`</tr>`;
 
     if(!collapsed){
+      // Partition this group's live categories into property groupings (shown
+      // as an expandable net row) and standalone categories (shown directly).
+      const propOrder=[]; const propCats={}; const standalone=[];
       liveCats.forEach(cat=>{
-        bodyHtml+=`<tr class="cat-tr"><td class="cat-cell">${esc(cat)}</td>`+
-          cols.map(c=>catAmtCell(colVal(c,cat), c.cls)).join('')+`</tr>`;
+        const p=propertyOfCat(cat);
+        if(p){ if(!propCats[p]){ propCats[p]=[]; propOrder.push(p); } propCats[p].push(cat); }
+        else standalone.push(cat);
       });
+      // Keep properties in their declared order, then standalone cats.
+      propOrder.sort((a,b)=>Object.keys(PROPERTIES).indexOf(a)-Object.keys(PROPERTIES).indexOf(b));
+
+      const catRow=(cat, nested)=>
+        `<tr class="cat-tr"><td class="cat-cell${nested?' nested':''}">${esc(cat)}</td>`+
+        cols.map(c=>catAmtCell(colVal(c,cat), c.cls, cellNote(c,cat))).join('')+`</tr>`;
+
+      propOrder.forEach(prop=>{
+        const pcats=propCats[prop];
+        const pCollapsed=propCollapsed.has(prop);
+        const pTotals=cols.map(c=> pcats.reduce((s,cat)=> s+colVal(c,cat),0));
+        bodyHtml+=`<tr class="prop-row" onclick="toggleProp('${esc(prop)}')">`+
+          `<td><span class="grp-caret">${pCollapsed?'▸':'▾'}</span>🏠 ${esc(prop)}</td>`+
+          pTotals.map((v,i)=>catAmtCell(v, cols[i].cls, grpNote(cols[i], pcats))).join('')+`</tr>`;
+        if(!pCollapsed) pcats.forEach(cat=>{ bodyHtml+=catRow(cat, true); });
+      });
+      standalone.forEach(cat=>{ bodyHtml+=catRow(cat, false); });
     }
   });
 
@@ -765,6 +834,10 @@ function toggleCatGroup(grp){
   if(catCollapsed.has(grp)) catCollapsed.delete(grp); else catCollapsed.add(grp);
   updateCategoryTab();
 }
+function toggleProp(prop){
+  if(propCollapsed.has(prop)) propCollapsed.delete(prop); else propCollapsed.add(prop);
+  updateCategoryTab();
+}
 
 // ══════════════════════════════════════════════
 // CHART — grouped category filters
@@ -773,17 +846,18 @@ function onChartGroupChange() {
   const grp = document.getElementById('chartGroup').value;
   const catSel = document.getElementById('chartCat');
   catSel.innerHTML = '<option value="">All</option>';
-  if (grp && GROUPS[grp]) {
-    GROUPS[grp].forEach(c => {
-      const opt=document.createElement('option'); opt.value=c; opt.textContent=c;
-      catSel.appendChild(opt);
-    });
-  } else {
-    ALL_SUBCATS.forEach(c => {
-      const opt=document.createElement('option'); opt.value=c; opt.textContent=c;
+  // Property net groupings — only relevant for Investments (or "All" groups).
+  if (!grp || grp === 'Investments') {
+    Object.keys(PROPERTIES).forEach(p => {
+      const opt=document.createElement('option'); opt.value='prop:'+p; opt.textContent='🏠 '+p+' (net)';
       catSel.appendChild(opt);
     });
   }
+  const cats = grp && GROUPS[grp] ? GROUPS[grp] : ALL_SUBCATS;
+  cats.forEach(c => {
+    const opt=document.createElement('option'); opt.value=c; opt.textContent=c;
+    catSel.appendChild(opt);
+  });
   renderChart();
 }
 
@@ -792,8 +866,11 @@ function renderChart() {
   const cat = document.getElementById('chartCat').value;
   const gran = document.getElementById('chartGran').value;
 
-  // filter: period + optionally group + optionally cat
-  const rows = getFilteredTxns(grp||null, cat||null);
+  // filter: period + optionally group + optionally cat (or a property grouping).
+  const isProp = cat.startsWith('prop:');
+  const rows = isProp
+    ? getFilteredTxns(grp||null).filter(t=>propertyOfCat(t.cat)===cat.slice(5))
+    : getFilteredTxns(grp||null, cat||null);
 
   const incB={}, expB={};
   rows.forEach(t=>{
@@ -808,22 +885,39 @@ function renderChart() {
   const labels=keys.map(k=>fmtBucket(k,gran));
   const incData=keys.map(k=>+(incB[k]||0).toFixed(2));
   const expData=keys.map(k=>+(expB[k]||0).toFixed(2));
+  // For a property grouping, also plot the net (rent − costs) per bucket.
+  const netData=keys.map(k=>+((incB[k]||0)-(expB[k]||0)).toFixed(2));
+
+  // Notes to surface on hover: the top-3 largest-abs noted txns per bucket.
+  const notesByKey={};
+  rows.forEach(t=>{ if(t.note && t.note.trim()){ const k=getBucketKey(t.date,gran); (notesByKey[k]=notesByKey[k]||[]).push(t); } });
+  Object.keys(notesByKey).forEach(k=>{ notesByKey[k]=topNotes(notesByKey[k]); });
 
   const ctx=document.getElementById('spendChart').getContext('2d');
   if(chart) chart.destroy();
   chart=new Chart(ctx,{
     type:'line',
     data:{labels,datasets:[
-      {label:'Income',data:incData,borderColor:'#2f9e44',backgroundColor:'rgba(47,158,68,.08)',borderWidth:2.5,pointBackgroundColor:'#2f9e44',pointRadius:4,pointHoverRadius:6,tension:.3,fill:true},
-      {label:'Spending',data:expData,borderColor:'#e03131',backgroundColor:'rgba(224,49,49,.08)',borderWidth:2.5,pointBackgroundColor:'#e03131',pointRadius:4,pointHoverRadius:6,tension:.3,fill:true},
-    ]},
+      {label:isProp?'Rent':'Income',data:incData,borderColor:'#2f9e44',backgroundColor:'rgba(47,158,68,.08)',borderWidth:2.5,pointBackgroundColor:'#2f9e44',pointRadius:4,pointHoverRadius:6,tension:.3,fill:true},
+      {label:isProp?'Costs':'Spending',data:expData,borderColor:'#e03131',backgroundColor:'rgba(224,49,49,.08)',borderWidth:2.5,pointBackgroundColor:'#e03131',pointRadius:4,pointHoverRadius:6,tension:.3,fill:true},
+    ].concat(isProp?[
+      {label:'Net',data:netData,borderColor:'#3b5bdb',backgroundColor:'rgba(59,91,219,.05)',borderWidth:2.5,borderDash:[6,4],pointBackgroundColor:'#3b5bdb',pointRadius:3,pointHoverRadius:6,tension:.3,fill:false},
+    ]:[])},
     options:{
       responsive:true,maintainAspectRatio:false,
       interaction:{mode:'index',intersect:false},
       plugins:{
         legend:{position:'top',labels:{font:{size:12,family:'Inter'},boxWidth:12,padding:16}},
         tooltip:{backgroundColor:'#fff',titleColor:'#1a1b2e',bodyColor:'#495057',borderColor:'#e2e5ef',borderWidth:1,padding:12,
-          callbacks:{label:ctx=>` ${ctx.dataset.label}: $${ctx.parsed.y.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}`}}
+          callbacks:{
+            label:ctx=>` ${ctx.dataset.label}: $${ctx.parsed.y.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}`,
+            afterBody:(items)=>{
+              if(!items.length) return '';
+              const notes=notesByKey[keys[items[0].dataIndex]]||[];
+              if(!notes.length) return '';
+              return ['','📝 Notes:'].concat(notes.map(t=>` ${fmt(t.amt)} · ${t.note}`));
+            }
+          }}
       },
       scales:{
         x:{grid:{color:'#f0f2f8'},ticks:{font:{size:11,family:'Inter'},color:'#868e96'}},
@@ -866,9 +960,17 @@ function onTxnGroupChange() {
 function catSelectHTML(i,cur){
   const isU=cur==='Uncategorized';
   const cls='cat-inline'+(isU?' uncat':catChanges[i]?' changed':'');
-  let html=`<select class="${cls}" onchange="changeCat(${i},this)">`;
-  for(const c of ALL_SUBCATS) html+=`<option${c===cur?' selected':''}>${c}</option>`;
-  return html+'</select>';
+  // Lazily populate the (~60-item) option list on first focus/open. Rendering
+  // every option for thousands of rows up front made the table slow to build.
+  return `<select class="${cls}" data-full="0" onmousedown="fillCatOptions(this)" onfocus="fillCatOptions(this)" onchange="changeCat(${i},this)"><option selected>${esc(cur)}</option></select>`;
+}
+// Fill a lazy category <select> with the full taxonomy the first time it's used.
+function fillCatOptions(el){
+  if(el.dataset.full==='1') return;
+  const cur=el.value;
+  el.innerHTML=ALL_SUBCATS.map(c=>`<option${c===cur?' selected':''}>${esc(c)}</option>`).join('');
+  el.value=cur;
+  el.dataset.full='1';
 }
 async function changeCat(i,el){
   const t = TXNS[i];
@@ -1056,6 +1158,13 @@ function txnDetailHTML(t){
     <div><div class="tdd-k">Source</div><div class="tdd-v">${esc(t.src)}</div></div>
     <div><div class="tdd-k">Category</div><div class="tdd-v">${esc(t.cat)} <span class="tdd-sub">· ${esc(grp)}</span></div></div>
     <div><div class="tdd-k">Categorized</div><div class="tdd-v">${t.manual?'Manually (edited)':'Auto'}</div></div>
+  </div>
+  <div class="tdd-note">
+    <div class="tdd-k">📝 Note <span class="tdd-sub">— shown on hover in the overview chart &amp; categories table</span></div>
+    <div class="tdd-note-row">
+      <textarea class="tdd-note-input" id="note-${t.id}" rows="2" placeholder="Add a note (e.g. taxes to Wiley)…" onclick="event.stopPropagation()">${esc(t.note||'')}</textarea>
+      <button class="btn-primary tdd-note-save" onclick="event.stopPropagation();saveNote(${t.id})">Save</button>
+    </div>
   </div>`;
   if(reasons.length){
     html += `<div class="tdd-flags"><div class="tdd-clear-hdr"><div class="tdd-k">⚠ Possible issues</div>`+
@@ -1082,6 +1191,25 @@ function txnDetailHTML(t){
       `<button class="pill" onclick="event.stopPropagation();clearReview(${t.id},false)">Restore to review</button></div></div>`;
   }
   return html + `</div>`;
+}
+
+// Save (or clear) a transaction's note, persist, and re-render so the note
+// shows up on hover in the overview chart and categories table.
+async function saveNote(id){
+  const box=document.getElementById('note-'+id);
+  if(!box) return;
+  const note=box.value.trim();
+  const btn=box.parentElement.querySelector('.tdd-note-save');
+  if(btn){ btn.disabled=true; btn.textContent='Saving…'; }
+  try{
+    const updated=await API.put(`/api/transactions/${id}/note`,{ note });
+    const t=TXNS.find(x=>x.id===id);
+    if(t) t.note=updated.note||'';
+    renderTxns(); updateCategoryTab();
+  }catch(err){
+    console.error(err); alert('Failed to save note: '+err.message);
+    if(btn){ btn.disabled=false; btn.textContent='Save'; }
+  }
 }
 
 // Mark a transaction "reviewed / fine" (or restore it), persist, and re-render.
@@ -1135,7 +1263,7 @@ function renderTxns(){
       let html=`<tr class="txn-row${isInc?' inc-row':''}${flagged?' flagged':''}${open?' expanded':''}" onclick="onRowClick(event,${t.id})">
         <td class="ck-col"><input type="checkbox" class="txnck" data-i="${t.i}" onchange="updateBulkBar()"></td>
         <td class="tddate"><span class="exp-caret">${open?'▾':'▸'}</span>${ds}</td>
-        <td><div class="tddesc">${t.desc}${isU?'<span class="badge-uncat">needs category</span>':''}${flagged?'<span class="badge-review">⚠ review</span>':''}</div><div class="tddesc-sub">${t.src}</div></td>
+        <td><div class="tddesc">${t.desc}${isU?'<span class="badge-uncat">needs category</span>':''}${flagged?'<span class="badge-review">⚠ review</span>':''}${t.note?`<span class="badge-note has-note" data-note="${esc(t.note)}">📝 note</span>`:''}</div><div class="tddesc-sub">${t.src}</div></td>
         <td class="tddesc-sub">${t.src}</td>
         <td><span class="grp-badge">${grp}</span></td>
         <td>${catSelectHTML(t.i,t.cat)}</td>
@@ -1286,6 +1414,7 @@ async function init(){
   } finally {
     setLoading(false);
   }
+  initCellTip();        // wire up the custom note tooltip
   onChartGroupChange(); // populate chart cat dropdown (needs taxonomy)
   onTxnGroupChange();   // populate txn cat dropdown
   await loadAllData();  // load all transactions + build year/month pills + render
