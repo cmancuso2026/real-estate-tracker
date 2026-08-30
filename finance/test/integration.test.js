@@ -226,6 +226,46 @@ test('API integration (pg-mem)', async (t) => {
       assert.equal(r.status, 400);
     });
 
+    await t.test('POST /recategorize learns from history for uncategorized rows', async () => {
+      // Seed 3 confidently-categorized "SPROUTS" rows + 1 uncategorized SPROUTS.
+      const seed = (n, category, category_group, isManual = false) => ({
+        date: '2026-05-01',
+        description: `SPROUTS MARKET #${n}`,
+        amount: -20,
+        source: 'Amex Gold',
+        category,
+        category_group,
+        is_manual: isManual,
+        dedup_hash: `recat-test-${n}`,
+      });
+      await knex('transactions').insert([
+        seed(1, 'Groceries', 'Food'),
+        seed(2, 'Groceries', 'Food'),
+        seed(3, 'Groceries', 'Food', true), // manual, extra weight
+        seed(4, 'Uncategorized', 'Other'), // the target to re-run
+      ]);
+
+      const r = await fetch(`${base}/api/transactions/recategorize`, { method: 'POST' });
+      const body = await r.json();
+      assert.equal(r.status, 200);
+      assert.ok(body.updated >= 1);
+
+      const target = await knex('transactions').where({ dedup_hash: 'recat-test-4' }).first();
+      assert.equal(target.category, 'Groceries');
+      assert.equal(target.category_group, 'Food');
+      assert.equal(!!target.is_manual, false); // auto, not manual
+      assert.equal(Number(target.confidence_score), 1); // unanimous vote
+
+      // A manual override must never be clobbered by re-run.
+      await knex('transactions').insert(seed(5, 'Shopping', 'Living', true));
+      await knex('transactions')
+        .where({ dedup_hash: 'recat-test-5' })
+        .update({ category: 'Shopping', category_group: 'Living', is_manual: true });
+      await fetch(`${base}/api/transactions/recategorize`, { method: 'POST' });
+      const kept = await knex('transactions').where({ dedup_hash: 'recat-test-5' }).first();
+      assert.equal(kept.category, 'Shopping');
+    });
+
     await t.test('upload with no file returns 400', async () => {
       const fd = new FormData();
       fd.append('source', 'sofi');

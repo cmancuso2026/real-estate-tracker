@@ -125,6 +125,9 @@ function rulesetFor(source) {
 }
 
 /**
+ * Rule-based categorizer — the ORIGINAL hardcoded merchant matcher, now used
+ * only as a fallback for transactions with no history to learn from.
+ *
  * @param {string} description  merchant string
  * @param {string} rawCategory  bank-provided category (BoA) or Type (SoFi)
  * @param {string} source       source label or upload key
@@ -151,4 +154,141 @@ function categorize(description, rawCategory, source) {
   return { category, group: groupFor(category) };
 }
 
-module.exports = { categorize };
+// ── Confidence-based (history) categorization ───────────────────────────────
+// Instead of hardcoded merchant rules, learn from how similar transactions were
+// already categorized. Rules above remain the fallback for merchants with no
+// history to draw from.
+
+// A description is a "comparable" match when its token set overlaps a historical
+// one by at least this Jaccard score.
+const SIMILARITY_THRESHOLD = 0.5;
+// Need at least this many comparable historical rows before we trust a vote.
+const MIN_COMPARABLE = 3;
+// The winning category must hold more than this share of the weighted vote.
+const CONFIDENCE_THRESHOLD = 0.9;
+// Manual (user-corrected) categorizations count double in the vote.
+const MANUAL_WEIGHT = 2;
+
+// Normalize a merchant string into comparable word tokens: uppercase, strip
+// special characters and digits (store #s, phone numbers, etc. are noise), then
+// keep tokens of length >= 2.
+function normalizeTokens(str) {
+  return (str || '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9\s]/g, ' ')
+    .replace(/\d+/g, ' ')
+    .split(/\s+/)
+    .filter((t) => t.length >= 2);
+}
+
+// Jaccard similarity between two token Sets: |A∩B| / |A∪B|.
+function jaccard(a, b) {
+  if (!a.size || !b.size) return 0;
+  let inter = 0;
+  for (const t of a) if (b.has(t)) inter += 1;
+  const union = a.size + b.size - inter;
+  return union ? inter / union : 0;
+}
+
+/**
+ * Precompute a searchable index from existing transactions. Rows without a real
+ * category (Uncategorized) carry no signal and are dropped from the vote.
+ *
+ * @param {Array<{description: string, category: string, category_group: string, is_manual: any}>} rows
+ * @returns {Array<{tokens: Set<string>, category: string, group: string, weight: number}>}
+ */
+function buildHistoryIndex(rows) {
+  const index = [];
+  for (const r of rows || []) {
+    if (!r.category || r.category === 'Uncategorized') continue;
+    const tokens = new Set(normalizeTokens(r.description));
+    if (!tokens.size) continue;
+    index.push({
+      tokens,
+      category: r.category,
+      group: r.category_group || groupFor(r.category),
+      weight: r.is_manual ? MANUAL_WEIGHT : 1,
+    });
+  }
+  return index;
+}
+
+/**
+ * Score a description against the history index: find comparable rows and tally
+ * a weighted vote over their categories.
+ *
+ * @returns {{comparable: number, category: string|null, group: string|null, confidence: number}}
+ *   comparable = number of matching historical rows (unweighted);
+ *   category/group = the plurality winner; confidence = winner's weighted share.
+ */
+function scoreFromHistory(description, index) {
+  const tokens = new Set(normalizeTokens(description));
+  if (!tokens.size) return { comparable: 0, category: null, group: null, confidence: 0 };
+
+  const votes = new Map(); // category -> { weight, group }
+  let comparable = 0;
+  let totalWeight = 0;
+  for (const h of index || []) {
+    if (jaccard(tokens, h.tokens) < SIMILARITY_THRESHOLD) continue;
+    comparable += 1;
+    totalWeight += h.weight;
+    const cur = votes.get(h.category) || { weight: 0, group: h.group };
+    cur.weight += h.weight;
+    votes.set(h.category, cur);
+  }
+  if (!comparable) return { comparable: 0, category: null, group: null, confidence: 0 };
+
+  let best = null;
+  for (const [category, v] of votes) {
+    if (!best || v.weight > best.weight) best = { category, weight: v.weight, group: v.group };
+  }
+  return {
+    comparable,
+    category: best.category,
+    group: best.group,
+    confidence: totalWeight ? best.weight / totalWeight : 0,
+  };
+}
+
+/**
+ * Confidence-based categorization with rule fallback.
+ *
+ *  - Zero comparable history  -> hardcoded rules (confidence null).
+ *  - >= MIN_COMPARABLE matches AND a category with > CONFIDENCE_THRESHOLD of the
+ *    weighted vote -> that category (confidence = its share).
+ *  - Otherwise (too few matches, or no clear winner) -> Uncategorized. When
+ *    there WERE matches we still report the runner-up confidence so the UI can
+ *    show why it wasn't sure.
+ *
+ * Auto-categorization never sets is_manual; the caller keeps that false.
+ *
+ * @param {string} description
+ * @param {string} rawCategory  bank category/type (only used by the rule fallback)
+ * @param {string} source       source label/key (only used by the rule fallback)
+ * @param {Array} index         from buildHistoryIndex()
+ * @returns {{category: string, group: string, confidence: number|null}}
+ */
+function categorizeWithHistory(description, rawCategory, source, index) {
+  const { comparable, category, group, confidence } = scoreFromHistory(description, index);
+
+  if (comparable === 0) {
+    const r = categorize(description, rawCategory, source); // rule fallback
+    return { category: r.category, group: r.group, confidence: null };
+  }
+  if (comparable < MIN_COMPARABLE || confidence <= CONFIDENCE_THRESHOLD) {
+    return { category: 'Uncategorized', group: groupFor('Uncategorized'), confidence };
+  }
+  return { category, group, confidence };
+}
+
+module.exports = {
+  categorize,
+  buildHistoryIndex,
+  scoreFromHistory,
+  categorizeWithHistory,
+  normalizeTokens,
+  jaccard,
+  SIMILARITY_THRESHOLD,
+  MIN_COMPARABLE,
+  CONFIDENCE_THRESHOLD,
+};
