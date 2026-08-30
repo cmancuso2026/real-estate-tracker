@@ -2,6 +2,7 @@ const express = require('express');
 
 const { applyFilters, isoDate } = require('./_query');
 const { resolveGroup } = require('../lib/categoryStore');
+const { buildHistoryIndex, categorizeWithHistory } = require('../lib/categorize');
 
 const router = express.Router();
 
@@ -17,6 +18,7 @@ function serialize(row) {
     is_manual: !!row.is_manual,
     review_cleared: !!row.review_cleared,
     note: row.note || '',
+    confidence_score: row.confidence_score == null ? null : Number(row.confidence_score),
   };
 }
 
@@ -77,7 +79,7 @@ router.put('/bulk-category', async (req, res, next) => {
       if (rows.length) {
         await trx('transactions')
           .whereIn('id', rows.map((r) => r.id))
-          .update({ category, category_group: categoryGroup, is_manual: true });
+          .update({ category, category_group: categoryGroup, is_manual: true, confidence_score: null });
       }
       // Upsert an override per distinct dedup_hash so edits survive re-uploads.
       for (const r of rows) {
@@ -118,6 +120,55 @@ router.put('/bulk-review', async (req, res, next) => {
       .whereIn('id', ids)
       .update({ review_cleared: !!cleared });
     res.json({ success: true, updated, cleared: !!cleared });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/transactions/recategorize — re-run confidence-based categorization
+// over currently-Uncategorized, non-manual rows, learning from the rest of the
+// history. Only rows that gain a confident category are re-categorized; user
+// overrides (is_manual) are never touched. The bank's raw category/Type column
+// isn't stored per-row, so the rule fallback runs description-only here.
+router.post('/recategorize', async (req, res, next) => {
+  try {
+    const knex = req.app.locals.db;
+
+    const historyRows = await knex('transactions')
+      .whereNot('category', 'Uncategorized')
+      .select('description', 'category', 'category_group', 'is_manual');
+    const index = buildHistoryIndex(historyRows);
+
+    const targets = await knex('transactions')
+      .where('category', 'Uncategorized')
+      .andWhere('is_manual', false)
+      .select('id', 'description', 'source');
+
+    let updated = 0;
+    await knex.transaction(async (trx) => {
+      for (const t of targets) {
+        const { category, group, confidence } = categorizeWithHistory(
+          t.description,
+          '', // bank raw category not persisted per-row
+          t.source,
+          index,
+        );
+        if (category !== 'Uncategorized') {
+          await trx('transactions').where({ id: t.id }).update({
+            category,
+            category_group: group,
+            is_manual: false,
+            confidence_score: confidence,
+          });
+          updated += 1;
+        } else if (confidence != null) {
+          // Still uncategorized, but record how close the vote was.
+          await trx('transactions').where({ id: t.id }).update({ confidence_score: confidence });
+        }
+      }
+    });
+
+    res.json({ success: true, scanned: targets.length, updated });
   } catch (err) {
     next(err);
   }
@@ -195,6 +246,7 @@ router.put('/:id/category', async (req, res, next) => {
       category,
       category_group: categoryGroup,
       is_manual: true,
+      confidence_score: null,
     });
 
     // Upsert the override keyed by dedup_hash.

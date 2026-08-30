@@ -2,7 +2,7 @@ const express = require('express');
 const multer = require('multer');
 
 const { parseFile } = require('../parsers');
-const { categorize } = require('../lib/categorize');
+const { buildHistoryIndex, categorizeWithHistory } = require('../lib/categorize');
 const { dedupHash } = require('../lib/dedup');
 
 const router = express.Router();
@@ -25,9 +25,22 @@ router.post('/', upload.single('file'), async (req, res, next) => {
     const { source, transactions } = parseFile(req.file.buffer, req.file.originalname, sourceKey);
     const totalRows = transactions.length;
 
+    // Learn from already-categorized history so similar merchants inherit their
+    // category by weighted vote (see lib/categorize.js). Snapshot it once for
+    // the whole batch — new rows don't vote on each other.
+    const historyRows = await knex('transactions')
+      .whereNot('category', 'Uncategorized')
+      .select('description', 'category', 'category_group', 'is_manual');
+    const index = buildHistoryIndex(historyRows);
+
     // Categorize + hash every parsed row.
     const enriched = transactions.map((t) => {
-      const { category, group } = categorize(t.description, t.rawCategory, source);
+      const { category, group, confidence } = categorizeWithHistory(
+        t.description,
+        t.rawCategory,
+        source,
+        index,
+      );
       return {
         date: t.date,
         description: t.description,
@@ -35,6 +48,7 @@ router.post('/', upload.single('file'), async (req, res, next) => {
         source,
         category,
         category_group: group,
+        confidence_score: confidence,
         raw_description: t.rawDescription,
         dedup_hash: dedupHash(t.date, t.rawDescription, t.amount, source),
       };
@@ -69,6 +83,7 @@ router.post('/', upload.single('file'), async (req, res, next) => {
         row.category = o.category;
         row.category_group = o.category_group;
         row.is_manual = true;
+        row.confidence_score = null; // user-set, not auto-scored
       }
     }
 
