@@ -194,6 +194,7 @@ function stripAchAddenda(str) {
 function normalizeTokens(str) {
   return stripAchAddenda(str)
     .toUpperCase()
+    .replace(/['’]/g, '') // merge possessives: MCDONALD'S -> MCDONALDS (not MCDONALD + S)
     .replace(/[^A-Z0-9\s]/g, ' ')
     .replace(/\d+/g, ' ')
     .split(/\s+/)
@@ -286,23 +287,32 @@ function scoreFromHistory(description, index) {
     return union ? inter / union : 0;
   };
 
-  // The query's "distinctive" tokens: those weighing above its own average. A
-  // match must share at least one of these, so a row made of only generic tokens
-  // (e.g. an address-only "APLPAY 8200 N MIAMI MIAMI FL") can't vote on an
-  // unrelated merchant just by sharing location/payment words. When every token
-  // weighs the same (e.g. a one-word query) there are none, and similarity alone
-  // decides.
-  const qTokens = [...tokens];
-  const mean = qTokens.reduce((s, t) => s + weightOf(t), 0) / qTokens.length;
-  const distinctive = qTokens.filter((t) => weightOf(t) > mean);
-  const sharesDistinctive = (b) => !distinctive.length || distinctive.some((t) => b.has(t));
+  // Pick the query's DISCRIMINATOR: its rarest RECURRING token (highest IDF among
+  // tokens seen in >=2 history rows). That's almost always the merchant name —
+  // "PUBLIX", "MCDONALDS", "STARBUCKS" — rather than a shared location ("MIAMI",
+  // "NORTH", "FL") or payment prefix ("APLPAY"). A history row votes only if it
+  // contains this token, so matching keys off the merchant, not the neighborhood.
+  // The df>=2 floor skips one-off store codes that survive normalization. If the
+  // query has no recurring token (a brand-new merchant), fall back to the
+  // IDF-weighted Jaccard so first-timers can still match look-alikes.
+  let discriminator = null;
+  let discWeight = -1;
+  if (df) {
+    for (const t of tokens) {
+      if ((df.get(t) || 0) >= 2 && weightOf(t) > discWeight) {
+        discWeight = weightOf(t);
+        discriminator = t;
+      }
+    }
+  }
+  const isComparable = (h) =>
+    discriminator ? h.tokens.has(discriminator) : similarity(tokens, h.tokens) >= SIMILARITY_THRESHOLD;
 
   const votes = new Map(); // category -> { weight, group }
   let comparable = 0;
   let totalWeight = 0;
   for (const h of entries) {
-    if (similarity(tokens, h.tokens) < SIMILARITY_THRESHOLD) continue;
-    if (!sharesDistinctive(h.tokens)) continue;
+    if (!isComparable(h)) continue;
     comparable += 1;
     totalWeight += h.weight;
     const cur = votes.get(h.category) || { weight: 0, group: h.group };

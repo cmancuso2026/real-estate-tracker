@@ -42,6 +42,11 @@ test('normalizeTokens strips ACH addenda, keeping just the originator name', () 
   assert.deepEqual(normalizeTokens('WEBSTER BANK PAYMENT'), ['WEBSTER', 'BANK', 'PAYMENT']);
 });
 
+test('normalizeTokens merges possessive apostrophes (McDonald\'s == McDonalds)', () => {
+  assert.deepEqual(normalizeTokens("McDonald's F123 Miami FL"), ['MCDONALDS', 'MIAMI', 'FL']);
+  assert.deepEqual(normalizeTokens('McDonalds'), ['MCDONALDS']);
+});
+
 test('categorizeWithHistory: verbose ACH payroll line inherits from clean merchant history', () => {
   // 3 clean "Franchise World" paychecks (SoFi) + 1 verbose BoA one; a new verbose
   // BoA line must learn Paycheck (ACH addenda stripped to FRANCHISE WORLD), not
@@ -75,6 +80,19 @@ test('scoreFromHistory: IDF ignores generic tokens, matches on the distinctive o
   const s = scoreFromHistory('AplPay Starbucks 999 Miami FL', index);
   assert.equal(s.comparable, 3); // only the Starbucks rows
   assert.equal(s.category, 'Eating Out');
+  assert.equal(s.confidence, 1);
+});
+
+test('scoreFromHistory: keys off the merchant token, not a shared location', () => {
+  // Publix and McDonald's both in "North Miami FL": the Publix query must match
+  // only Publix, not get diluted by McDonald's sharing NORTH/MIAMI/FL.
+  const rows = [];
+  for (let i = 0; i < 4; i += 1) rows.push(row(`Publix ${i} North Miami FL`, 'Groceries', 'Food'));
+  for (let i = 0; i < 4; i += 1) rows.push(row(`McDonalds ${i} North Miami FL`, 'Eating Out', 'Food'));
+  const index = buildHistoryIndex(rows);
+  const s = scoreFromHistory('Publix 99 North Miami FL', index);
+  assert.equal(s.comparable, 4); // only the Publix rows
+  assert.equal(s.category, 'Groceries');
   assert.equal(s.confidence, 1);
 });
 
