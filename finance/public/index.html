@@ -6,6 +6,7 @@
 <title>Mancuso Family · Spending Tracker</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
 <style>
 :root{--bg:#f5f6fa;--surface:#fff;--surface2:#f0f2f8;--border:#e2e5ef;--border2:#d0d4e8;--accent:#3b5bdb;--accent-light:#eef1fd;--red:#e03131;--green:#2f9e44;--orange:#e67700;--orange-light:#fff9db;--text:#1a1b2e;--text2:#495057;--text3:#868e96;--shadow:0 1px 4px rgba(0,0,0,.08),0 4px 16px rgba(0,0,0,.04);}
 *{margin:0;padding:0;box-sizing:border-box;}
@@ -281,6 +282,16 @@ table.txns tr.inc-row td{background:rgba(47,158,68,.03);}
           <option value="weekly">Weekly</option>
           <option value="monthly" selected>Monthly</option>
         </select>
+        <span style="font-size:12px;color:var(--text3);">Chart:</span>
+        <select id="chartType" onchange="renderChart()">
+          <option value="line" selected>Line</option>
+          <option value="bar">Bar</option>
+        </select>
+        <span style="font-size:12px;color:var(--text3);">Bars:</span>
+        <select id="chartStack" onchange="renderChart()">
+          <option value="grouped" selected>Separate</option>
+          <option value="stacked">Stacked</option>
+        </select>
       </div>
       <div class="chart-body"><canvas id="spendChart"></canvas></div>
     </div>
@@ -378,6 +389,13 @@ table.txns tr.inc-row td{background:rgba(47,158,68,.03);}
 <div id="cellTip" class="cell-tip" style="display:none"></div>
 
 <script>
+// Register the datalabels plugin (loaded via CDN) so point/bar values can be
+// drawn on the chart. Default it OFF globally; renderChart opts in explicitly.
+if (window.Chart && window.ChartDataLabels) {
+  Chart.register(window.ChartDataLabels);
+  Chart.defaults.set('plugins.datalabels', { display:false });
+}
+
 // ══════════════════════════════════════════════════════
 // CATEGORY TAXONOMY
 // group → subcategories (in order)
@@ -948,16 +966,39 @@ function renderChart() {
   rows.forEach(t=>{ if(t.note && t.note.trim()){ const k=getBucketKey(t.date,gran); (notesByKey[k]=notesByKey[k]||[]).push(t); } });
   Object.keys(notesByKey).forEach(k=>{ notesByKey[k]=topNotes(notesByKey[k]); });
 
+  // Chart type (line | bar) and, for bars, whether they stack or sit separately.
+  const chartType=document.getElementById('chartType').value;   // 'line' | 'bar'
+  const stackMode=document.getElementById('chartStack').value;  // 'grouped' | 'stacked'
+  const stacked=chartType==='bar' && stackMode==='stacked';
+
+  // Adapt per-dataset styling to the selected chart type.
+  datasets.forEach(d=>{
+    if(chartType==='bar'){
+      d.backgroundColor=d.borderColor; // solid bars (ignore the faint line fill)
+      d.borderWidth=1;
+      if(stacked) d.stack='stack1';    // same stack id -> segments stack
+    }
+  });
+
   const ctx=document.getElementById('spendChart').getContext('2d');
   if(chart) chart.destroy();
   chart=new Chart(ctx,{
-    type:'line',
+    type:chartType,
     data:{labels,datasets},
     options:{
       responsive:true,maintainAspectRatio:false,
       interaction:{mode:'index',intersect:false},
+      layout:{padding:{top:24}}, // headroom for value labels sitting above points/bars
       plugins:{
         legend:{position:'top',labels:{font:{size:12,family:'Inter'},boxWidth:12,padding:16}},
+        datalabels:{
+          display:(c)=>Math.abs(c.dataset.data[c.dataIndex]||0)>=0.01, // hide zeros/empties
+          anchor:stacked?'center':'end',
+          align:stacked?'center':'top',
+          color:stacked?'#fff':'#495057',
+          font:{size:10,weight:'600',family:'Inter'},
+          formatter:v=>'$'+Math.round(v).toLocaleString()
+        },
         tooltip:{backgroundColor:'#fff',titleColor:'#1a1b2e',bodyColor:'#495057',borderColor:'#e2e5ef',borderWidth:1,padding:12,
           callbacks:{
             label:ctx=>` ${ctx.dataset.label}: $${ctx.parsed.y.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}`,
@@ -970,8 +1011,8 @@ function renderChart() {
           }}
       },
       scales:{
-        x:{grid:{color:'#f0f2f8'},ticks:{font:{size:11,family:'Inter'},color:'#868e96'}},
-        y:{grid:{color:'#f0f2f8'},ticks:{font:{size:11,family:'Inter'},color:'#868e96',callback:v=>'$'+v.toLocaleString()}}
+        x:{stacked,grid:{color:'#f0f2f8'},ticks:{font:{size:11,family:'Inter'},color:'#868e96'}},
+        y:{stacked,grid:{color:'#f0f2f8'},ticks:{font:{size:11,family:'Inter'},color:'#868e96',callback:v=>'$'+v.toLocaleString()}}
       }
     }
   });
