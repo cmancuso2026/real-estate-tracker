@@ -39,8 +39,8 @@ test('overlap is 1 when the smaller set is fully contained in the larger', () =>
 });
 
 test('isComparable: containment matches a verbose superset Jaccard would miss', () => {
-  const clean = toks('Franchise World');
-  const verbose = toks('Franchise World DES:PAYROLL ID:CER0007 INDN:Cole Mancuso CO ID:138 PPD');
+  const clean = toks('Wild Fork');
+  const verbose = toks('Wild Fork Foods Doral Market'); // extra descriptive words, not ACH noise
   assert.ok(jaccard(clean, verbose) < 0.5, 'Jaccard alone would reject this pair');
   assert.ok(isComparable(clean, verbose), 'containment accepts it');
 });
