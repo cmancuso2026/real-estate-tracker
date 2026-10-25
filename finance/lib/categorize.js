@@ -178,11 +178,26 @@ const CONFIDENCE_THRESHOLD = 0.9;
 // Manual (user-corrected) categorizations count double in the vote.
 const MANUAL_WEIGHT = 2;
 
-// Normalize a merchant string into comparable word tokens: uppercase, strip
-// special characters and digits (store #s, phone numbers, etc. are noise), then
-// keep tokens of length >= 2.
+// Bank ACH / transfer lines carry the originator (merchant) name first, followed
+// by structured addenda — e.g.
+//   "FRANCHISE WORLD DES:PAYROLL ID:CER000752935963 INDN:COLE MANCUSO CO ID:… PPD"
+// Everything from the first addenda marker on is per-transaction noise: trace
+// numbers, the SEC code (PPD/CCD/WEB), and the account holder's OWN name (INDN:).
+// Left in, those tokens make an obvious recurring payer (Franchise World) look
+// only ~18% similar to its clean counterpart AND falsely match unrelated rows
+// that share generic tokens like CO/ID. Strip them so the merchant name is what
+// gets compared.
+const ACH_ADDENDA = /\s(?:(?:DES|INDN|ID|CO\s+ID):|(?:PPD|CCD|WEB|ARC|TEL)(?=\s|$)).*$/is;
+
+function stripAchAddenda(str) {
+  return (str || '').replace(ACH_ADDENDA, ' ');
+}
+
+// Normalize a merchant string into comparable word tokens: drop ACH addenda,
+// uppercase, strip special characters and digits (store #s, phone numbers, etc.
+// are noise), then keep tokens of length >= 2.
 function normalizeTokens(str) {
-  return (str || '')
+  return stripAchAddenda(str)
     .toUpperCase()
     .replace(/[^A-Z0-9\s]/g, ' ')
     .replace(/\d+/g, ' ')
