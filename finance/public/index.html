@@ -207,16 +207,11 @@ table.txns tr.inc-row td{background:rgba(47,158,68,.03);}
       <button class="modal-x" onclick="closeUpload()" aria-label="Close">×</button>
     </div>
     <div class="modal-body">
-      <label class="fld-lbl">Source</label>
-      <select id="uploadSource" style="width:100%">
-        <option value="bankofamerica">Bank of America</option>
-        <option value="amex_gold">Amex Gold</option>
-        <option value="amex_blue">Amex Blue</option>
-        <option value="sofi">SoFi</option>
-        <option value="capitalone">Capital One</option>
-      </select>
-      <label class="fld-lbl" style="margin-top:14px">File (.csv or .xlsx)</label>
-      <input id="uploadFile" type="file" accept=".csv,.xlsx,.xls" style="width:100%">
+      <label class="fld-lbl">Files (.csv or .xlsx — up to 20)</label>
+      <input id="uploadFile" type="file" accept=".csv,.xlsx,.xls" multiple style="width:100%">
+      <div class="fld-hint" style="margin-top:6px;font-size:12px;color:#888">
+        The source (Bank of America, Amex, SoFi) is detected automatically from each file.
+      </div>
       <div id="uploadResult" class="upload-result" style="display:none"></div>
     </div>
     <div class="modal-ftr">
@@ -530,15 +525,31 @@ function mselOptLabel(kind, v){ return kind==='year' ? v : MON_SHORT[parseInt(v)
 function buildYearPills(){ buildMsel('year'); }   // called by loadAllData
 function buildMonthPills(){ buildMsel('month'); } // (names kept for the loader)
 
+// Default month selection: current + prior month (by month-of-year number),
+// derived dynamically from today's date. Falls back to all available months if
+// neither is present in the data (e.g. a dataset that predates this month).
+function defaultMonthSelection(values){
+  const now = new Date();
+  const cur = now.getMonth() + 1;         // 1-12
+  const prior = cur === 1 ? 12 : cur - 1; // January wraps back to December
+  const want = [String(cur), String(prior)].filter(v => values.includes(v));
+  return want.length ? want : values;
+}
+
 function buildMsel(kind){
   const values = mselValues(kind);
-  if (kind==='year') activeYears = new Set(values); else activeMonths = new Set(values); // default: all selected
+  // Years default to all selected; months default to current + prior month.
+  if (kind==='year') activeYears = new Set(values);
+  else activeMonths = new Set(defaultMonthSelection(values));
+  const set = mselSet(kind);
   const panel = document.getElementById(kind+'DropPanel');
-  let html = `<label class="msel-opt msel-all"><input type="checkbox" data-v="all" checked onchange="onMselToggle('${kind}','all',this.checked)"><span>All</span></label>`;
+  let html = `<label class="msel-opt msel-all"><input type="checkbox" data-v="all" onchange="onMselToggle('${kind}','all',this.checked)"><span>All</span></label>`;
   values.forEach(v => {
-    html += `<label class="msel-opt"><input type="checkbox" data-v="${v}" checked onchange="onMselToggle('${kind}','${v}',this.checked)"><span>${mselOptLabel(kind,v)}</span></label>`;
+    const chk = set.has(v) ? ' checked' : '';
+    html += `<label class="msel-opt"><input type="checkbox" data-v="${v}"${chk} onchange="onMselToggle('${kind}','${v}',this.checked)"><span>${mselOptLabel(kind,v)}</span></label>`;
   });
   panel.innerHTML = html;
+  syncMselChecks(kind); // fixes the "All" checkbox checked/indeterminate state
   syncMselLabel(kind);
 }
 
@@ -1370,25 +1381,33 @@ function closeUpload(){ document.getElementById('uploadModal').style.display='no
 
 async function doUpload(){
   const fileInput=document.getElementById('uploadFile');
-  const source=document.getElementById('uploadSource').value;
   const resultEl=document.getElementById('uploadResult');
   const btn=document.getElementById('uploadBtn');
   if(!fileInput.files.length){
     resultEl.style.display=''; resultEl.className='upload-result err';
-    resultEl.textContent='Please choose a file first.';
+    resultEl.textContent='Please choose at least one file first.';
     return;
   }
   const fd=new FormData();
-  fd.append('file', fileInput.files[0]);
-  fd.append('source', source);
+  for(const f of fileInput.files) fd.append('files', f);
   btn.disabled=true; btn.textContent='Uploading…';
   try{
     const r=await fetch('/api/upload',{method:'POST',body:fd});
     const data=await r.json();
     if(!r.ok) throw new Error(data.error||('Upload failed ('+r.status+')'));
     resultEl.style.display=''; resultEl.className='upload-result ok';
-    resultEl.innerHTML=`✅ <strong>${data.new_rows}</strong> new transaction(s) added to <strong>${data.source}</strong>, `+
-      `<strong>${data.skipped}</strong> duplicate(s) skipped (of ${data.total_rows} parsed).`;
+    const perSource=(data.by_source||[])
+      .map(s=>`${s.source}: <strong>${s.new_rows}</strong> new, ${s.skipped} dup`)
+      .join(' · ');
+    let html=`✅ <strong>${data.new_rows}</strong> new transaction(s) added, `+
+      `<strong>${data.skipped}</strong> duplicate(s) skipped (of ${data.total_rows} parsed `+
+      `across ${data.files_parsed} file(s)).`;
+    if(perSource) html+=`<div style="margin-top:6px;font-size:12px;opacity:.85">${perSource}</div>`;
+    if(data.errors&&data.errors.length){
+      const errs=data.errors.map(e=>`${e.filename}: ${e.error}`).join('<br>');
+      html+=`<div style="margin-top:6px;font-size:12px;color:#c0392b">⚠️ ${data.errors.length} file(s) skipped:<br>${errs}</div>`;
+    }
+    resultEl.innerHTML=html;
     // Reload everything so the new rows (and any new years/months) show up.
     await loadAllData();
   }catch(err){

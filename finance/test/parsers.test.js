@@ -2,9 +2,11 @@ const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
-const { parseFile } = require('../parsers');
+const { parseFile, parseFileAuto, detectSource } = require('../parsers');
+const { fileToRows } = require('../parsers/util');
 
 const fixture = (name) => fs.readFileSync(path.join(__dirname, 'fixtures', name));
+const detect = (name) => detectSource(fileToRows(fixture(name), name));
 const byDesc = (rows, needle) => rows.find((r) => r.description.includes(needle));
 
 test('Bank of America: skips CapOne credit, negates debits, skips preamble', () => {
@@ -68,4 +70,25 @@ test('Capital One: debit->negative, credit refund->positive, payment kept as off
 
 test('unknown source throws a 400-tagged error', () => {
   assert.throws(() => parseFile(Buffer.from('x'), 'x.csv', 'nope'), /Unknown source/);
+});
+
+test('detectSource infers the format from column headers', () => {
+  assert.equal(detect('bankofamerica.csv'), 'bankofamerica');
+  assert.equal(detect('amex_gold.csv'), 'amex_gold');
+  assert.equal(detect('sofi.csv'), 'sofi');
+  // Capital One shares BoA's credit-card header, so it resolves to bankofamerica.
+  assert.equal(detect('capitalone.csv'), 'bankofamerica');
+  assert.equal(detectSource([['no', 'matching', 'headers']]), null);
+});
+
+test('parseFileAuto parses without being told the source', () => {
+  const r = parseFileAuto(fixture('sofi.csv'), 'sofi.csv');
+  assert.equal(r.sourceKey, 'sofi');
+  assert.equal(r.source, 'SoFi');
+  assert.equal(r.transactions.length, 5);
+});
+
+test('parseFileAuto throws a 422 when the format is unrecognized', () => {
+  const buf = Buffer.from('foo,bar,baz\n1,2,3\n');
+  assert.throws(() => parseFileAuto(buf, 'mystery.csv'), /auto-detect/);
 });
