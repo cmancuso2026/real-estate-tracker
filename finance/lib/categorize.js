@@ -160,17 +160,12 @@ function categorize(description, rawCategory, source) {
 // history to draw from.
 
 // A description is a "comparable" match when its token set overlaps a historical
-// one by at least this Jaccard score.
+// one by at least this Jaccard score. Jaccard (intersection / union) is the right
+// measure here: it only fires when the SHARED tokens are a large fraction of the
+// combined vocabulary, so two merchants that merely share a location ("MIAMI FL")
+// don't match. A looser containment measure was tried and backfired — location
+// tokens made a Starbucks charge "comparable" to hundreds of Miami merchants.
 const SIMILARITY_THRESHOLD = 0.5;
-// ...OR when the smaller token set is mostly *contained* in the larger one (the
-// overlap coefficient exceeds this). Jaccard under-scores verbose bank lines
-// that embed a clean merchant name — e.g. an ACH payroll row
-// "FRANCHISE WORLD DES:PAYROLL ID:… INDN:… PPD" shares only ~0.18 Jaccard with a
-// plain "Franchise World", yet it is clearly the same payer. Containment catches
-// those so recurring deposits auto-categorize. The >2-token guard below stops a
-// single shared word from matching unrelated merchants.
-const OVERLAP_THRESHOLD = 0.6;
-const MIN_OVERLAP_TOKENS = 2;
 // Need at least this many comparable historical rows before we trust a vote.
 const MIN_COMPARABLE = 3;
 // The winning category must hold more than this share of the weighted vote.
@@ -220,30 +215,19 @@ function jaccard(a, b) {
   return union ? inter / union : 0;
 }
 
-// Overlap coefficient (Szymkiewicz–Simpson): |A∩B| / min(|A|,|B|). Scores high
-// when the smaller set is largely contained in the larger — unlike Jaccard,
-// which the larger set's extra tokens drag down.
-function overlap(a, b) {
-  if (!a.size || !b.size) return 0;
-  return intersectionSize(a, b) / Math.min(a.size, b.size);
-}
-
-// Whether two descriptions are similar enough to vote on each other: a solid
-// Jaccard OR strong containment of the (sufficiently specific) smaller set.
-function isComparable(a, b) {
-  if (jaccard(a, b) >= SIMILARITY_THRESHOLD) return true;
-  return Math.min(a.size, b.size) >= MIN_OVERLAP_TOKENS && overlap(a, b) > OVERLAP_THRESHOLD;
-}
-
 /**
  * Precompute a searchable index from existing transactions. Rows without a real
  * category (Uncategorized) carry no signal and are dropped from the vote.
+ *
+ * The returned array also carries a `df` (document-frequency) Map and `docs`
+ * count so scoreFromHistory can weight tokens by rarity (see below).
  *
  * @param {Array<{description: string, category: string, category_group: string, is_manual: any}>} rows
  * @returns {Array<{tokens: Set<string>, category: string, group: string, weight: number}>}
  */
 function buildHistoryIndex(rows) {
   const index = [];
+  const df = new Map(); // token -> how many history rows contain it
   for (const r of rows || []) {
     if (!r.category || r.category === 'Uncategorized') continue;
     const tokens = new Set(normalizeTokens(r.description));
@@ -254,13 +238,27 @@ function buildHistoryIndex(rows) {
       group: r.category_group || groupFor(r.category),
       weight: r.is_manual ? MANUAL_WEIGHT : 1,
     });
+    for (const t of tokens) df.set(t, (df.get(t) || 0) + 1);
   }
+  // Attach IDF data so matching can down-weight ubiquitous tokens (payment
+  // prefixes like APLPAY, cities, state codes) that otherwise let unrelated
+  // merchants look similar, and up-weight the distinctive merchant name.
+  index.df = df;
+  index.docs = index.length;
   return index;
 }
 
 /**
  * Score a description against the history index: find comparable rows and tally
  * a weighted vote over their categories.
+ *
+ * Similarity is an IDF-weighted Jaccard. Plain Jaccard treats every token
+ * equally, so "AplPay STARBUCKS MIAMI FL" looks ~60% similar to any other Apple
+ * Pay charge in Miami (3 of 4 tokens shared: APLPAY/MIAMI/FL). Weighting each
+ * token by log(docs/df) makes those ubiquitous tokens count for almost nothing
+ * while the rare, identifying token (STARBUCKS) dominates — so only genuine
+ * same-merchant rows clear the threshold. When no IDF data is attached (e.g. a
+ * raw array is passed), it degrades to plain unweighted Jaccard.
  *
  * @returns {{comparable: number, category: string|null, group: string|null, confidence: number}}
  *   comparable = number of matching historical rows (unweighted);
@@ -270,11 +268,41 @@ function scoreFromHistory(description, index) {
   const tokens = new Set(normalizeTokens(description));
   if (!tokens.size) return { comparable: 0, category: null, group: null, confidence: 0 };
 
+  const entries = index || [];
+  const df = entries.df; // Map, or undefined for a plain array
+  const docs = entries.docs || entries.length || 0;
+  // Smoothed IDF: unseen tokens (df 0) get the max weight; a token in every row
+  // approaches ~1. Always positive.
+  const weightOf = (t) => (df ? Math.log((docs + 1) / ((df.get(t) || 0) + 1)) + 1 : 1);
+  const similarity = (a, b) => {
+    let inter = 0;
+    let union = 0;
+    for (const t of a) {
+      const w = weightOf(t);
+      union += w;
+      if (b.has(t)) inter += w;
+    }
+    for (const t of b) if (!a.has(t)) union += weightOf(t);
+    return union ? inter / union : 0;
+  };
+
+  // The query's "distinctive" tokens: those weighing above its own average. A
+  // match must share at least one of these, so a row made of only generic tokens
+  // (e.g. an address-only "APLPAY 8200 N MIAMI MIAMI FL") can't vote on an
+  // unrelated merchant just by sharing location/payment words. When every token
+  // weighs the same (e.g. a one-word query) there are none, and similarity alone
+  // decides.
+  const qTokens = [...tokens];
+  const mean = qTokens.reduce((s, t) => s + weightOf(t), 0) / qTokens.length;
+  const distinctive = qTokens.filter((t) => weightOf(t) > mean);
+  const sharesDistinctive = (b) => !distinctive.length || distinctive.some((t) => b.has(t));
+
   const votes = new Map(); // category -> { weight, group }
   let comparable = 0;
   let totalWeight = 0;
-  for (const h of index || []) {
-    if (!isComparable(tokens, h.tokens)) continue;
+  for (const h of entries) {
+    if (similarity(tokens, h.tokens) < SIMILARITY_THRESHOLD) continue;
+    if (!sharesDistinctive(h.tokens)) continue;
     comparable += 1;
     totalWeight += h.weight;
     const cur = votes.get(h.category) || { weight: 0, group: h.group };
@@ -333,10 +361,7 @@ module.exports = {
   categorizeWithHistory,
   normalizeTokens,
   jaccard,
-  overlap,
-  isComparable,
   SIMILARITY_THRESHOLD,
-  OVERLAP_THRESHOLD,
   MIN_COMPARABLE,
   CONFIDENCE_THRESHOLD,
 };
