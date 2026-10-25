@@ -6,7 +6,11 @@ const {
   categorizeWithHistory,
   normalizeTokens,
   jaccard,
+  overlap,
+  isComparable,
 } = require('../lib/categorize');
+
+const toks = (s) => new Set(normalizeTokens(s));
 
 // Helper: a historical row.
 const row = (description, category, category_group, is_manual = false) => ({
@@ -27,6 +31,42 @@ test('jaccard is 1 for identical token sets and 0 for disjoint', () => {
   assert.equal(jaccard(a, new Set(['HOME', 'DEPOT'])), 1);
   assert.equal(jaccard(a, new Set(['PUBLIX'])), 0);
   assert.equal(jaccard(new Set(), a), 0);
+});
+
+test('overlap is 1 when the smaller set is fully contained in the larger', () => {
+  assert.equal(overlap(new Set(['FRANCHISE', 'WORLD']), new Set(['FRANCHISE', 'WORLD', 'PAYROLL', 'PPD'])), 1);
+  assert.equal(overlap(new Set(['A']), new Set(['B'])), 0);
+});
+
+test('isComparable: containment matches a verbose superset Jaccard would miss', () => {
+  const clean = toks('Franchise World');
+  const verbose = toks('Franchise World DES:PAYROLL ID:CER0007 INDN:Cole Mancuso CO ID:138 PPD');
+  assert.ok(jaccard(clean, verbose) < 0.5, 'Jaccard alone would reject this pair');
+  assert.ok(isComparable(clean, verbose), 'containment accepts it');
+});
+
+test('isComparable: a single shared word does not link unrelated merchants', () => {
+  assert.equal(isComparable(toks('American Express'), toks('American Airlines')), false);
+});
+
+test('categorizeWithHistory: verbose ACH payroll line inherits from clean merchant history', () => {
+  // 3 clean "Franchise World" paychecks (SoFi) + 1 verbose BoA one; a new verbose
+  // BoA line must learn Paycheck via containment, not fall to Uncategorized.
+  const index = buildHistoryIndex([
+    row('Franchise World', 'Paycheck', 'W2 Income'),
+    row('Franchise World', 'Paycheck', 'W2 Income'),
+    row('Franchise World', 'Paycheck', 'W2 Income'),
+    row('Franchise World DES:PAYROLL ID:CER111 INDN:Cole Mancuso CO ID:138 PPD', 'Paycheck', 'W2 Income', true),
+  ]);
+  const r = categorizeWithHistory(
+    'Franchise World DES:PAYROLL ID:CER999 INDN:Cole Mancuso CO ID:138 PPD',
+    '',
+    'Bank of America',
+    index,
+  );
+  assert.equal(r.category, 'Paycheck');
+  assert.equal(r.group, 'W2 Income');
+  assert.equal(r.confidence, 1);
 });
 
 test('buildHistoryIndex drops Uncategorized and empty-token rows, weights manual 2x', () => {

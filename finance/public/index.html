@@ -1483,6 +1483,7 @@ async function doUpload(){
       `<strong>${data.skipped}</strong> duplicate(s) skipped (of ${data.total_rows} parsed `+
       `across ${data.files_parsed} file(s)).`;
     if(perSource) html+=`<div style="margin-top:6px;font-size:12px;opacity:.85">${perSource}</div>`;
+    if(data.recategorized) html+=`<div style="margin-top:6px;font-size:12px;opacity:.85">🔎 ${data.recategorized} previously-uncategorized transaction(s) auto-categorized from history.</div>`;
     if(data.errors&&data.errors.length){
       const errs=data.errors.map(e=>`${e.filename}: ${e.error}`).join('<br>');
       html+=`<div style="margin-top:6px;font-size:12px;color:#c0392b">⚠️ ${data.errors.length} file(s) skipped:<br>${errs}</div>`;

@@ -2,7 +2,7 @@ const express = require('express');
 
 const { applyFilters, isoDate } = require('./_query');
 const { resolveGroup } = require('../lib/categoryStore');
-const { buildHistoryIndex, categorizeWithHistory } = require('../lib/categorize');
+const { recategorizeUncategorized } = require('../lib/recategorize');
 
 const router = express.Router();
 
@@ -132,43 +132,8 @@ router.put('/bulk-review', async (req, res, next) => {
 // isn't stored per-row, so the rule fallback runs description-only here.
 router.post('/recategorize', async (req, res, next) => {
   try {
-    const knex = req.app.locals.db;
-
-    const historyRows = await knex('transactions')
-      .whereNot('category', 'Uncategorized')
-      .select('description', 'category', 'category_group', 'is_manual');
-    const index = buildHistoryIndex(historyRows);
-
-    const targets = await knex('transactions')
-      .where('category', 'Uncategorized')
-      .andWhere('is_manual', false)
-      .select('id', 'description', 'source');
-
-    let updated = 0;
-    await knex.transaction(async (trx) => {
-      for (const t of targets) {
-        const { category, group, confidence } = categorizeWithHistory(
-          t.description,
-          '', // bank raw category not persisted per-row
-          t.source,
-          index,
-        );
-        if (category !== 'Uncategorized') {
-          await trx('transactions').where({ id: t.id }).update({
-            category,
-            category_group: group,
-            is_manual: false,
-            confidence_score: confidence,
-          });
-          updated += 1;
-        } else if (confidence != null) {
-          // Still uncategorized, but record how close the vote was.
-          await trx('transactions').where({ id: t.id }).update({ confidence_score: confidence });
-        }
-      }
-    });
-
-    res.json({ success: true, scanned: targets.length, updated });
+    const { scanned, updated } = await recategorizeUncategorized(req.app.locals.db);
+    res.json({ success: true, scanned, updated });
   } catch (err) {
     next(err);
   }
