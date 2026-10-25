@@ -6,11 +6,7 @@ const {
   categorizeWithHistory,
   normalizeTokens,
   jaccard,
-  overlap,
-  isComparable,
 } = require('../lib/categorize');
-
-const toks = (s) => new Set(normalizeTokens(s));
 
 // Helper: a historical row.
 const row = (description, category, category_group, is_manual = false) => ({
@@ -33,25 +29,23 @@ test('jaccard is 1 for identical token sets and 0 for disjoint', () => {
   assert.equal(jaccard(new Set(), a), 0);
 });
 
-test('overlap is 1 when the smaller set is fully contained in the larger', () => {
-  assert.equal(overlap(new Set(['FRANCHISE', 'WORLD']), new Set(['FRANCHISE', 'WORLD', 'PAYROLL', 'PPD'])), 1);
-  assert.equal(overlap(new Set(['A']), new Set(['B'])), 0);
-});
-
-test('isComparable: containment matches a verbose superset Jaccard would miss', () => {
-  const clean = toks('Wild Fork');
-  const verbose = toks('Wild Fork Foods Doral Market'); // extra descriptive words, not ACH noise
-  assert.ok(jaccard(clean, verbose) < 0.5, 'Jaccard alone would reject this pair');
-  assert.ok(isComparable(clean, verbose), 'containment accepts it');
-});
-
-test('isComparable: a single shared word does not link unrelated merchants', () => {
-  assert.equal(isComparable(toks('American Express'), toks('American Airlines')), false);
+test('normalizeTokens strips ACH addenda, keeping just the originator name', () => {
+  assert.deepEqual(
+    normalizeTokens('Franchise World DES:PAYROLL ID:CER000752935963 INDN:Cole Mancuso CO ID:138 PPD'),
+    ['FRANCHISE', 'WORLD'],
+  );
+  assert.deepEqual(normalizeTokens('FRANCHISE WORLD DES:9958611334 ID:995861 INDN:COLE MANC'), [
+    'FRANCHISE',
+    'WORLD',
+  ]);
+  // A legit name that merely starts with an addenda-looking word must survive.
+  assert.deepEqual(normalizeTokens('WEBSTER BANK PAYMENT'), ['WEBSTER', 'BANK', 'PAYMENT']);
 });
 
 test('categorizeWithHistory: verbose ACH payroll line inherits from clean merchant history', () => {
   // 3 clean "Franchise World" paychecks (SoFi) + 1 verbose BoA one; a new verbose
-  // BoA line must learn Paycheck via containment, not fall to Uncategorized.
+  // BoA line must learn Paycheck (ACH addenda stripped to FRANCHISE WORLD), not
+  // fall to Uncategorized.
   const index = buildHistoryIndex([
     row('Franchise World', 'Paycheck', 'W2 Income'),
     row('Franchise World', 'Paycheck', 'W2 Income'),
@@ -67,6 +61,21 @@ test('categorizeWithHistory: verbose ACH payroll line inherits from clean mercha
   assert.equal(r.category, 'Paycheck');
   assert.equal(r.group, 'W2 Income');
   assert.equal(r.confidence, 1);
+});
+
+test('scoreFromHistory: IDF ignores generic tokens, matches on the distinctive one', () => {
+  // Many Apple Pay charges in Miami across categories make APLPAY/MIAMI/FL
+  // ubiquitous; a Starbucks query must match only the Starbucks rows, not the
+  // dozen other "AplPay … Miami FL" charges that share 3 of 4 tokens.
+  const rows = [];
+  for (let i = 0; i < 6; i += 1) rows.push(row(`AplPay Publix ${i} Miami FL`, 'Groceries', 'Food'));
+  for (let i = 0; i < 6; i += 1) rows.push(row(`AplPay Shell ${i} Miami FL`, 'Gas', 'Travel'));
+  for (let i = 0; i < 3; i += 1) rows.push(row(`AplPay Starbucks ${i} Miami FL`, 'Eating Out', 'Food'));
+  const index = buildHistoryIndex(rows);
+  const s = scoreFromHistory('AplPay Starbucks 999 Miami FL', index);
+  assert.equal(s.comparable, 3); // only the Starbucks rows
+  assert.equal(s.category, 'Eating Out');
+  assert.equal(s.confidence, 1);
 });
 
 test('buildHistoryIndex drops Uncategorized and empty-token rows, weights manual 2x', () => {
@@ -87,7 +96,7 @@ test('scoreFromHistory: unanimous vote yields confidence 1', () => {
     row('PUBLIX #2', 'Groceries', 'Food'),
     row('PUBLIX #3', 'Groceries', 'Food'),
   ]);
-  const s = scoreFromHistory('PUBLIX SUPERMARKET #99', index);
+  const s = scoreFromHistory('PUBLIX #99', index);
   assert.equal(s.comparable, 3);
   assert.equal(s.category, 'Groceries');
   assert.equal(s.group, 'Food');
@@ -147,7 +156,7 @@ test('categorizeWithHistory: manual rows count double in the vote', () => {
     row('TARGET 4', 'Shopping', 'Living', true),
     row('TARGET 5', 'Shopping', 'Living', true),
   ]);
-  const s = scoreFromHistory('TARGET STORE', index);
+  const s = scoreFromHistory('TARGET #9', index);
   assert.equal(s.category, 'Shopping');
   assert.equal(s.comparable, 5);
 });
