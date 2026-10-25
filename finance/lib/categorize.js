@@ -162,6 +162,15 @@ function categorize(description, rawCategory, source) {
 // A description is a "comparable" match when its token set overlaps a historical
 // one by at least this Jaccard score.
 const SIMILARITY_THRESHOLD = 0.5;
+// ...OR when the smaller token set is mostly *contained* in the larger one (the
+// overlap coefficient exceeds this). Jaccard under-scores verbose bank lines
+// that embed a clean merchant name — e.g. an ACH payroll row
+// "FRANCHISE WORLD DES:PAYROLL ID:… INDN:… PPD" shares only ~0.18 Jaccard with a
+// plain "Franchise World", yet it is clearly the same payer. Containment catches
+// those so recurring deposits auto-categorize. The >2-token guard below stops a
+// single shared word from matching unrelated merchants.
+const OVERLAP_THRESHOLD = 0.6;
+const MIN_OVERLAP_TOKENS = 2;
 // Need at least this many comparable historical rows before we trust a vote.
 const MIN_COMPARABLE = 3;
 // The winning category must hold more than this share of the weighted vote.
@@ -181,13 +190,34 @@ function normalizeTokens(str) {
     .filter((t) => t.length >= 2);
 }
 
+// Count of tokens shared between two Sets.
+function intersectionSize(a, b) {
+  let inter = 0;
+  for (const t of a) if (b.has(t)) inter += 1;
+  return inter;
+}
+
 // Jaccard similarity between two token Sets: |A∩B| / |A∪B|.
 function jaccard(a, b) {
   if (!a.size || !b.size) return 0;
-  let inter = 0;
-  for (const t of a) if (b.has(t)) inter += 1;
+  const inter = intersectionSize(a, b);
   const union = a.size + b.size - inter;
   return union ? inter / union : 0;
+}
+
+// Overlap coefficient (Szymkiewicz–Simpson): |A∩B| / min(|A|,|B|). Scores high
+// when the smaller set is largely contained in the larger — unlike Jaccard,
+// which the larger set's extra tokens drag down.
+function overlap(a, b) {
+  if (!a.size || !b.size) return 0;
+  return intersectionSize(a, b) / Math.min(a.size, b.size);
+}
+
+// Whether two descriptions are similar enough to vote on each other: a solid
+// Jaccard OR strong containment of the (sufficiently specific) smaller set.
+function isComparable(a, b) {
+  if (jaccard(a, b) >= SIMILARITY_THRESHOLD) return true;
+  return Math.min(a.size, b.size) >= MIN_OVERLAP_TOKENS && overlap(a, b) > OVERLAP_THRESHOLD;
 }
 
 /**
@@ -229,7 +259,7 @@ function scoreFromHistory(description, index) {
   let comparable = 0;
   let totalWeight = 0;
   for (const h of index || []) {
-    if (jaccard(tokens, h.tokens) < SIMILARITY_THRESHOLD) continue;
+    if (!isComparable(tokens, h.tokens)) continue;
     comparable += 1;
     totalWeight += h.weight;
     const cur = votes.get(h.category) || { weight: 0, group: h.group };
@@ -288,7 +318,10 @@ module.exports = {
   categorizeWithHistory,
   normalizeTokens,
   jaccard,
+  overlap,
+  isComparable,
   SIMILARITY_THRESHOLD,
+  OVERLAP_THRESHOLD,
   MIN_COMPARABLE,
   CONFIDENCE_THRESHOLD,
 };

@@ -3,6 +3,7 @@ const multer = require('multer');
 
 const { parseFileAuto } = require('../parsers');
 const { buildHistoryIndex, categorizeWithHistory } = require('../lib/categorize');
+const { recategorizeUncategorized } = require('../lib/recategorize');
 const { dedupHash } = require('../lib/dedup');
 
 const router = express.Router();
@@ -158,6 +159,17 @@ router.post('/', upload.array('files', 20), async (req, res, next) => {
       }
     });
 
+    // Now that this batch's rows are in, re-sweep older Uncategorized rows: the
+    // added history may newly identify recurring merchants (e.g. a payroll
+    // deposit) so "stuff like this" gets picked up without manual action.
+    let recategorized = 0;
+    try {
+      ({ updated: recategorized } = await recategorizeUncategorized(knex));
+    } catch (e) {
+      // A failed re-sweep must not fail the upload itself.
+      console.error('post-upload recategorize failed', e);
+    }
+
     res.json({
       success: true,
       files: files.length,
@@ -165,6 +177,7 @@ router.post('/', upload.array('files', 20), async (req, res, next) => {
       total_rows: totalRows,
       new_rows: newRows,
       skipped,
+      recategorized,
       by_source: Object.values(bySource),
       errors: fileErrors,
       upload_ids: uploadIds,
