@@ -880,6 +880,9 @@ function onChartGroupChange() {
   renderChart();
 }
 
+// Distinct colors for the per-subcategory breakdown lines (cycled if needed).
+const CHART_PALETTE=['#e03131','#2f9e44','#3b5bdb','#f08c00','#9c36b5','#0ca678','#e8590c','#1971c2','#c2255c','#5f3dc4','#2b8a3e','#d9480f'];
+
 function renderChart() {
   const grp = document.getElementById('chartGroup').value;
   const cat = document.getElementById('chartCat').value;
@@ -891,21 +894,54 @@ function renderChart() {
     ? getFilteredTxns(grp||null).filter(t=>propertyOfCat(t.cat)===cat.slice(5))
     : getFilteredTxns(grp||null, cat||null);
 
-  const incB={}, expB={};
-  rows.forEach(t=>{
-    const key=getBucketKey(t.date,gran);
-    if(t.amt>0) incB[key]=(incB[key]||0)+t.amt;
-    else expB[key]=(expB[key]||0)+Math.abs(t.amt);
-  });
+  // When a specific group is selected (and not a single category or property),
+  // break it into one line per subcategory instead of the aggregate Income vs
+  // Spending view. Subcategories with no activity in the period are dropped, so
+  // a group with no income (or no expense) simply shows no line for it.
+  const groupBreakdown = !!grp && !cat; // cat==='' here also excludes prop: selections
 
-  const keys=[...new Set([...Object.keys(incB),...Object.keys(expB)])].sort();
-  if(!keys.length){ if(chart){chart.destroy();chart=null;} return; }
+  let keys, labels, datasets;
 
-  const labels=keys.map(k=>fmtBucket(k,gran));
-  const incData=keys.map(k=>+(incB[k]||0).toFixed(2));
-  const expData=keys.map(k=>+(expB[k]||0).toFixed(2));
-  // For a property grouping, also plot the net (rent − costs) per bucket.
-  const netData=keys.map(k=>+((incB[k]||0)-(expB[k]||0)).toFixed(2));
+  if(groupBreakdown){
+    const cats = GROUPS[grp] || [];
+    const perCat = {}; cats.forEach(c=>{ perCat[c]={}; });
+    rows.forEach(t=>{
+      if(!(t.cat in perCat)) return;
+      const k=getBucketKey(t.date,gran);
+      perCat[t.cat][k]=(perCat[t.cat][k]||0)+t.amt;
+    });
+    keys=[...new Set(rows.map(t=>getBucketKey(t.date,gran)))].sort();
+    if(!keys.length){ if(chart){chart.destroy();chart=null;} return; }
+    labels=keys.map(k=>fmtBucket(k,gran));
+    // Only subcategories with real activity get a line.
+    const liveCats=cats.filter(c=>keys.some(k=>Math.abs(perCat[c][k]||0)>=0.01));
+    datasets=liveCats.map((c,i)=>{
+      const color=CHART_PALETTE[i%CHART_PALETTE.length];
+      return {label:c, data:keys.map(k=>+Math.abs(perCat[c][k]||0).toFixed(2)),
+        borderColor:color, backgroundColor:color+'22', borderWidth:2.5,
+        pointBackgroundColor:color, pointRadius:4, pointHoverRadius:6, tension:.3, fill:false};
+    });
+  } else {
+    const incB={}, expB={};
+    rows.forEach(t=>{
+      const key=getBucketKey(t.date,gran);
+      if(t.amt>0) incB[key]=(incB[key]||0)+t.amt;
+      else expB[key]=(expB[key]||0)+Math.abs(t.amt);
+    });
+    keys=[...new Set([...Object.keys(incB),...Object.keys(expB)])].sort();
+    if(!keys.length){ if(chart){chart.destroy();chart=null;} return; }
+    labels=keys.map(k=>fmtBucket(k,gran));
+    const incData=keys.map(k=>+(incB[k]||0).toFixed(2));
+    const expData=keys.map(k=>+(expB[k]||0).toFixed(2));
+    // For a property grouping, also plot the net (rent − costs) per bucket.
+    const netData=keys.map(k=>+((incB[k]||0)-(expB[k]||0)).toFixed(2));
+    datasets=[
+      {label:isProp?'Rent':'Income',data:incData,borderColor:'#2f9e44',backgroundColor:'rgba(47,158,68,.08)',borderWidth:2.5,pointBackgroundColor:'#2f9e44',pointRadius:4,pointHoverRadius:6,tension:.3,fill:true},
+      {label:isProp?'Costs':'Spending',data:expData,borderColor:'#e03131',backgroundColor:'rgba(224,49,49,.08)',borderWidth:2.5,pointBackgroundColor:'#e03131',pointRadius:4,pointHoverRadius:6,tension:.3,fill:true},
+    ].concat(isProp?[
+      {label:'Net',data:netData,borderColor:'#3b5bdb',backgroundColor:'rgba(59,91,219,.05)',borderWidth:2.5,borderDash:[6,4],pointBackgroundColor:'#3b5bdb',pointRadius:3,pointHoverRadius:6,tension:.3,fill:false},
+    ]:[]);
+  }
 
   // Notes to surface on hover: the top-3 largest-abs noted txns per bucket.
   const notesByKey={};
@@ -916,12 +952,7 @@ function renderChart() {
   if(chart) chart.destroy();
   chart=new Chart(ctx,{
     type:'line',
-    data:{labels,datasets:[
-      {label:isProp?'Rent':'Income',data:incData,borderColor:'#2f9e44',backgroundColor:'rgba(47,158,68,.08)',borderWidth:2.5,pointBackgroundColor:'#2f9e44',pointRadius:4,pointHoverRadius:6,tension:.3,fill:true},
-      {label:isProp?'Costs':'Spending',data:expData,borderColor:'#e03131',backgroundColor:'rgba(224,49,49,.08)',borderWidth:2.5,pointBackgroundColor:'#e03131',pointRadius:4,pointHoverRadius:6,tension:.3,fill:true},
-    ].concat(isProp?[
-      {label:'Net',data:netData,borderColor:'#3b5bdb',backgroundColor:'rgba(59,91,219,.05)',borderWidth:2.5,borderDash:[6,4],pointBackgroundColor:'#3b5bdb',pointRadius:3,pointHoverRadius:6,tension:.3,fill:false},
-    ]:[])},
+    data:{labels,datasets},
     options:{
       responsive:true,maintainAspectRatio:false,
       interaction:{mode:'index',intersect:false},
