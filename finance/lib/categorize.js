@@ -166,11 +166,16 @@ function categorize(description, rawCategory, source) {
 // don't match. A looser containment measure was tried and backfired — location
 // tokens made a Starbucks charge "comparable" to hundreds of Miami merchants.
 const SIMILARITY_THRESHOLD = 0.5;
-// Need at least this many comparable historical rows before we trust a vote.
-const MIN_COMPARABLE = 3;
+// Need at least this much WEIGHTED evidence before we trust a vote. Because a
+// user's manual correction counts as MANUAL_WEIGHT (2), two manual labels of the
+// same merchant (weight 4) clear this bar and auto-apply, while two unconfirmed
+// auto-guesses (weight 2) still don't — so your explicit corrections are trusted
+// faster than the categorizer's own guesses.
+const MIN_EVIDENCE = 3;
 // The winning category must hold more than this share of the weighted vote.
 const CONFIDENCE_THRESHOLD = 0.9;
-// Manual (user-corrected) categorizations count double in the vote.
+// Manual (user-corrected) categorizations count double in the vote AND toward the
+// evidence threshold above.
 const MANUAL_WEIGHT = 2;
 
 // Bank ACH / transfer lines carry the originator (merchant) name first, followed
@@ -267,7 +272,7 @@ function buildHistoryIndex(rows) {
  */
 function scoreFromHistory(description, index) {
   const tokens = new Set(normalizeTokens(description));
-  if (!tokens.size) return { comparable: 0, category: null, group: null, confidence: 0 };
+  if (!tokens.size) return { comparable: 0, weight: 0, category: null, group: null, confidence: 0 };
 
   const entries = index || [];
   const df = entries.df; // Map, or undefined for a plain array
@@ -319,7 +324,7 @@ function scoreFromHistory(description, index) {
     cur.weight += h.weight;
     votes.set(h.category, cur);
   }
-  if (!comparable) return { comparable: 0, category: null, group: null, confidence: 0 };
+  if (!comparable) return { comparable: 0, weight: 0, category: null, group: null, confidence: 0 };
 
   let best = null;
   for (const [category, v] of votes) {
@@ -327,6 +332,7 @@ function scoreFromHistory(description, index) {
   }
   return {
     comparable,
+    weight: totalWeight, // weighted evidence (manual rows count MANUAL_WEIGHT)
     category: best.category,
     group: best.group,
     confidence: totalWeight ? best.weight / totalWeight : 0,
@@ -337,9 +343,10 @@ function scoreFromHistory(description, index) {
  * Confidence-based categorization with rule fallback.
  *
  *  - Zero comparable history  -> hardcoded rules (confidence null).
- *  - >= MIN_COMPARABLE matches AND a category with > CONFIDENCE_THRESHOLD of the
- *    weighted vote -> that category (confidence = its share).
- *  - Otherwise (too few matches, or no clear winner) -> Uncategorized. When
+ *  - >= MIN_EVIDENCE weighted evidence AND a category with > CONFIDENCE_THRESHOLD
+ *    of the weighted vote -> that category (confidence = its share). Since manual
+ *    labels weigh MANUAL_WEIGHT, two of them are enough on their own.
+ *  - Otherwise (too little evidence, or no clear winner) -> Uncategorized. When
  *    there WERE matches we still report the runner-up confidence so the UI can
  *    show why it wasn't sure.
  *
@@ -352,13 +359,13 @@ function scoreFromHistory(description, index) {
  * @returns {{category: string, group: string, confidence: number|null}}
  */
 function categorizeWithHistory(description, rawCategory, source, index) {
-  const { comparable, category, group, confidence } = scoreFromHistory(description, index);
+  const { comparable, weight, category, group, confidence } = scoreFromHistory(description, index);
 
   if (comparable === 0) {
     const r = categorize(description, rawCategory, source); // rule fallback
     return { category: r.category, group: r.group, confidence: null };
   }
-  if (comparable < MIN_COMPARABLE || confidence <= CONFIDENCE_THRESHOLD) {
+  if (weight < MIN_EVIDENCE || confidence <= CONFIDENCE_THRESHOLD) {
     return { category: 'Uncategorized', group: groupFor('Uncategorized'), confidence };
   }
   return { category, group, confidence };
@@ -372,6 +379,6 @@ module.exports = {
   normalizeTokens,
   jaccard,
   SIMILARITY_THRESHOLD,
-  MIN_COMPARABLE,
+  MIN_EVIDENCE,
   CONFIDENCE_THRESHOLD,
 };

@@ -133,14 +133,27 @@ test('categorizeWithHistory: >=3 comparable + unanimous -> confident, is_manual 
   assert.equal(r.confidence, 1);
 });
 
-test('categorizeWithHistory: fewer than 3 comparable -> Uncategorized (even if unanimous)', () => {
+test('categorizeWithHistory: two AUTO matches is too little evidence -> Uncategorized', () => {
   const index = buildHistoryIndex([
-    row('PUBLIX #1', 'Groceries', 'Food'),
-    row('PUBLIX #2', 'Groceries', 'Food'),
+    row('PUBLIX #1', 'Groceries', 'Food'), // auto -> weight 1
+    row('PUBLIX #2', 'Groceries', 'Food'), // auto -> weight 1 (total 2 < MIN_EVIDENCE 3)
   ]);
   const r = categorizeWithHistory('PUBLIX #500', '', 'amex_gold', index);
   assert.equal(r.category, 'Uncategorized');
   assert.equal(r.confidence, 1); // reports the (too-thin) vote share
+});
+
+test('categorizeWithHistory: two MANUAL matches are enough evidence -> categorized', () => {
+  // Mirrors the real "SP BOBBIE" case: user manually labeled the merchant twice;
+  // weight 2+2 = 4 clears MIN_EVIDENCE, so the third occurrence auto-applies.
+  const index = buildHistoryIndex([
+    row('SP BOBBIE SAN FRANCISCO CA', 'Baby Gear', 'Baby', true),
+    row('SP BOBBIE SAN FRANCISCO CA', 'Baby Gear', 'Baby', true),
+  ]);
+  const r = categorizeWithHistory('SP BOBBIE SAN FRANCISCO CA', '', 'amex_gold', index);
+  assert.equal(r.category, 'Baby Gear');
+  assert.equal(r.group, 'Baby');
+  assert.equal(r.confidence, 1);
 });
 
 // Digit-only suffixes normalize away, so every row shares the token {PUBLIX}
