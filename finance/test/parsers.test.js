@@ -76,8 +76,8 @@ test('detectSource infers the format from column headers', () => {
   assert.equal(detect('bankofamerica.csv'), 'bankofamerica');
   assert.equal(detect('amex_gold.csv'), 'amex_gold');
   assert.equal(detect('sofi.csv'), 'sofi');
-  // Capital One shares BoA's credit-card header, so it resolves to bankofamerica.
-  assert.equal(detect('capitalone.csv'), 'bankofamerica');
+  // Capital One shares BoA's credit-card header but uses ISO dates -> capitalone.
+  assert.equal(detect('capitalone.csv'), 'capitalone');
   assert.equal(detectSource([['no', 'matching', 'headers']]), null);
 });
 

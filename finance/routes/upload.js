@@ -72,7 +72,7 @@ router.post('/', upload.array('files', 20), async (req, res, next) => {
             category_group: group,
             confidence_score: confidence,
             raw_description: t.rawDescription,
-            dedup_hash: dedupHash(t.date, t.rawDescription, t.amount, p.source),
+            dedup_hash: dedupHash(t.date, t.rawDescription, t.amount),
           },
         });
       }
