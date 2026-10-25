@@ -2,7 +2,7 @@
 // it into normalized transaction rows:
 //   { date, description, rawDescription, amount, rawCategory, source }
 // Categorization and dedup happen downstream in the upload route.
-const { fileToRows, findHeaderRow } = require('./util');
+const { fileToRows, findHeaderRow, columnMap } = require('./util');
 const bankofamerica = require('./bankofamerica');
 const amex = require('./amex');
 const sofi = require('./sofi');
@@ -32,10 +32,10 @@ function displayFor(sourceKey) {
  *                       checking:    'Date' + 'Amount' + 'Running Bal.'
  *
  * Note: Capital One credit-card exports share Bank of America's credit-card
- * header exactly (same column names; only the date FORMAT differs), so they
- * resolve to 'bankofamerica' here. Auto-detection is scoped to the three
- * statement formats actually uploaded (BoA, Amex, SoFi); Capital One can still
- * be parsed explicitly via parseFile(buffer, filename, 'capitalone').
+ * header EXACTLY (same column names); they're told apart by the Transaction Date
+ * format — Capital One writes ISO (YYYY-MM-DD), Bank of America writes US
+ * (MM/DD/YYYY). Getting this right matters: a Capital One file mis-labeled "Bank
+ * of America" is parsed by the wrong ruleset and (historically) dodged dedup.
  *
  * @param {Array<Array>} rows  2D array of raw cells (from fileToRows)
  * @returns {string|null} a SOURCES key, or null if undetected
@@ -45,15 +45,29 @@ function detectSource(rows) {
   if (findHeaderRow(rows, ['Date', 'Description', 'Type', 'Amount']) !== -1) return 'sofi';
   // Amex — the 'Card Member' column is unique to Amex statements.
   if (findHeaderRow(rows, ['Date', 'Description', 'Amount', 'Card Member']) !== -1) return 'amex_gold';
-  // Bank of America credit-card layout (also matches Capital One; see note).
-  if (findHeaderRow(rows, ['Transaction Date', 'Description', 'Debit', 'Credit']) !== -1) {
-    return 'bankofamerica';
-  }
+  // Credit-card layout shared by Bank of America and Capital One — disambiguate
+  // by the date format in the data rows.
+  const ccIdx = findHeaderRow(rows, ['Transaction Date', 'Description', 'Debit', 'Credit']);
+  if (ccIdx !== -1) return creditCardSourceByDateFormat(rows, ccIdx);
   // Bank of America checking-statement layout.
   if (findHeaderRow(rows, ['Date', 'Description', 'Amount', 'Running Bal.']) !== -1) {
     return 'bankofamerica';
   }
   return null;
+}
+
+// BoA credit-card vs Capital One: both export the same header, so look at the
+// first Transaction Date value. ISO (2026-06-21) -> Capital One; US (06/21/2026)
+// -> Bank of America. Defaults to Bank of America when it can't tell.
+function creditCardSourceByDateFormat(rows, headerIdx) {
+  const col = columnMap(rows[headerIdx]);
+  const cDate = col['transaction date'];
+  for (let i = headerIdx + 1; i < rows.length; i += 1) {
+    const v = String((rows[i] || [])[cDate] ?? '').trim();
+    if (/^\d{4}-\d{2}-\d{2}/.test(v)) return 'capitalone';
+    if (/^\d{1,2}\/\d{1,2}\/\d{4}/.test(v)) return 'bankofamerica';
+  }
+  return 'bankofamerica';
 }
 
 /**
