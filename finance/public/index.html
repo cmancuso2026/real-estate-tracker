@@ -292,8 +292,8 @@ table.txns tr.inc-row td{background:rgba(47,158,68,.03);}
       <div class="cat-toolbar">
         <span class="ct-lbl">View:</span>
         <select id="catView" onchange="updateCategoryTab()">
-          <option value="aggregate" selected>Aggregate</option>
-          <option value="monthly">By month (columns)</option>
+          <option value="aggregate">Aggregate</option>
+          <option value="monthly" selected>By month (columns)</option>
         </select>
         <span class="ct-lbl">Compare to:</span>
         <select id="catCompare" onchange="updateCategoryTab()">
@@ -536,10 +536,18 @@ function defaultMonthSelection(values){
   return want.length ? want : values;
 }
 
+// Default year selection: the current year only (so the default view shows the
+// current + prior month within THIS year). Falls back to all years if the data
+// has nothing for the current year.
+function defaultYearSelection(values){
+  const cur = String(new Date().getFullYear());
+  return values.includes(cur) ? [cur] : values;
+}
+
 function buildMsel(kind){
   const values = mselValues(kind);
-  // Years default to all selected; months default to current + prior month.
-  if (kind==='year') activeYears = new Set(values);
+  // Default to the current year and the current + prior month within it.
+  if (kind==='year') activeYears = new Set(defaultYearSelection(values));
   else activeMonths = new Set(defaultMonthSelection(values));
   const set = mselSet(kind);
   const panel = document.getElementById(kind+'DropPanel');
