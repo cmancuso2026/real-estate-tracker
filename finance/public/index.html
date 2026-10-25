@@ -310,6 +310,7 @@ table.txns tr.inc-row td{background:rgba(47,158,68,.03);}
         <select id="catCompare" onchange="updateCategoryTab()">
           <option value="">None</option>
         </select>
+        <button id="catCollapseBtn" class="sec" onclick="toggleCollapseAll()">Expand all</button>
         <span id="catNote" class="ct-note"></span>
       </div>
       <div style="overflow-x:auto;max-height:70vh;overflow-y:auto;">
@@ -543,14 +544,15 @@ function mselOptLabel(kind, v){ return kind==='year' ? v : MON_SHORT[parseInt(v)
 function buildYearPills(){ buildMsel('year'); }   // called by loadAllData
 function buildMonthPills(){ buildMsel('month'); } // (names kept for the loader)
 
-// Default month selection: current + prior month (by month-of-year number),
-// derived dynamically from today's date. Falls back to all available months if
-// neither is present in the data (e.g. a dataset that predates this month).
+// Default month selection: current + the prior two months (a 3-month window, by
+// month-of-year number), derived dynamically from today's date. Falls back to all
+// available months if none are present in the data (e.g. a dataset that predates
+// this month).
 function defaultMonthSelection(values){
-  const now = new Date();
-  const cur = now.getMonth() + 1;         // 1-12
-  const prior = cur === 1 ? 12 : cur - 1; // January wraps back to December
-  const want = [String(cur), String(prior)].filter(v => values.includes(v));
+  const cur = new Date().getMonth() + 1; // 1-12
+  const months = [];
+  for (let back = 0; back <= 2; back += 1) months.push(((cur - 1 - back + 12) % 12) + 1); // wraps past Jan
+  const want = months.map(String).filter(v => values.includes(v));
   return want.length ? want : values;
 }
 
@@ -711,8 +713,24 @@ const GROUP_ICON = {
   'Baby':'👶','Financials':'💳','Food':'🛒','Investments':'🏠','Living':'🏡',
   'Other':'🎭','Travel':'🚗','W2 Income':'💰',
 };
-let catCollapsed = new Set();      // group names whose subcategories are hidden
+let catCollapsed = new Set(Object.keys(GROUPS)); // group names whose subcategories are hidden — collapsed by default
 let propCollapsed = new Set(Object.keys(PROPERTIES)); // properties start collapsed (show net only)
+
+// Collapse/expand every group at once (the toolbar "Collapse all" toggle).
+function toggleCollapseAll(){
+  const groups = Object.keys(GROUPS);
+  const allCollapsed = groups.length && groups.every(g => catCollapsed.has(g));
+  catCollapsed = allCollapsed ? new Set() : new Set(groups);
+  updateCategoryTab();
+}
+// Keep the toggle's label in sync with the current state.
+function syncCollapseAllBtn(){
+  const btn = document.getElementById('catCollapseBtn');
+  if(!btn) return;
+  const groups = Object.keys(GROUPS);
+  const allCollapsed = groups.length && groups.every(g => catCollapsed.has(g));
+  btn.textContent = allCollapsed ? 'Expand all' : 'Collapse all';
+}
 
 function ymOf(t){ return t.date.slice(0,7); }               // 'YYYY-MM'
 function ymLabel(ym){ const [y,m]=ym.split('-'); return MON_SHORT[parseInt(m)]+' '+y; }
@@ -865,6 +883,7 @@ function updateCategoryTab() {
     if(compare) n += ` · vs ${cmpLabel(compare)}`;
     note.textContent=n;
   }
+  syncCollapseAllBtn();
 }
 
 function toggleCatGroup(grp){
@@ -1508,6 +1527,8 @@ async function init(){
       const cats = await API.get('/api/categories');
       if (cats && cats.groups) { GROUPS = cats.groups; rebuildTaxonomy(); }
     } catch (e) { console.warn('categories fetch failed; using built-in fallback', e); }
+    // Categories tab defaults to everything collapsed (seed with the real groups).
+    catCollapsed = new Set(Object.keys(GROUPS));
   } catch (err) {
     console.error(err);
     alert('Failed to initialize: ' + err.message);
