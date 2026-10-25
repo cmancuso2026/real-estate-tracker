@@ -29,34 +29,41 @@ test('API integration (pg-mem)', async (t) => {
   const base = `http://127.0.0.1:${server.address().port}`;
 
   const getJson = async (p) => (await fetch(`${base}${p}`)).json();
-  const uploadFixture = async (file, source) => {
-    const buf = fs.readFileSync(path.join(__dirname, 'fixtures', file));
+  const fixtureBuf = (file) => fs.readFileSync(path.join(__dirname, 'fixtures', file));
+  // Source is now auto-detected from the file's headers — never sent by the client.
+  const uploadFixtures = async (...fileNames) => {
     const fd = new FormData();
-    fd.append('file', new Blob([buf]), file);
-    fd.append('source', source);
+    for (const file of fileNames) fd.append('files', new Blob([fixtureBuf(file)]), file);
     const r = await fetch(`${base}/api/upload`, { method: 'POST', body: fd });
     return { status: r.status, body: await r.json() };
   };
+  const uploadFixture = (file) => uploadFixtures(file);
 
   try {
-    await t.test('upload Bank of America', async () => {
-      const { status, body } = await uploadFixture('bankofamerica.csv', 'bankofamerica');
+    await t.test('upload Bank of America (source auto-detected)', async () => {
+      const { status, body } = await uploadFixture('bankofamerica.csv');
       assert.equal(status, 200);
-      assert.equal(body.source, 'Bank of America');
+      assert.equal(body.by_source[0].source, 'Bank of America');
       assert.equal(body.total_rows, 7); // parser already dropped the CapOne credit
       assert.equal(body.new_rows, 7);
       assert.equal(body.skipped, 0);
     });
 
     await t.test('re-uploading the same file inserts nothing (dedup)', async () => {
-      const { body } = await uploadFixture('bankofamerica.csv', 'bankofamerica');
+      const { body } = await uploadFixture('bankofamerica.csv');
       assert.equal(body.new_rows, 0);
       assert.equal(body.skipped, 7);
     });
 
-    await t.test('upload Amex + SoFi', async () => {
-      assert.equal((await uploadFixture('amex_gold.csv', 'amex_gold')).body.new_rows, 7);
-      assert.equal((await uploadFixture('sofi.csv', 'sofi')).body.new_rows, 5);
+    await t.test('upload Amex + SoFi together (multi-file, auto-detected)', async () => {
+      const { status, body } = await uploadFixtures('amex_gold.csv', 'sofi.csv');
+      assert.equal(status, 200);
+      assert.equal(body.files_parsed, 2);
+      assert.equal(body.new_rows, 12); // 7 Amex + 5 SoFi
+      assert.deepEqual(body.errors, []);
+      const sources = Object.fromEntries(body.by_source.map((s) => [s.source, s]));
+      assert.equal(sources['Amex Gold'].new_rows, 7);
+      assert.equal(sources.SoFi.new_rows, 5);
     });
 
     await t.test('GET /api/years and /api/months', async () => {
@@ -167,7 +174,7 @@ test('API integration (pg-mem)', async (t) => {
 
       // Delete the row, then re-upload — the override must reapply automatically.
       await knex('transactions').where({ id }).del();
-      const re = await uploadFixture('amex_gold.csv', 'amex_gold');
+      const re = await uploadFixture('amex_gold.csv');
       assert.equal(re.body.new_rows, 1); // only the deleted OpenAI row comes back
 
       const check = await getJson('/api/transactions?year=2026&search=openai');
