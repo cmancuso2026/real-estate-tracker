@@ -3,12 +3,12 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 import { createFinanceKnex } from './db/connection.js';
-import uploadRouter from './routes/upload.js';
-import transactionsRouter from './routes/transactions.js';
-import summaryRouter from './routes/summary.js';
-import categoriesRouter from './routes/categories.js';
-import yearsRouter from './routes/years.js';
-import monthsRouter from './routes/months.js';
+import uploadRouter from './services/upload.js';
+import transactionsRouter from './services/transactions.js';
+import summaryRouter from './services/summary.js';
+import categoriesRouter from './services/categories.js';
+import yearsRouter from './services/years.js';
+import monthsRouter from './services/months.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // The legacy dashboard stays in finance/public until the Phase 4 React rebuild.
