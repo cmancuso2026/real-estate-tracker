@@ -10,9 +10,7 @@ import { fmt, shortDate } from '@/lib/finance-ui/format';
 import { computeDiscrepancies } from '@/lib/finance-ui/review';
 import { groupOf } from '@/lib/finance-ui/taxonomy';
 import {
-  filterTxns,
   nextSort,
-  SOURCES,
   summaryBar,
   txnComparator,
   type SortKey,
@@ -30,11 +28,7 @@ const COLUMNS: { key: SortKey; label: string; right?: boolean }[] = [
 ];
 
 export default function FinanceTransactionsPage() {
-  const { txns, periodTxns, tax, patchTxns } = useFinance();
-  const [search, setSearch] = useState('');
-  const [group, setGroup] = useState('');
-  const [category, setCategory] = useState('');
-  const [source, setSource] = useState('');
+  const { txns, filteredTxns, periodTxns, tax, patchTxns } = useFinance();
   const [flaggedOnly, setFlaggedOnly] = useState(false);
   const [sort, setSort] = useState<SortState>({ key: 'date', dir: 'desc' });
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
@@ -46,20 +40,18 @@ export default function FinanceTransactionsPage() {
 
   // Flags are computed over ALL transactions (old computeDiscrepancies).
   const disc = useMemo(() => computeDiscrepancies(txns, tax), [txns, tax]);
+  // The global filters (bar above) are already applied; this page adds only
+  // the ⚠ Review toggle and sorting.
   const rows = useMemo(
-    () =>
-      filterTxns(periodTxns, { search, group, category, source, flaggedOnly }, tax, disc.flags).sort(
-        txnComparator(sort, tax),
-      ),
-    [periodTxns, search, group, category, source, flaggedOnly, tax, disc, sort],
+    () => (flaggedOnly ? filteredTxns.filter((t) => disc.flags.has(t.id)) : filteredTxns.slice()).sort(txnComparator(sort, tax)),
+    [filteredTxns, flaggedOnly, tax, disc, sort],
   );
-  const flaggedInPeriod = periodTxns.filter((t) => disc.flags.has(t.id)).length;
+  const flaggedInView = filteredTxns.filter((t) => disc.flags.has(t.id)).length;
   const sum = summaryBar(rows);
-  const catOptions = group && tax.groups[group] ? tax.groups[group]! : tax.allSubcats;
 
   // Like the old page, a re-filter drops the selection, so a bulk action can
   // never hit rows that are no longer on screen.
-  useEffect(() => setSelected(new Set()), [periodTxns, search, group, category, source, flaggedOnly]);
+  useEffect(() => setSelected(new Set()), [filteredTxns, flaggedOnly]);
   useEffect(() => {
     if (!bulkCat && tax.allSubcats.length) setBulkCat(tax.allSubcats[0]!);
   }, [bulkCat, tax.allSubcats]);
@@ -147,40 +139,6 @@ export default function FinanceTransactionsPage() {
   return (
     <Card className="p-0">
       <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 px-4 py-3">
-        <input
-          type="search"
-          aria-label="Search transactions"
-          placeholder="Search…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-56 rounded-lg border border-gray-300 px-2.5 py-1 text-sm"
-        />
-        <select
-          aria-label="Group filter"
-          className={selectCls}
-          value={group}
-          onChange={(e) => {
-            setGroup(e.target.value);
-            setCategory('');
-          }}
-        >
-          <option value="">All Groups</option>
-          {Object.keys(tax.groups).map((g) => (
-            <option key={g}>{g}</option>
-          ))}
-        </select>
-        <select aria-label="Category filter" className={selectCls} value={category} onChange={(e) => setCategory(e.target.value)}>
-          <option value="">All Categories</option>
-          {catOptions.map((c) => (
-            <option key={c}>{c}</option>
-          ))}
-        </select>
-        <select aria-label="Source filter" className={selectCls} value={source} onChange={(e) => setSource(e.target.value)}>
-          <option value="">All Sources</option>
-          {SOURCES.map((s) => (
-            <option key={s}>{s}</option>
-          ))}
-        </select>
         <button
           className={`${btnSecondary} ${flaggedOnly ? '!border-amber-400 !bg-amber-50 !text-amber-800' : ''}`}
           title="Show only possibly miscategorized transactions"
@@ -188,7 +146,7 @@ export default function FinanceTransactionsPage() {
           onClick={() => setFlaggedOnly((v) => !v)}
           data-testid="review-toggle"
         >
-          ⚠ Review ({flaggedInPeriod})
+          ⚠ Review ({flaggedInView})
         </button>
         <span className="text-xs text-gray-400" data-testid="txn-count">
           {rows.length} of {periodTxns.length}

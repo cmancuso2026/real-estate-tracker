@@ -117,3 +117,22 @@ categories, names that hint at another group).
 4. **Unit tests** (`src/dashboard/test/finance-ui.test.ts`, part of `npm test`)
    pin the default period window, roll-ups, weekly buckets, review rules, sorting,
    filters and totals.
+
+## Changed after Phase 4 (requested): global filters
+
+The old page had separate filters per view: the chart had Group/Category, and the
+transactions table had search/group/category/source. Now one filter bar (years,
+months, group, category or property roll-up, source, search) sits above every
+finance page and applies to all of them: KPI cards, chart, Spending table (and
+its "Compare to" column) and Transactions table. The selection survives moving
+between pages.
+
+- With no filters set, every page is unchanged. The side-by-side run above was
+  repeated after this change: 100 comparisons, 0 mismatches. The ⚠ Review count
+  is compared only when unfiltered, because it now counts the filtered rows.
+- With filters set, the views agree: KPI cash flow = Spending net total =
+  Transactions income + expenses (checked for a group, a property roll-up, a
+  search and a source).
+- The chart's Group/Category selects are gone; the global ones also choose the
+  chart's shape (a group alone → one line per category; a property → Rent /
+  Costs / Net).

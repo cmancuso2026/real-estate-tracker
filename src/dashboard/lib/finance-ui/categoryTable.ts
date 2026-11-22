@@ -1,5 +1,5 @@
 import { MON_SHORT } from './format';
-import { filterByPeriod, propertyOfCat, topNotes } from './period';
+import { propertyOfCat, topNotes } from './period';
 import { noteTitle } from './notes';
 import type { Taxonomy } from './taxonomy';
 import type { PropertyGroup, Txn } from './types';
@@ -72,17 +72,20 @@ interface DataCol extends Col {
   notedByCat?: Record<string, Txn[]>;
 }
 
-/** The Spending table, exactly as the old updateCategoryTab() built it. */
+/**
+ * The Spending table, built as the old updateCategoryTab() did.
+ * `rows`: the selected period with the global filters applied.
+ * `comparePool`: every transaction with the global filters applied (no period),
+ * which the "Compare to" column draws from so both sides use the same filters.
+ */
 export function buildCategoryTable(
-  txns: Txn[],
-  years: ReadonlySet<string>,
-  months: ReadonlySet<string>,
+  rows: Txn[],
+  comparePool: Txn[],
   tax: Taxonomy,
   props: PropertyGroup[],
   view: CatView,
   compare: string,
 ): CategoryTable {
-  const rows = filterByPeriod(txns, years, months, tax);
   const mkBycat = (rs: Txn[]) => {
     const m: Record<string, number> = {};
     rs.forEach((t) => (m[t.cat] = (m[t.cat] || 0) + t.amt));
@@ -104,7 +107,7 @@ export function buildCategoryTable(
 
   let cmpBycat: Record<string, number> | null = null;
   if (compare) {
-    const cmpRows = txns.filter((t) => matchesCompare(t, compare));
+    const cmpRows = comparePool.filter((t) => matchesCompare(t, compare));
     cmpBycat = mkBycat(cmpRows);
     cols.push({ label: cmpLabel(compare), cls: 'cmp', bycat: cmpBycat, rows: cmpRows });
     cols.push({ label: 'Δ vs ' + cmpLabel(compare), cls: 'delta', delta: true });

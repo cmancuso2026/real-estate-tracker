@@ -33,38 +33,6 @@ export function nextSort(cur: SortState, key: SortKey): SortState {
   return { key, dir: key === 'date' || key === 'amt' ? 'desc' : 'asc' };
 }
 
-export interface TxnFilters {
-  search: string;
-  group: string;
-  category: string;
-  source: string;
-  flaggedOnly: boolean;
-}
-
-/** The Transactions page's filters, applied on top of the period rows. */
-export function filterTxns(
-  base: Txn[],
-  f: TxnFilters,
-  tax: Taxonomy,
-  flagged: ReadonlyMap<number, unknown>,
-): Txn[] {
-  const search = f.search.toLowerCase();
-  return base.filter((t) => {
-    if (f.group && groupOf(tax, t.cat) !== f.group) return false;
-    if (f.category && t.cat !== f.category) return false;
-    if (f.source && t.src !== f.source) return false;
-    if (f.flaggedOnly && !flagged.has(t.id)) return false;
-    if (
-      search &&
-      !t.desc.toLowerCase().includes(search) &&
-      !t.cat.toLowerCase().includes(search) &&
-      !t.src.toLowerCase().includes(search)
-    )
-      return false;
-    return true;
-  });
-}
-
 /** KPI cards (old updateHeroCards). */
 export function heroTotals(rows: Txn[]) {
   const income = rows.filter((t) => t.amt > 0).reduce((s, t) => s + t.amt, 0);

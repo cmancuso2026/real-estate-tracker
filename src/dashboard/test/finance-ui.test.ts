@@ -9,7 +9,8 @@ import { fmt, fmtShort } from '../lib/finance-ui/format';
 import { defaultMonthSelection, defaultYearSelection, propertyOfCat } from '../lib/finance-ui/period';
 import { computeDiscrepancies, merchantKey } from '../lib/finance-ui/review';
 import { buildTaxonomy } from '../lib/finance-ui/taxonomy';
-import { filterTxns, heroTotals, nextSort } from '../lib/finance-ui/transactions';
+import { applyGlobalFilters, EMPTY_FILTERS } from '../lib/finance-ui/filters';
+import { heroTotals, nextSort } from '../lib/finance-ui/transactions';
 import type { PropertyGroup, Txn } from '../lib/finance-ui/types';
 
 const tax = buildTaxonomy({
@@ -58,7 +59,7 @@ test('weekly buckets start on Sunday', () => {
 
 test('chart: property net view plots Rent / Costs / Net', () => {
   const rows = [tx('2026-11-03', 'ZELLE 1205', 1850, '1205 Rent'), tx('2026-11-05', 'MTG', -2000, '1207 Rent')];
-  const m = buildChart(rows, new Set(['2026']), new Set(['11']), tax, props, '', 'prop:7', 'monthly')!;
+  const m = buildChart(rows, tax, '', 'prop:7', 'monthly')!;
   assert.deepEqual(m.series.map((s) => [s.label, s.data]), [['Rent', [1850]], ['Costs', [2000]], ['Net', [-150]]]);
 });
 
@@ -68,7 +69,7 @@ test('spending table: property rows nest under their group; net total adds up', 
     tx('2026-11-04', 'PLUMBER', -400, 'Repairs', { note: 'water heater' }),
     tx('2026-11-06', 'PUBLIX', -60, 'Groceries'),
   ];
-  const t = buildCategoryTable(rows, new Set(['2026']), new Set(['11']), tax, props, 'aggregate', '');
+  const t = buildCategoryTable(rows, rows, tax, props, 'aggregate', '');
   const inv = t.groups.find((g) => g.group === 'Investments')!;
   assert.equal(inv.props[0]!.prop.id, 7);
   assert.deepEqual(inv.standalone.map((r) => r.cat), ['Repairs']);
@@ -87,10 +88,23 @@ test('review flags: split merchant + odd group; cleared rows are never flagged',
   assert.equal(d.flags.has(c.id), false);
 });
 
-test('transactions filters, sorting defaults, KPI totals', () => {
+test('global filters: group, category, property roll-up, source, search', () => {
+  const rent = tx('2026-11-03', 'ZELLE 1205', 1850, '1205 Rent', { src: 'Bank of America' });
+  const repair = tx('2026-11-04', 'PLUMBER', -400, 'Repairs');
+  const food = tx('2026-11-06', 'PUBLIX', -60, 'Groceries');
+  const rows = [rent, repair, food];
+  const ids = (f: Partial<typeof EMPTY_FILTERS>) => applyGlobalFilters(rows, { ...EMPTY_FILTERS, ...f }, tax, props).map((t) => t.id);
+  assert.deepEqual(ids({}), [rent.id, repair.id, food.id]);
+  assert.deepEqual(ids({ group: 'Investments' }), [rent.id, repair.id]);
+  assert.deepEqual(ids({ category: 'Repairs' }), [repair.id]);
+  assert.deepEqual(ids({ category: 'prop:7' }), [rent.id]); // unit categories of property 7
+  assert.deepEqual(ids({ source: 'Bank of America' }), [rent.id]);
+  assert.deepEqual(ids({ search: 'groc' }), [food.id]); // search matches category too
+  assert.deepEqual(ids({ search: 'BANK OF' }), [rent.id]); // …and source
+});
+
+test('sorting defaults, KPI totals', () => {
   const rows = [tx('2026-11-01', 'PUBLIX', -60, 'Groceries'), tx('2026-11-15', 'PAYROLL', 4000, 'Paycheck')];
-  const f = { search: 'groc', group: '', category: '', source: '', flaggedOnly: false };
-  assert.equal(filterTxns(rows, f, tax, new Map()).length, 1); // search matches category too
   assert.deepEqual(nextSort({ key: 'date', dir: 'desc' }, 'amt'), { key: 'amt', dir: 'desc' });
   assert.deepEqual(nextSort({ key: 'date', dir: 'desc' }, 'desc'), { key: 'desc', dir: 'asc' });
   assert.deepEqual(heroTotals(rows), { income: 4000, spend: 60, flow: 3940, paychecks: 1, expenseCount: 1 });

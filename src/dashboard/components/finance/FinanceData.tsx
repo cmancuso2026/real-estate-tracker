@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { financeApi } from './api';
 import { buildTaxonomy, type Taxonomy } from '@/lib/finance-ui/taxonomy';
 import { mapTxn, type ApiTxn, type Groups, type PropertyGroup, type Txn } from '@/lib/finance-ui/types';
+import { applyGlobalFilters, EMPTY_FILTERS, type GlobalFilters } from '@/lib/finance-ui/filters';
 import {
   defaultMonthSelection,
   defaultYearSelection,
@@ -31,7 +32,15 @@ interface FinanceData {
   selMonths: Set<string>;
   setSelYears: (v: string[]) => void;
   setSelMonths: (v: string[]) => void;
-  /** Rows in the selected years × months. */
+  /** Global filters (group, category/property, source, search); apply on every page. */
+  filters: GlobalFilters;
+  setFilters: (patch: Partial<GlobalFilters>) => void;
+  clearFilters: () => void;
+  /** Rows in the selected years × months with the global filters applied: what every view shows. */
+  filteredTxns: Txn[];
+  /** All years/months with the global filters applied (for "Compare to"). */
+  comparePool: Txn[];
+  /** Rows in the selected years × months, before the other filters. */
   periodTxns: Txn[];
   /** Replace one transaction's fields locally after a successful save. */
   patchTxns: (ids: number[], patch: Partial<Txn>) => void;
@@ -55,6 +64,7 @@ export function FinanceDataProvider({ children }: { children: React.ReactNode })
   const [props, setProps] = useState<PropertyGroup[]>([]);
   const [selYears, setSelYearsState] = useState<Set<string>>(new Set());
   const [selMonths, setSelMonthsState] = useState<Set<string>>(new Set());
+  const [filters, setFiltersState] = useState<GlobalFilters>(EMPTY_FILTERS);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -89,9 +99,11 @@ export function FinanceDataProvider({ children }: { children: React.ReactNode })
   const tax = useMemo(() => buildTaxonomy(groups), [groups]);
   const years = useMemo(() => yearsInData(txns), [txns]);
   const months = useMemo(() => monthsInData(txns), [txns]);
-  const periodTxns = useMemo(
-    () => filterByPeriod(txns, selYears, selMonths, tax),
-    [txns, selYears, selMonths, tax],
+  const periodTxns = useMemo(() => filterByPeriod(txns, selYears, selMonths, tax), [txns, selYears, selMonths, tax]);
+  const comparePool = useMemo(() => applyGlobalFilters(txns, filters, tax, props), [txns, filters, tax, props]);
+  const filteredTxns = useMemo(
+    () => filterByPeriod(comparePool, selYears, selMonths, tax),
+    [comparePool, selYears, selMonths, tax],
   );
 
   const patchTxns = useCallback((ids: number[], patch: Partial<Txn>) => {
@@ -111,6 +123,11 @@ export function FinanceDataProvider({ children }: { children: React.ReactNode })
     selMonths,
     setSelYears: (v) => setSelYearsState(new Set(v)),
     setSelMonths: (v) => setSelMonthsState(new Set(v)),
+    filters,
+    setFilters: (patch) => setFiltersState((f) => ({ ...f, ...patch })),
+    clearFilters: () => setFiltersState(EMPTY_FILTERS),
+    filteredTxns,
+    comparePool,
     periodTxns,
     patchTxns,
     reload,

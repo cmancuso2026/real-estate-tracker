@@ -1,7 +1,10 @@
+import { PROP_PREFIX } from './filters';
 import { MONTH_NAMES } from './format';
-import { filterByPeriod, propertyOfCat, topNotes } from './period';
+import { topNotes } from './period';
 import type { Taxonomy } from './taxonomy';
-import type { PropertyGroup, Txn } from './types';
+import type { Txn } from './types';
+
+export { PROP_PREFIX };
 
 export type Granularity = 'daily' | 'weekly' | 'monthly';
 
@@ -48,32 +51,23 @@ export interface ChartModel {
   notesByKey: Record<string, Txn[]>;
 }
 
-/** Value of the chart's Category select for a property's net view. */
-export const PROP_PREFIX = 'prop:';
-
 /**
- * The chart's data, exactly as the old renderChart() built it:
+ * The chart's data, built as the old renderChart() did, from rows that already
+ * have the period and global filters applied. `grp` / `cat` (the global Group
+ * and Category filters) only choose the shape:
  * - a group with no category → one series per subcategory with activity
  * - a property ('prop:<id>') → Rent / Costs / Net
  * - otherwise → Income / Spending
- * Returns null when the period has no rows (the old page drew no chart).
+ * Returns null when there are no rows (the old page drew no chart).
  */
 export function buildChart(
-  txns: Txn[],
-  years: ReadonlySet<string>,
-  months: ReadonlySet<string>,
+  rows: Txn[],
   tax: Taxonomy,
-  props: PropertyGroup[],
   grp: string,
   cat: string,
   gran: Granularity,
 ): ChartModel | null {
   const isProp = cat.startsWith(PROP_PREFIX);
-  const rows = isProp
-    ? filterByPeriod(txns, years, months, tax, grp || null).filter(
-        (t) => String(propertyOfCat(t.cat, props)?.id) === cat.slice(PROP_PREFIX.length),
-      )
-    : filterByPeriod(txns, years, months, tax, grp || null, cat || null);
 
   const groupBreakdown = !!grp && !cat;
   let keys: string[];

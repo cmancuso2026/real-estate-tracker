@@ -36,7 +36,7 @@ function AmountCell({ cell, cls, bold = false }: { cell: Cell; cls: ColClass; bo
 }
 
 export default function FinanceSpendingPage() {
-  const { txns, tax, props, selYears, selMonths } = useFinance();
+  const { txns, filteredTxns, comparePool, tax, props } = useFinance();
   const [view, setView] = useState<CatView>('monthly');
   const [compare, setCompare] = useState('');
   // Groups and properties start collapsed (as on the old page).
@@ -44,8 +44,8 @@ export default function FinanceSpendingPage() {
   const [openProps, setOpenProps] = useState<Set<number>>(new Set());
 
   const table = useMemo(
-    () => buildCategoryTable(txns, selYears, selMonths, tax, props, view, compare),
-    [txns, selYears, selMonths, tax, props, view, compare],
+    () => buildCategoryTable(filteredTxns, comparePool, tax, props, view, compare),
+    [filteredTxns, comparePool, tax, props, view, compare],
   );
   const options = useMemo(() => compareOptions(txns), [txns]);
   useEffect(() => {

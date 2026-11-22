@@ -4,26 +4,24 @@ import { useMemo, useState } from 'react';
 import { useFinance } from '@/components/finance/FinanceData';
 import { FinanceChart, type ChartKind, type StackMode } from '@/components/finance/FinanceChart';
 import { Card, Field, selectCls } from '@/components/finance/ui';
-import { buildChart, PROP_PREFIX, type Granularity } from '@/lib/finance-ui/chart';
+import { buildChart, type Granularity } from '@/lib/finance-ui/chart';
 import { fmt } from '@/lib/finance-ui/format';
 import { heroTotals } from '@/lib/finance-ui/transactions';
 
 export default function FinanceOverviewPage() {
-  const { txns, periodTxns, tax, props, selYears, selMonths } = useFinance();
-  const [grp, setGrp] = useState('');
-  const [cat, setCat] = useState('');
+  const { filteredTxns, tax, filters } = useFinance();
   const [gran, setGran] = useState<Granularity>('monthly');
   const [kind, setKind] = useState<ChartKind>('line');
   const [stack, setStack] = useState<StackMode>('grouped');
 
-  const hero = heroTotals(periodTxns);
+  // Cards and chart both use the shared rows (period + global filters). The
+  // Group / Category filters also pick the chart's shape: a group alone breaks
+  // into one line per category; a property shows Rent / Costs / Net.
+  const hero = heroTotals(filteredTxns);
   const model = useMemo(
-    () => buildChart(txns, selYears, selMonths, tax, props, grp, cat, gran),
-    [txns, selYears, selMonths, tax, props, grp, cat, gran],
+    () => buildChart(filteredTxns, tax, filters.group, filters.category, gran),
+    [filteredTxns, tax, filters.group, filters.category, gran],
   );
-  // Category options follow the group; property net views only for All / Investments.
-  const catOptions = grp && tax.groups[grp] ? tax.groups[grp]! : tax.allSubcats;
-  const showProps = !grp || grp === 'Investments';
 
   return (
     <div className="space-y-5">
@@ -53,36 +51,6 @@ export default function FinanceOverviewPage() {
       <Card>
         <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2">
           <h2 className="mr-auto font-semibold">Income vs. Spending Over Time</h2>
-          <Field label="Group:">
-            <select
-              aria-label="Chart group"
-              className={selectCls}
-              value={grp}
-              onChange={(e) => {
-                setGrp(e.target.value);
-                setCat('');
-              }}
-            >
-              <option value="">All</option>
-              {Object.keys(tax.groups).map((g) => (
-                <option key={g}>{g}</option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Category:">
-            <select aria-label="Chart category" className={selectCls} value={cat} onChange={(e) => setCat(e.target.value)}>
-              <option value="">All</option>
-              {showProps &&
-                props.map((p) => (
-                  <option key={p.id} value={PROP_PREFIX + p.id}>
-                    🏠 {p.name} (net)
-                  </option>
-                ))}
-              {catOptions.map((c) => (
-                <option key={c}>{c}</option>
-              ))}
-            </select>
-          </Field>
           <Field label="View:">
             <select aria-label="Chart granularity" className={selectCls} value={gran} onChange={(e) => setGran(e.target.value as Granularity)}>
               <option value="daily">Daily</option>
