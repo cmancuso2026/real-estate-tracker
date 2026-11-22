@@ -1,20 +1,65 @@
-import { initDb } from './init.js';
-import { closeDb, query } from './index.js';
+import { assertDatabaseUrl, initDb } from './init.js';
+import { closeDb, getPool, query } from './index.js';
+import { createFinanceKnex, migrateFinance } from '../finance/db/connection.js';
 
 /**
- * Postgres migration / setup script. Creates every table the tracker uses
- * (listings, rentals, interest_rates, grades, crime_cache, crime_zip_cache,
- * census_cache, alerts_sent, investor_profile) by applying src/db/schema.sql.
- * Idempotent — safe to run on every deploy; existing tables are left intact.
+ * Postgres migration / setup script, in two steps against the one DATABASE_URL:
+ *
+ *   1. src/db/schema.sql — every tracker table (listings, rentals, grades,
+ *      owned_properties, units, work_orders, …). Idempotent: every statement is
+ *      IF NOT EXISTS, so existing tables are left intact.
+ *   2. The finance Knex migrations in src/finance/db/migrations (transactions,
+ *      category_overrides, upload_log, custom_categories, …), tracked in the
+ *      knex_migrations table. Runs second because later finance migrations
+ *      reference tracker tables (owned_properties, work_orders, units).
+ *
+ * Safe to run on every deploy.
  *
  *   npm run db:migrate          # against $DATABASE_URL
  *
  * Railway: this runs automatically on web boot (see the `start` script) so a
  * fresh Postgres plugin is provisioned without any manual step.
  */
+/**
+ * Arbitrary constant key for a Postgres advisory lock. The web and worker
+ * services both run db:migrate on boot; on a brand-new database two concurrent
+ * `CREATE TABLE IF NOT EXISTS` runs can collide in the system catalog
+ * (pg_type_typname_nsp_index), and Knex's own migration lock only covers its
+ * migrations, not creating knex_migrations itself. Holding one session-level
+ * lock for the whole run makes the second process wait for the first.
+ */
+const MIGRATE_LOCK_KEY = 727_115_001;
+
 async function main(): Promise<void> {
+  assertDatabaseUrl();
+  const lockClient = await getPool().connect();
+  try {
+    await lockClient.query('SELECT pg_advisory_lock($1)', [MIGRATE_LOCK_KEY]);
+    await migrateAll();
+  } finally {
+    await lockClient
+      .query('SELECT pg_advisory_unlock($1)', [MIGRATE_LOCK_KEY])
+      .catch(() => {});
+    lockClient.release();
+  }
+}
+
+async function migrateAll(): Promise<void> {
   console.log('Applying schema to Postgres ($DATABASE_URL)…');
   await initDb();
+
+  console.log('Applying finance migrations (knex_migrations)…');
+  const knex = createFinanceKnex(assertDatabaseUrl(), { poolMax: 1 });
+  try {
+    const applied = await migrateFinance(knex, { log: (m) => console.log(m) });
+    console.log(
+      applied.length
+        ? `✓ Applied ${applied.length} finance migration(s): ${applied.join(', ')}.`
+        : '✓ Finance migrations already up to date.',
+    );
+  } finally {
+    await knex.destroy();
+  }
 
   const tables = await query<{ table_name: string }>(
     `SELECT table_name FROM information_schema.tables

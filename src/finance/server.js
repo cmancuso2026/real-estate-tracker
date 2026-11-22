@@ -2,7 +2,7 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-import db from './db/knex.js';
+import { createFinanceKnex } from './db/connection.js';
 import uploadRouter from './routes/upload.js';
 import transactionsRouter from './routes/transactions.js';
 import summaryRouter from './routes/summary.js';
@@ -18,7 +18,7 @@ const app = express();
 
 // Shared DB handle. Routes read `req.app.locals.db` so tests can inject an
 // in-memory Postgres without touching the modules.
-app.locals.db = db;
+app.locals.db = process.env.DATABASE_URL ? createFinanceKnex() : null;
 
 app.use(express.json());
 app.use(express.static(PUBLIC_DIR));
