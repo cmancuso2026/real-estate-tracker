@@ -18,12 +18,15 @@ export interface GlobalFilters {
   source: string;
   /** Case-insensitive match on description, category or source. */
   search: string;
+  /** Transactions linked to this property / project (set by links such as the Projects tab). */
+  linkedPropertyId?: number | null;
+  linkedProjectId?: number | null;
 }
 
-export const EMPTY_FILTERS: GlobalFilters = { group: '', category: '', source: '', search: '' };
+export const EMPTY_FILTERS: GlobalFilters = { group: '', category: '', source: '', search: '', linkedPropertyId: null, linkedProjectId: null };
 
 export function hasActiveFilters(f: GlobalFilters): boolean {
-  return !!(f.group || f.category || f.source || f.search);
+  return !!(f.group || f.category || f.source || f.search || f.linkedPropertyId || f.linkedProjectId);
 }
 
 /** Rows matching the non-period filters (group, category/property, source, search). */
@@ -42,6 +45,8 @@ export function applyGlobalFilters(
       if (String(propertyOfCat(t.cat, props)?.id) !== propId) return false;
     } else if (f.category && t.cat !== f.category) return false;
     if (f.source && t.src !== f.source) return false;
+    if (f.linkedPropertyId && t.propertyId !== f.linkedPropertyId) return false;
+    if (f.linkedProjectId && t.workOrderId !== f.linkedProjectId) return false;
     if (
       search &&
       !t.desc.toLowerCase().includes(search) &&

@@ -21,6 +21,7 @@ import { fileURLToPath } from 'url';
 import { newDb } from 'pg-mem';
 
 import { startRouteServer } from './helpers/finance-api-server.js';
+import { createTrackerStubs } from './helpers/tracker-stubs.js';
 import { setFinanceDb } from '../../dashboard/lib/finance.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -28,6 +29,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 test('API integration (pg-mem)', async (t) => {
   const db = newDb({ noAstCoverageCheck: true });
   const knex = db.adapters.createKnex();
+  await createTrackerStubs(knex); // tracker tables the finance migrations reference
   await knex.migrate.latest({ directory: path.join(__dirname, '..', 'db', 'migrations') });
 
   setFinanceDb(knex); // inject the in-memory DB into every route handler

@@ -1,8 +1,9 @@
 import { applyFilters, isoDate } from './_query.js';
 import { resolveGroup } from '../lib/categoryStore.js';
 import { recategorizeUncategorized } from '../lib/recategorize.js';
+import { applyAttribution, assertProjectTagAllowed, requiresProperty, validateAttribution } from '../lib/attribution.js';
 
-function serialize(row) {
+export function serialize(row) {
   return {
     id: row.id,
     date: isoDate(row.date),
@@ -15,6 +16,9 @@ function serialize(row) {
     review_cleared: !!row.review_cleared,
     note: row.note || '',
     confidence_score: row.confidence_score == null ? null : Number(row.confidence_score),
+    property_id: row.property_id == null ? null : Number(row.property_id),
+    work_order_id: row.work_order_id == null ? null : Number(row.work_order_id),
+    unit_id: row.unit_id == null ? null : Number(row.unit_id),
   };
 }
 
@@ -172,6 +176,20 @@ export async function setCategory(knex, params, body) {
     throw e;
   }
 
+  // Property attribution (rules in category_settings): a category that requires
+  // a property can't be chosen unless one is sent now or the row already has one.
+  // Optional body fields: property_id, unit_id, work_order_id.
+  const sentProperty = body && body.property_id != null && body.property_id !== '';
+  const attr = sentProperty ? await validateAttribution(knex, body) : null;
+  if (!attr && !existing.property_id && (await requiresProperty(knex, category))) {
+    const e = new Error(
+      `Category '${category}' requires a property. Send property_id (and optionally unit_id / work_order_id) with the category change.`,
+    );
+    e.status = 400;
+    throw e;
+  }
+  if (attr) await assertProjectTagAllowed(knex, [category], attr.work_order_id);
+
   await knex('transactions').where({ id }).update({
     category,
     category_group: categoryGroup,
@@ -193,6 +211,8 @@ export async function setCategory(knex, params, body) {
       .onConflict('dedup_hash')
       .merge();
   }
+
+  if (attr) await knex.transaction((trx) => applyAttribution(trx, [existing], attr));
 
   const updated = await knex('transactions').where({ id }).first();
   return serialize(updated);

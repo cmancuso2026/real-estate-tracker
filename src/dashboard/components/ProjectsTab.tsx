@@ -17,6 +17,8 @@ interface Project {
   property_id: number;
   status: ProjectStatus;
   is_recurring: boolean;
+  /** Starting cost (whole dollars), e.g. set when a project is created from a transaction. */
+  quoted_cost?: number | string | null;
   created_at: string;
   updated_at: string | null;
   units: AssignedUnit[];
@@ -45,6 +47,34 @@ function fmt$(n: number | string | null | undefined) {
 const projName = (p: Project) => p.project_name || p.description || 'Untitled Project';
 const selectedQuote = (p: Project) => p.quotes.find(q => q.is_selected) ?? null;
 const quoteCost = (q: Quote | null) => (q ? (q.final_cost ?? q.quoted_cost) : null);
+
+/** Actual spend from linked finance transactions vs. the selected quote (or starting cost). */
+interface ActualSpend { actual_spend: number; transaction_count: number; }
+function SpendVsQuote({ project, actual }: { project: Project; actual?: ActualSpend }) {
+  const sel = selectedQuote(project);
+  const budget = sel ? quoteCost(sel) : project.quoted_cost ?? null;
+  const budgetLabel = sel ? 'Quote' : 'Starting cost';
+  const spent = actual?.actual_spend ?? 0;
+  const diff = budget != null && budget !== '' ? spent - num(budget) : null;
+  return (
+    <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs" data-testid={`project-spend-${project.id}`}>
+      {budget != null && budget !== '' && <span className="text-gray-500">{budgetLabel} {fmt$(budget)}</span>}
+      <span className="font-medium text-gray-700">Actual {fmt$(spent)}</span>
+      {actual && diff != null && Math.abs(diff) >= 0.005 && (
+        <span className={`rounded-full px-2 py-0.5 font-medium ${diff > 0 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+          {diff > 0 ? 'Over' : 'Under'} by {fmt$(Math.abs(diff))}
+        </span>
+      )}
+      {actual ? (
+        <a href={`/finance/transactions?project=${project.id}`} onClick={(e) => e.stopPropagation()} className="text-blue-600 hover:underline">
+          {actual.transaction_count} transaction{actual.transaction_count === 1 ? '' : 's'} →
+        </a>
+      ) : (
+        <span className="text-gray-400">No linked transactions</span>
+      )}
+    </span>
+  );
+}
 
 const STATUS_BADGE: Record<ProjectStatus, string> = {
   received: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
@@ -275,11 +305,16 @@ export function ProjectsTab({ id, units }: { id: string; units: UnitLite[] }) {
   const [unitFilter, setUnitFilter] = useState<string>('all');
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [showNew, setShowNew] = useState(false);
+  const [actuals, setActuals] = useState<Record<number, ActualSpend>>({});
 
   const loadProjects = useCallback(async () => {
     const res = await fetch(`/api/v2/work-orders?propertyId=${id}`);
     const d = await res.json();
     setProjects(Array.isArray(d) ? d : []);
+    // Actual spend per project from linked finance transactions (optional: an
+    // error just leaves the column empty).
+    const a = await fetch(`/api/finance/rollups/projects?propertyId=${id}`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    setActuals(a?.projects ?? {});
   }, [id]);
   const loadVendors = useCallback(async () => {
     const res = await fetch('/api/v2/vendors');
@@ -375,6 +410,9 @@ export function ProjectsTab({ id, units }: { id: string; units: UnitLite[] }) {
                     {p.quotes.length} quote{p.quotes.length === 1 ? '' : 's'}
                     {' · '}{sel ? `${sel.vendor_name} — ${fmt$(quoteCost(sel))}` : 'No vendor selected'}
                   </p>
+                  <div className="mt-1.5">
+                    <SpendVsQuote project={p} actual={actuals[p.id]} />
+                  </div>
                 </div>
                 <span className="shrink-0 text-xs text-gray-400">{expandedId === p.id ? '▲' : '▼'}</span>
               </button>

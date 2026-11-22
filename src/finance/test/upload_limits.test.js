@@ -10,12 +10,14 @@ import { fileURLToPath } from 'url';
 import { newDb } from 'pg-mem';
 
 import { startRouteServer } from './helpers/finance-api-server.js';
+import { createTrackerStubs } from './helpers/tracker-stubs.js';
 import { setFinanceDb } from '../../dashboard/lib/finance.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 test('upload limits (pg-mem)', async (t) => {
   const knex = newDb({ noAstCoverageCheck: true }).adapters.createKnex();
+  await createTrackerStubs(knex); // tracker tables the finance migrations reference
   await knex.migrate.latest({ directory: path.join(__dirname, '..', 'db', 'migrations') });
   setFinanceDb(knex);
   const server = await startRouteServer();

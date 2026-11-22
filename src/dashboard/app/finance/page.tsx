@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { useFinance } from '@/components/finance/FinanceData';
 import { FinanceChart, type ChartKind, type StackMode } from '@/components/finance/FinanceChart';
@@ -9,7 +10,7 @@ import { fmt } from '@/lib/finance-ui/format';
 import { heroTotals } from '@/lib/finance-ui/transactions';
 
 export default function FinanceOverviewPage() {
-  const { filteredTxns, tax, filters } = useFinance();
+  const { filteredTxns, tax, filters, unattributedCount } = useFinance();
   const [gran, setGran] = useState<Granularity>('monthly');
   const [kind, setKind] = useState<ChartKind>('line');
   const [stack, setStack] = useState<StackMode>('grouped');
@@ -25,6 +26,21 @@ export default function FinanceOverviewPage() {
 
   return (
     <div className="space-y-5">
+      {unattributedCount > 0 && (
+        <Link
+          href="/finance/attribution"
+          data-testid="attribution-callout"
+          className="flex items-center justify-between gap-4 rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm hover:bg-orange-100"
+        >
+          <span>
+            <strong className="text-orange-800">
+              {unattributedCount} transaction{unattributedCount === 1 ? '' : 's'} need{unattributedCount === 1 ? 's' : ''} a property.
+            </strong>{' '}
+            <span className="text-orange-900/80">Repairs and other property costs count toward a property once they're assigned.</span>
+          </span>
+          <span className="shrink-0 font-medium text-orange-800">Review queue →</span>
+        </Link>
+      )}
       <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <Card>
           <div className="text-sm text-gray-500">Income</div>

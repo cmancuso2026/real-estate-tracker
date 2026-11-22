@@ -5,8 +5,9 @@ import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { OverviewTab } from '@/components/OverviewTab';
 import { ProjectsTab } from '@/components/ProjectsTab';
+import { PropertySpendTab } from '@/components/PropertySpendTab';
 
-type Tab = 'overview' | 'tenants' | 'rent' | 'leases' | 'projects' | 'escrow' | 'insurance';
+type Tab = 'overview' | 'tenants' | 'rent' | 'leases' | 'projects' | 'spend' | 'escrow' | 'insurance';
 
 interface Property { id: number; address: string; city: string; state: string; property_type: string; unit_count: number; }
 interface Unit { id: number; unit_label: string; tenant_name: string | null; tenant_id: number | null; rent_amount: number | null; lease_start_date: string | null; lease_end_date: string | null; first_lease_start_date: string | null; amount_due: number | null; amount_paid: number | null; is_late: boolean | null; is_owner_unit: boolean; }
@@ -62,7 +63,7 @@ function Input({ label, value, onChange, type='text', placeholder='' }: { label:
   return <div><label className="mb-1 block text-xs font-medium text-gray-500">{label}</label><input type={type} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800" /></div>;
 }
 
-const TABS: {id:Tab;label:string}[] = [{id:'overview',label:'Overview'},{id:'tenants',label:'Tenants'},{id:'rent',label:'Rent'},{id:'leases',label:'Leases'},{id:'projects',label:'Projects'},{id:'escrow',label:'Escrow'},{id:'insurance',label:'Insurance'}];
+const TABS: {id:Tab;label:string}[] = [{id:'overview',label:'Overview'},{id:'tenants',label:'Tenants'},{id:'rent',label:'Rent'},{id:'leases',label:'Leases'},{id:'projects',label:'Projects'},{id:'spend',label:'Repairs & spend'},{id:'escrow',label:'Escrow'},{id:'insurance',label:'Insurance'}];
 
 // Lease edit form — shared between "review extracted" and "edit existing"
 function LeaseForm({
@@ -1212,6 +1213,11 @@ export default function PropertyDetailPage() {
       {/* ── PROJECTS ── */}
       {tab==='projects' && (
         <ProjectsTab id={id} units={units} />
+      )}
+
+      {/* ── REPAIRS & SPEND (finance transactions linked to this property) ── */}
+      {tab==='spend' && (
+        <PropertySpendTab id={id} />
       )}
 
       {/* ── ESCROW ── */}

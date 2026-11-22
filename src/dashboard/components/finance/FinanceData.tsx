@@ -3,7 +3,15 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { financeApi } from './api';
 import { buildTaxonomy, type Taxonomy } from '@/lib/finance-ui/taxonomy';
-import { mapTxn, type ApiTxn, type Groups, type PropertyGroup, type Txn } from '@/lib/finance-ui/types';
+import {
+  mapTxn,
+  type ApiTxn,
+  type CategorySetting,
+  type Groups,
+  type PropertyGroup,
+  type PropertyOption,
+  type Txn,
+} from '@/lib/finance-ui/types';
 import { applyGlobalFilters, EMPTY_FILTERS, type GlobalFilters } from '@/lib/finance-ui/filters';
 import {
   defaultMonthSelection,
@@ -46,6 +54,15 @@ interface FinanceData {
   patchTxns: (ids: number[], patch: Partial<Txn>) => void;
   /** Reload everything (after an upload) and reset the period to the defaults. */
   reload: () => Promise<void>;
+  /** Category rules (category_settings), by category. */
+  settings: Map<string, CategorySetting>;
+  requiresProperty: (category: string) => boolean;
+  allowProjectTag: (category: string) => boolean;
+  /** Properties with units and projects, for the attribution pickers. */
+  propertyOptions: PropertyOption[];
+  reloadPropertyOptions: () => Promise<void>;
+  /** Transactions waiting for a property (Needs-property queue), across all dates. */
+  unattributedCount: number;
 }
 
 const Ctx = createContext<FinanceData | null>(null);
@@ -65,32 +82,55 @@ export function FinanceDataProvider({ children }: { children: React.ReactNode })
   const [selYears, setSelYearsState] = useState<Set<string>>(new Set());
   const [selMonths, setSelMonthsState] = useState<Set<string>>(new Set());
   const [filters, setFiltersState] = useState<GlobalFilters>(EMPTY_FILTERS);
+  const [settingsList, setSettingsList] = useState<CategorySetting[]>([]);
+  const [propertyOptions, setPropertyOptions] = useState<PropertyOption[]>([]);
+
+  const reloadPropertyOptions = useCallback(async () => {
+    const r = await financeApi
+      .get<{ properties: PropertyOption[] }>('/api/finance/property-options')
+      .catch(() => ({ properties: [] as PropertyOption[] }));
+    setPropertyOptions(r.properties || []);
+  }, []);
 
   const reload = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [cats, list, pg] = await Promise.all([
+      const [cats, list, pg, cs] = await Promise.all([
         financeApi.get<{ groups: Groups }>('/api/finance/categories'),
         financeApi.get<{ transactions: ApiTxn[] }>('/api/finance/transactions?limit=100000'),
         financeApi
           .get<{ properties: PropertyGroup[] }>('/api/finance/property-groups')
           .catch(() => ({ properties: [] as PropertyGroup[] })), // roll-ups are optional
+        financeApi.get<{ settings: CategorySetting[] }>('/api/finance/category-settings'),
+        reloadPropertyOptions(),
       ]);
+      setSettingsList(cs.settings || []);
       const loaded = (list.transactions || []).map(mapTxn);
       setGroups(cats.groups || {});
       setProps(pg.properties || []);
       setTxns(loaded);
       // Like the old loader: every (re)load resets the period to the defaults.
-      setSelYearsState(new Set(defaultYearSelection(yearsInData(loaded))));
-      setSelMonthsState(new Set(defaultMonthSelection(monthsInData(loaded))));
+      // A link like /finance/transactions?project=12 shows that project's rows
+      // across all dates; otherwise the period starts at the defaults.
+      const qs = new URLSearchParams(window.location.search);
+      const linkedProjectId = Number(qs.get('project')) || null;
+      const linkedPropertyId = Number(qs.get('property')) || null;
+      if (linkedProjectId || linkedPropertyId) {
+        setFiltersState({ ...EMPTY_FILTERS, linkedProjectId, linkedPropertyId });
+        setSelYearsState(new Set(yearsInData(loaded)));
+        setSelMonthsState(new Set(monthsInData(loaded)));
+      } else {
+        setSelYearsState(new Set(defaultYearSelection(yearsInData(loaded))));
+        setSelMonthsState(new Set(defaultMonthSelection(monthsInData(loaded))));
+      }
     } catch (err) {
       console.error(err);
       setError('Failed to load data: ' + (err instanceof Error ? err.message : String(err)));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [reloadPropertyOptions]);
 
   useEffect(() => {
     void reload();
@@ -104,6 +144,14 @@ export function FinanceDataProvider({ children }: { children: React.ReactNode })
   const filteredTxns = useMemo(
     () => filterByPeriod(comparePool, selYears, selMonths, tax),
     [comparePool, selYears, selMonths, tax],
+  );
+
+  const settings = useMemo(() => new Map(settingsList.map((s) => [s.category, s])), [settingsList]);
+  const requiresProperty = useCallback((c: string) => !!settings.get(c)?.requires_property, [settings]);
+  const allowProjectTag = useCallback((c: string) => settings.get(c)?.allow_project_tag ?? true, [settings]);
+  const unattributedCount = useMemo(
+    () => txns.filter((t) => !t.propertyId && requiresProperty(t.cat)).length,
+    [txns, requiresProperty],
   );
 
   const patchTxns = useCallback((ids: number[], patch: Partial<Txn>) => {
@@ -131,6 +179,12 @@ export function FinanceDataProvider({ children }: { children: React.ReactNode })
     periodTxns,
     patchTxns,
     reload,
+    settings,
+    requiresProperty,
+    allowProjectTag,
+    propertyOptions,
+    reloadPropertyOptions,
+    unattributedCount,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

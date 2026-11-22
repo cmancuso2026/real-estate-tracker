@@ -105,6 +105,21 @@ export async function processUpload(knex, uploadedFiles) {
     }
   }
 
+  // Re-apply saved property/project attribution the same way, so it survives a
+  // row being deleted and imported again.
+  const attrRows = insertHashes.length
+    ? await knex('attribution_overrides').whereIn('dedup_hash', insertHashes).select('*')
+    : [];
+  const attrs = new Map(attrRows.map((o) => [o.dedup_hash, o]));
+  for (const e of toInsert) {
+    const o = attrs.get(e.row.dedup_hash);
+    if (o) {
+      e.row.property_id = o.property_id;
+      e.row.unit_id = o.unit_id;
+      e.row.work_order_id = o.work_order_id;
+    }
+  }
+
   // ── Per-file and per-source tallies ──────────────────────────────────────
   // processed = every parsed row; new = rows actually inserted; skipped is the
   // remainder (both intra-batch and already-in-DB duplicates).

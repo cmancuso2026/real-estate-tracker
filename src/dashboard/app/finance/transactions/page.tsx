@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { financeApi } from '@/components/finance/api';
+import { AttributionPicker } from '@/components/finance/AttributionPicker';
 import { CategorySelect } from '@/components/finance/CategorySelect';
 import { useFinance } from '@/components/finance/FinanceData';
 import { TxnDetail } from '@/components/finance/TxnDetail';
@@ -28,7 +29,9 @@ const COLUMNS: { key: SortKey; label: string; right?: boolean }[] = [
 ];
 
 export default function FinanceTransactionsPage() {
-  const { txns, filteredTxns, periodTxns, tax, patchTxns } = useFinance();
+  const { txns, filteredTxns, periodTxns, tax, patchTxns, requiresProperty, propertyOptions } = useFinance();
+  // Inline property picker: for a category that needs a property, or to edit a row's property.
+  const [picker, setPicker] = useState<{ id: number; category?: string } | null>(null);
   const [flaggedOnly, setFlaggedOnly] = useState(false);
   const [sort, setSort] = useState<SortState>({ key: 'date', dir: 'desc' });
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
@@ -63,6 +66,13 @@ export default function FinanceTransactionsPage() {
   }, [nSel, rows.length]);
 
   async function changeCat(id: number, next: string) {
+    // A category that requires a property can't be saved without one: open the
+    // picker; the category is saved together with the property there.
+    const t = txns.find((x) => x.id === id);
+    if (t && !t.propertyId && requiresProperty(next)) {
+      setPicker({ id, category: next });
+      return;
+    }
     setSavingId(id);
     try {
       const updated = await financeApi.put<ApiTxn>(`/api/finance/transactions/${id}/category`, {
@@ -192,9 +202,10 @@ export default function FinanceTransactionsPage() {
                   onChange={(e) => setSelected(e.target.checked ? new Set(rows.map((t) => t.id)) : new Set())}
                 />
               </th>
-              {COLUMNS.map((c) => (
+              {COLUMNS.map((c, ci) => (
+                <Fragment key={c.key}>
+                {ci === COLUMNS.length - 1 && <th className="px-3 py-2 text-left font-medium">Property</th>}
                 <th
-                  key={c.key}
                   onClick={() => setSort((s) => nextSort(s, c.key))}
                   className={`cursor-pointer select-none px-3 py-2 font-medium hover:text-gray-800 ${c.right ? 'text-right' : 'text-left'} ${
                     sort.key === c.key ? 'text-gray-900' : ''
@@ -203,6 +214,7 @@ export default function FinanceTransactionsPage() {
                   {c.label}
                   <span className="ml-1 text-[10px]">{sort.key === c.key ? (sort.dir === 'asc' ? '▲' : '▼') : ''}</span>
                 </th>
+                </Fragment>
               ))}
             </tr>
           </thead>
@@ -265,14 +277,39 @@ export default function FinanceTransactionsPage() {
                         onChange={(next) => void changeCat(t.id, next)}
                       />
                     </td>
+                    <td className="px-3 py-1.5 text-xs">
+                      <PropertyCell
+                        t={t}
+                        needs={!t.propertyId && requiresProperty(t.cat)}
+                        name={propertyOptions.find((p) => p.id === t.propertyId)?.name}
+                        project={propertyOptions.flatMap((p) => p.projects).find((w) => w.id === t.workOrderId)?.name}
+                        onEdit={() => setPicker({ id: t.id })}
+                      />
+                    </td>
                     <td className={`whitespace-nowrap px-3 py-1.5 text-right font-medium tabular ${isInc ? 'text-green-700' : 'text-red-600'}`}>
                       {fmt(t.amt)}
                     </td>
                   </tr>
+                  {picker?.id === t.id && (
+                    <tr>
+                      <td />
+                      <td colSpan={7} className="px-3 pb-3">
+                        <AttributionPicker
+                          txn={t}
+                          category={picker.category}
+                          onSaved={() => {
+                            if (picker.category) setEdited((s) => new Set(s).add(t.id));
+                            setPicker(null);
+                          }}
+                          onCancel={() => setPicker(null)}
+                        />
+                      </td>
+                    </tr>
+                  )}
                   {open && (
                     <tr>
                       <td />
-                      <td colSpan={6} className="px-3 pb-3">
+                      <td colSpan={7} className="px-3 pb-3">
                         <TxnDetail
                           t={t}
                           group={grp}
@@ -310,5 +347,41 @@ export default function FinanceTransactionsPage() {
         </div>
       </div>
     </Card>
+  );
+}
+
+/** Property column: the linked property (and project), or a prompt when one is required. */
+function PropertyCell({
+  t,
+  needs,
+  name,
+  project,
+  onEdit,
+}: {
+  t: { propertyId: number | null };
+  needs: boolean;
+  name?: string;
+  project?: string;
+  onEdit: () => void;
+}) {
+  if (needs) {
+    return (
+      <button onClick={onEdit} className="rounded-full bg-orange-100 px-2 py-0.5 font-semibold text-orange-700 hover:bg-orange-200">
+        Needs property
+      </button>
+    );
+  }
+  if (!t.propertyId) {
+    return (
+      <button onClick={onEdit} className="text-gray-300 hover:text-blue-600" title="Link to a property">
+        + property
+      </button>
+    );
+  }
+  return (
+    <button onClick={onEdit} className="text-left hover:underline" title="Change property">
+      <span className="text-gray-700">{name ?? `Property ${t.propertyId}`}</span>
+      {project && <span className="ml-1 rounded bg-purple-100 px-1.5 py-0.5 text-[10px] text-purple-700">{project}</span>}
+    </button>
   );
 }

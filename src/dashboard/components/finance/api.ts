@@ -16,4 +16,5 @@ export const financeApi = {
   get: <T,>(path: string) => call<T>('GET', path),
   put: <T,>(path: string, body: unknown) => call<T>('PUT', path, body),
   post: <T,>(path: string, body?: unknown) => call<T>('POST', path, body),
+  patch: <T,>(path: string, body: unknown) => call<T>('PATCH', path, body),
 };

@@ -1,30 +1,14 @@
 import type { Taxonomy } from './taxonomy';
 import { groupOf } from './taxonomy';
 import type { Txn } from './types';
+import { merchantKey } from '@finance/lib/merchantKey.js';
 
 // Two heuristics flag "possibly miscategorized" transactions (ported verbatim
 // from the old page):
 //   1) inconsistent — the same merchant appears under more than one category.
 //   2) oddgroup     — the merchant name strongly implies a group it isn't in.
 
-// Payment-rail and transfer boilerplate tokens: they say nothing about who the
-// money went to, so they're dropped from the merchant key.
-const KEY_NOISE = new Set([
-  'ZELLE', 'VENMO', 'PAYPAL', 'PYPL', 'CASHAPP', 'SQUARE', 'SQ', 'APLPAY', 'APPLEPAY', 'GPAY',
-  'PAYPALINST', 'XFER', 'TST', 'DD', 'PY', 'POS', 'ACH', 'WIRE', 'BILLPAY',
-  'PAYMENT', 'PAYMENTS', 'PMT', 'PAY', 'TRANSFER', 'SENT', 'RECEIVED', 'FROM', 'FOR', 'WITH',
-  'PURCHASE', 'DEBIT', 'CREDIT', 'CHECKCARD', 'RECURRING', 'WEB', 'ID', 'IND', 'ENTRY', 'DES',
-  'PPD', 'CCD', 'TEL', 'CONF', 'REF', 'TRACE', 'TXN', 'TRN', 'AUTH', 'MEMO', 'NOTE', 'ONLINE',
-  'THE', 'INC', 'LLC', 'AND', 'OF', 'AT', 'TO', 'US', 'USA', 'COM', 'CO',
-]);
-
-/** First two significant words of a description ('' if none). */
-export function merchantKey(desc: string): string {
-  let s = ' ' + String(desc).toUpperCase() + ' ';
-  s = s.replace(/[^A-Z ]+/g, ' ');
-  const toks = s.split(/\s+/).filter((t) => t.length >= 3 && !KEY_NOISE.has(t));
-  return toks.slice(0, 2).join(' ');
-}
+export { merchantKey };
 
 const NAME_HINTS = [
   { re: /\b(RESTAURANT|CAFE|COFFEE|STARBUCKS|DUNKIN|PIZZA|SUSHI|TACO|BURGER|GRILL|DINER|BAKERY|KITCHEN|CHIPOTLE|MCDONALD|SUBWAY|POPEYES|PANERA|WINGSTOP|DOORDASH|GRUBHUB)\b/, group: 'Food', label: 'looks like dining' },

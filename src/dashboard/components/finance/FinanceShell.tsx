@@ -15,12 +15,20 @@ const TABS = [
   { href: '/finance/spending', label: 'Spending' },
   { href: '/finance/transactions', label: 'Transactions' },
   { href: '/finance/upload', label: 'Upload' },
+  { href: '/finance/attribution', label: 'Needs Property', badge: true },
 ];
+
+/** Pages that don't use the global filters. */
+const NO_FILTERS = ['/finance/upload', '/finance/attribution'];
 
 /** The global filters: every value here applies to every finance page. */
 function FilterBar() {
-  const { years, months, selYears, selMonths, setSelYears, setSelMonths, tax, props, filters, setFilters, clearFilters } =
+  const { years, months, selYears, selMonths, setSelYears, setSelMonths, tax, props, filters, setFilters, clearFilters, propertyOptions } =
     useFinance();
+  const linkedProperty = filters.linkedPropertyId ? propertyOptions.find((p) => p.id === filters.linkedPropertyId) : null;
+  const linkedProject = filters.linkedProjectId
+    ? propertyOptions.flatMap((p) => p.projects).find((w) => w.id === filters.linkedProjectId)
+    : null;
   const catOptions = filters.group && tax.groups[filters.group] ? tax.groups[filters.group]! : tax.allSubcats;
   const showProps = !filters.group || filters.group === 'Investments';
   return (
@@ -85,6 +93,24 @@ function FilterBar() {
         onChange={(e) => setFilters({ search: e.target.value })}
         className="w-44 rounded-lg border border-gray-300 px-2.5 py-1 text-sm"
       />
+      {filters.linkedPropertyId && (
+        <button
+          onClick={() => setFilters({ linkedPropertyId: null })}
+          className="rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800 hover:bg-blue-200"
+          title="Remove filter"
+        >
+          Linked to {linkedProperty?.name ?? `property ${filters.linkedPropertyId}`} ✕
+        </button>
+      )}
+      {filters.linkedProjectId && (
+        <button
+          onClick={() => setFilters({ linkedProjectId: null })}
+          className="rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-medium text-purple-800 hover:bg-purple-200"
+          title="Remove filter"
+        >
+          Project: {linkedProject?.name ?? `#${filters.linkedProjectId}`} ✕
+        </button>
+      )}
       {hasActiveFilters(filters) && (
         <button onClick={clearFilters} className="text-xs font-medium text-blue-600 hover:underline">
           Clear filters
@@ -96,7 +122,7 @@ function FilterBar() {
 
 function ShellBody({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { loading, error, reload } = useFinance();
+  const { loading, error, reload, unattributedCount } = useFinance();
   return (
     <div className="space-y-4">
       <nav className="flex w-fit gap-1 rounded-lg border border-gray-200 bg-white p-1 shadow-sm">
@@ -109,11 +135,19 @@ function ShellBody({ children }: { children: React.ReactNode }) {
               className={`rounded-md px-3 py-1.5 text-sm font-medium ${active ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
             >
               {t.label}
+              {t.badge && unattributedCount > 0 && (
+                <span
+                  data-testid="needs-property-badge"
+                  className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[11px] font-semibold tabular ${active ? 'bg-white text-blue-700' : 'bg-orange-500 text-white'}`}
+                >
+                  {unattributedCount}
+                </span>
+              )}
             </Link>
           );
         })}
       </nav>
-      {pathname !== '/finance/upload' && <FilterBar />}
+      {!NO_FILTERS.includes(pathname) && <FilterBar />}
 
       {error && (
         <div className="flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">

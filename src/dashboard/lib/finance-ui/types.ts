@@ -9,6 +9,10 @@ export interface Txn {
   manual: boolean;
   cleared: boolean;
   note: string;
+  /** Attribution (Phase 5): owned property, project (work order) and unit. */
+  propertyId: number | null;
+  workOrderId: number | null;
+  unitId: number | null;
 }
 
 /** API transaction shape (GET /api/finance/transactions). */
@@ -24,6 +28,26 @@ export interface ApiTxn {
   review_cleared: boolean;
   note: string;
   confidence_score: number | null;
+  property_id: number | null;
+  work_order_id: number | null;
+  unit_id: number | null;
+}
+
+/** Per-category rules from category_settings. */
+export interface CategorySetting {
+  category: string;
+  requires_property: boolean;
+  allow_project_tag: boolean;
+  default_property_id: number | null;
+}
+
+/** A property with its units and projects, for attribution pickers. */
+export interface PropertyOption {
+  id: number;
+  name: string;
+  units: { id: number; label: string }[];
+  /** received/open first, then completed */
+  projects: { id: number; name: string; status: string }[];
 }
 
 /** group → categories, as served by GET /api/finance/categories. */
@@ -47,5 +71,8 @@ export function mapTxn(t: ApiTxn): Txn {
     manual: !!t.is_manual,
     cleared: !!t.review_cleared,
     note: t.note || '',
+    propertyId: t.property_id ?? null,
+    workOrderId: t.work_order_id ?? null,
+    unitId: t.unit_id ?? null,
   };
 }
