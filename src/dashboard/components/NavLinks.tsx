@@ -5,6 +5,8 @@ import { usePathname } from 'next/navigation';
 import { ThemeToggle } from './ThemeToggle';
 
 const PERSONAL_LINKS = [
+  // Interim entry point; Phase 8 replaces this nav with Finances / Properties / Investing groups.
+  { href: '/finance', label: 'Finances' },
   { href: '/properties', label: 'My Properties' },
   { href: '/rent', label: 'Import Rent' },
   { href: '/vendors', label: 'Vendors' },
