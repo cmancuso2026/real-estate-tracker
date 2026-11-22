@@ -1,5 +1,7 @@
 // End-to-end API test against an in-memory Postgres (pg-mem) running the REAL
-// migrations. Exercises upload -> dedup -> transactions -> summary -> override.
+// migrations. Exercises upload -> dedup -> transactions -> summary -> override
+// through the real Next.js route handlers (src/dashboard/app/api/finance),
+// served over HTTP by test/helpers/finance-api-server.js. Run under tsx.
 //
 // pg-mem can't parse the precision in `decimal(10,2)`, so we pass
 // { noAstCoverageCheck: true } — that only relaxes the in-memory double; real
@@ -18,6 +20,9 @@ import { fileURLToPath } from 'url';
 
 import { newDb } from 'pg-mem';
 
+import { startRouteServer } from './helpers/finance-api-server.js';
+import { setFinanceDb } from '../../dashboard/lib/finance.ts';
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 test('API integration (pg-mem)', async (t) => {
@@ -25,11 +30,9 @@ test('API integration (pg-mem)', async (t) => {
   const knex = db.adapters.createKnex();
   await knex.migrate.latest({ directory: path.join(__dirname, '..', 'db', 'migrations') });
 
-  const { default: app } = await import('../server.js');
-  app.locals.db = knex; // inject the in-memory DB
+  setFinanceDb(knex); // inject the in-memory DB into every route handler
 
-  const server = app.listen(0);
-  await new Promise((r) => server.once('listening', r));
+  const server = await startRouteServer();
   const base = `http://127.0.0.1:${server.address().port}`;
 
   const getJson = async (p) => (await fetch(`${base}${p}`)).json();
@@ -38,7 +41,7 @@ test('API integration (pg-mem)', async (t) => {
   const uploadFixtures = async (...fileNames) => {
     const fd = new FormData();
     for (const file of fileNames) fd.append('files', new Blob([fixtureBuf(file)]), file);
-    const r = await fetch(`${base}/api/upload`, { method: 'POST', body: fd });
+    const r = await fetch(`${base}/api/finance/upload`, { method: 'POST', body: fd });
     return { status: r.status, body: await r.json() };
   };
   const uploadFixture = (file) => uploadFixtures(file);
@@ -70,35 +73,35 @@ test('API integration (pg-mem)', async (t) => {
       assert.equal(sources.SoFi.new_rows, 5);
     });
 
-    await t.test('GET /api/years and /api/months', async () => {
-      const y = await getJson('/api/years');
+    await t.test('GET /api/finance/years and /api/finance/months', async () => {
+      const y = await getJson('/api/finance/years');
       assert.deepEqual(y.years, [2026]);
-      const m = await getJson('/api/months?year=2026');
+      const m = await getJson('/api/finance/months?year=2026');
       assert.deepEqual(m.months, [1, 4]); // SoFi interest is Jan; everything else April
     });
 
-    await t.test('GET /api/transactions with filters + pagination', async () => {
-      const all = await getJson('/api/transactions?year=2026&limit=2000');
+    await t.test('GET /api/finance/transactions with filters + pagination', async () => {
+      const all = await getJson('/api/finance/transactions?year=2026&limit=2000');
       assert.equal(all.total, 19); // 7 + 7 + 5
       assert.equal(all.transactions.length, 19);
 
-      const april = await getJson('/api/transactions?year=2026&months=4');
+      const april = await getJson('/api/finance/transactions?year=2026&months=4');
       assert.equal(april.total, 18); // all but the January interest row
 
-      const food = await getJson('/api/transactions?year=2026&group=Food');
+      const food = await getJson('/api/finance/transactions?year=2026&group=Food');
       assert.ok(food.total > 0);
       assert.ok(food.transactions.every((tx) => tx.category_group === 'Food'));
 
-      const search = await getJson('/api/transactions?year=2026&search=publix');
+      const search = await getJson('/api/finance/transactions?year=2026&search=publix');
       assert.equal(search.total, 1);
 
-      const page = await getJson('/api/transactions?year=2026&limit=5&offset=0');
+      const page = await getJson('/api/finance/transactions?year=2026&limit=5&offset=0');
       assert.equal(page.transactions.length, 5);
       assert.equal(page.total, 19);
     });
 
-    await t.test('GET /api/summary aggregates and balances', async () => {
-      const s = await getJson('/api/summary?year=2026&months=4');
+    await t.test('GET /api/finance/summary aggregates and balances', async () => {
+      const s = await getJson('/api/finance/summary?year=2026&months=4');
       assert.ok(s.income > 0);
       assert.ok(s.spending > 0);
       assert.equal(Math.round((s.income - s.spending - s.cash_flow) * 100) / 100, 0);
@@ -108,14 +111,14 @@ test('API integration (pg-mem)', async (t) => {
       assert.ok(s.by_month['2026-04']);
     });
 
-    await t.test('GET /api/categories returns the taxonomy', async () => {
-      const c = await getJson('/api/categories');
+    await t.test('GET /api/finance/categories returns the taxonomy', async () => {
+      const c = await getJson('/api/finance/categories');
       assert.ok(Array.isArray(c.groups.Food));
       assert.equal(c.cat_to_group.Groceries, 'Food');
     });
 
-    await t.test('POST /api/categories adds a custom category and it is assignable', async () => {
-      const post = await fetch(`${base}/api/categories`, {
+    await t.test('POST /api/finance/categories adds a custom category and it is assignable', async () => {
+      const post = await fetch(`${base}/api/finance/categories`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'Coffee', group: 'Food' }),
@@ -126,9 +129,9 @@ test('API integration (pg-mem)', async (t) => {
       assert.equal(tax.cat_to_group.Coffee, 'Food');
 
       // The new category must now be assignable to a transaction.
-      const list = await getJson('/api/transactions?year=2026&search=publix');
+      const list = await getJson('/api/finance/transactions?year=2026&search=publix');
       const { id } = list.transactions[0];
-      const put = await fetch(`${base}/api/transactions/${id}/category`, {
+      const put = await fetch(`${base}/api/finance/transactions/${id}/category`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ category: 'Coffee' }),
@@ -138,22 +141,22 @@ test('API integration (pg-mem)', async (t) => {
       assert.equal(updated.category_group, 'Food'); // group resolved from custom_categories
     });
 
-    await t.test('POST /api/categories rejects bad input', async () => {
-      const badGroup = await fetch(`${base}/api/categories`, {
+    await t.test('POST /api/finance/categories rejects bad input', async () => {
+      const badGroup = await fetch(`${base}/api/finance/categories`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'Nope', group: 'NotAGroup' }),
       });
       assert.equal(badGroup.status, 400);
 
-      const dup = await fetch(`${base}/api/categories`, {
+      const dup = await fetch(`${base}/api/finance/categories`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'Groceries', group: 'Food' }), // built-in dup
       });
       assert.equal(dup.status, 400);
 
-      const noName = await fetch(`${base}/api/categories`, {
+      const noName = await fetch(`${base}/api/finance/categories`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: '  ', group: 'Food' }),
@@ -162,11 +165,11 @@ test('API integration (pg-mem)', async (t) => {
     });
 
     await t.test('PUT category override persists across re-upload', async () => {
-      const list = await getJson('/api/transactions?year=2026&search=openai');
+      const list = await getJson('/api/finance/transactions?year=2026&search=openai');
       assert.equal(list.total, 1);
       const { id } = list.transactions[0];
 
-      const put = await fetch(`${base}/api/transactions/${id}/category`, {
+      const put = await fetch(`${base}/api/finance/transactions/${id}/category`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ category: 'Gym' }),
@@ -181,17 +184,17 @@ test('API integration (pg-mem)', async (t) => {
       const re = await uploadFixture('amex_gold.csv');
       assert.equal(re.body.new_rows, 1); // only the deleted OpenAI row comes back
 
-      const check = await getJson('/api/transactions?year=2026&search=openai');
+      const check = await getJson('/api/finance/transactions?year=2026&search=openai');
       assert.equal(check.transactions[0].category, 'Gym');
       assert.equal(check.transactions[0].is_manual, true);
     });
 
     await t.test('PUT bulk-category updates many rows and persists overrides', async () => {
-      const list = await getJson('/api/transactions?year=2026');
+      const list = await getJson('/api/finance/transactions?year=2026');
       const ids = list.transactions.slice(0, 3).map((r) => r.id);
       assert.equal(ids.length, 3);
 
-      const put = await fetch(`${base}/api/transactions/bulk-category`, {
+      const put = await fetch(`${base}/api/finance/transactions/bulk-category`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids, category: 'Eating Out' }),
@@ -211,14 +214,14 @@ test('API integration (pg-mem)', async (t) => {
     });
 
     await t.test('PUT bulk-category rejects bad input', async () => {
-      const noIds = await fetch(`${base}/api/transactions/bulk-category`, {
+      const noIds = await fetch(`${base}/api/finance/transactions/bulk-category`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids: [], category: 'Eating Out' }),
       });
       assert.equal(noIds.status, 400);
 
-      const badCat = await fetch(`${base}/api/transactions/bulk-category`, {
+      const badCat = await fetch(`${base}/api/finance/transactions/bulk-category`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids: [1], category: 'Nonsense' }),
@@ -227,9 +230,9 @@ test('API integration (pg-mem)', async (t) => {
     });
 
     await t.test('PUT rejects an invalid category', async () => {
-      const list = await getJson('/api/transactions?year=2026&search=publix');
+      const list = await getJson('/api/finance/transactions?year=2026&search=publix');
       const { id } = list.transactions[0];
-      const r = await fetch(`${base}/api/transactions/${id}/category`, {
+      const r = await fetch(`${base}/api/finance/transactions/${id}/category`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ category: 'Nonsense' }),
@@ -256,7 +259,7 @@ test('API integration (pg-mem)', async (t) => {
         seed(4, 'Uncategorized', 'Other'), // the target to re-run
       ]);
 
-      const r = await fetch(`${base}/api/transactions/recategorize`, { method: 'POST' });
+      const r = await fetch(`${base}/api/finance/transactions/recategorize`, { method: 'POST' });
       const body = await r.json();
       assert.equal(r.status, 200);
       assert.ok(body.updated >= 1);
@@ -272,7 +275,7 @@ test('API integration (pg-mem)', async (t) => {
       await knex('transactions')
         .where({ dedup_hash: 'recat-test-5' })
         .update({ category: 'Shopping', category_group: 'Living', is_manual: true });
-      await fetch(`${base}/api/transactions/recategorize`, { method: 'POST' });
+      await fetch(`${base}/api/finance/transactions/recategorize`, { method: 'POST' });
       const kept = await knex('transactions').where({ dedup_hash: 'recat-test-5' }).first();
       assert.equal(kept.category, 'Shopping');
     });
@@ -280,11 +283,12 @@ test('API integration (pg-mem)', async (t) => {
     await t.test('upload with no file returns 400', async () => {
       const fd = new FormData();
       fd.append('source', 'sofi');
-      const r = await fetch(`${base}/api/upload`, { method: 'POST', body: fd });
+      const r = await fetch(`${base}/api/finance/upload`, { method: 'POST', body: fd });
       assert.equal(r.status, 400);
     });
   } finally {
     await new Promise((r) => server.close(r));
+    setFinanceDb(null);
     await knex.destroy();
   }
 });

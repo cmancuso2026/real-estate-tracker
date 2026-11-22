@@ -29,7 +29,7 @@
     "v2:recap": "tsx src/scripts/v2-recap.ts",
     "v2:alerts": "tsx src/scripts/v2-alerts.ts",
     "seed:properties": "tsx src/scripts/seed-properties.ts",
-    "test": "node --test 'src/finance/test/*.test.js'",
+    "test": "tsx --tsconfig src/dashboard/tsconfig.json --test 'src/finance/test/*.test.js'",
     "finance:fix-amex": "node src/finance/scripts/fix_amex_payments.js"
   },
   "engines": {
@@ -49,8 +49,6 @@
     "@types/node": "^22.10.5",
     "@types/node-cron": "^3.0.11",
     "@types/pg": "^8.11.10",
-    "express": "4.22.2",
-    "multer": "2.2.0",
     "pg-mem": "3.0.14",
     "typescript": "^5.7.3"
   }
