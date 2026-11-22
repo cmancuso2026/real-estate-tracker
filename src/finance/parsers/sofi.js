@@ -5,7 +5,7 @@
 //   * skip internal SoFi<->SoFi transfers (Type contains 'Transfer')
 // The `Type` column is passed through as rawCategory so categorize() can tell a
 // Franchise World *deposit* (Paycheck) apart from other activity.
-const { toISODate, parseAmount, findHeaderRow, columnMap } = require('./util');
+import { toISODate, parseAmount, findHeaderRow, columnMap } from './util.js';
 
 const SOURCE = 'SoFi';
 
@@ -45,4 +45,4 @@ function parseRows(rows) {
   return out;
 }
 
-module.exports = { parseRows, SOURCE };
+export { parseRows, SOURCE };

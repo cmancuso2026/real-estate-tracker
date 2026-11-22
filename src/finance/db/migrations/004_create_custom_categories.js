@@ -3,7 +3,7 @@
  * The built-in taxonomy lives in lib/taxonomy.js; these are merged on top of it
  * by GET /api/categories so new categories show up in every dropdown.
  */
-exports.up = async function (knex) {
+export async function up(knex) {
   await knex.schema.createTable('custom_categories', (t) => {
     t.increments('id').primary();
     t.text('name').notNullable().unique(); // the category label
@@ -12,6 +12,6 @@ exports.up = async function (knex) {
   });
 };
 
-exports.down = async function (knex) {
+export async function down(knex) {
   await knex.schema.dropTableIfExists('custom_categories');
 };

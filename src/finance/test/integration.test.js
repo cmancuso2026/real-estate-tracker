@@ -10,18 +10,22 @@
 // in-memory double matches production behavior.
 process.env.TZ = 'UTC';
 
-const test = require('node:test');
-const assert = require('node:assert');
-const fs = require('fs');
-const path = require('path');
-const { newDb } = require('pg-mem');
+import test from 'node:test';
+import assert from 'node:assert';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+import { newDb } from 'pg-mem';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 test('API integration (pg-mem)', async (t) => {
   const db = newDb({ noAstCoverageCheck: true });
   const knex = db.adapters.createKnex();
   await knex.migrate.latest({ directory: path.join(__dirname, '..', 'db', 'migrations') });
 
-  const app = require('../server');
+  const { default: app } = await import('../server.js');
   app.locals.db = knex; // inject the in-memory DB
 
   const server = app.listen(0);

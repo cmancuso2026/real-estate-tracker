@@ -2,7 +2,7 @@
  * transactions — one row per imported bank transaction.
  * Expenses are stored negative, income positive (enforced by the parsers).
  */
-exports.up = async function (knex) {
+export async function up(knex) {
   await knex.schema.createTable('transactions', (t) => {
     t.increments('id').primary();
     t.date('date').notNullable();
@@ -23,6 +23,6 @@ exports.up = async function (knex) {
   });
 };
 
-exports.down = async function (knex) {
+export async function down(knex) {
   await knex.schema.dropTableIfExists('transactions');
 };

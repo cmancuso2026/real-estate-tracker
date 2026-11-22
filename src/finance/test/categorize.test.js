@@ -1,6 +1,6 @@
-const test = require('node:test');
-const assert = require('node:assert');
-const { categorize } = require('../lib/categorize');
+import test from 'node:test';
+import assert from 'node:assert';
+import { categorize } from '../lib/categorize.js';
 
 // Each case: [description, rawCategory, source, expectedCategory, expectedGroup]
 // Drawn from the real April-2026 ground-truth in the original dashboard.

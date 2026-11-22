@@ -11,7 +11,7 @@
 //     them would leave the bank-side payment double-counting the real charges.
 // The bank-provided Category column is passed through as rawCategory so
 // categorize() can lean on it.
-const { toISODate, parseAmount, findHeaderRow, columnMap } = require('./util');
+import { toISODate, parseAmount, findHeaderRow, columnMap } from './util.js';
 
 const SOURCE = 'Capital One';
 
@@ -54,4 +54,4 @@ function parseRows(rows) {
   return out;
 }
 
-module.exports = { parseRows, SOURCE };
+export { parseRows, SOURCE };

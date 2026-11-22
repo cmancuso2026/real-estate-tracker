@@ -1,10 +1,10 @@
-const express = require('express');
-const multer = require('multer');
+import express from 'express';
+import multer from 'multer';
 
-const { parseFileAuto } = require('../parsers');
-const { buildHistoryIndex, categorizeWithHistory } = require('../lib/categorize');
-const { recategorizeUncategorized } = require('../lib/recategorize');
-const { dedupHash } = require('../lib/dedup');
+import { parseFileAuto } from '../parsers/index.js';
+import { buildHistoryIndex, categorizeWithHistory } from '../lib/categorize.js';
+import { recategorizeUncategorized } from '../lib/recategorize.js';
+import { dedupHash } from '../lib/dedup.js';
 
 const router = express.Router();
 const upload = multer({
@@ -187,4 +187,4 @@ router.post('/', upload.array('files', 20), async (req, res, next) => {
   }
 });
 
-module.exports = router;
+export default router;

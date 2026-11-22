@@ -2,11 +2,11 @@
 // it into normalized transaction rows:
 //   { date, description, rawDescription, amount, rawCategory, source }
 // Categorization and dedup happen downstream in the upload route.
-const { fileToRows, findHeaderRow, columnMap } = require('./util');
-const bankofamerica = require('./bankofamerica');
-const amex = require('./amex');
-const sofi = require('./sofi');
-const capitalone = require('./capitalone');
+import { fileToRows, findHeaderRow, columnMap } from './util.js';
+import * as bankofamerica from './bankofamerica.js';
+import * as amex from './amex.js';
+import * as sofi from './sofi.js';
+import * as capitalone from './capitalone.js';
 
 // Valid `source` values accepted by POST /api/upload -> display label + parser.
 const SOURCES = {
@@ -114,4 +114,4 @@ function parseFile(buffer, filename, sourceKey) {
   return { source: entry.display, transactions };
 }
 
-module.exports = { parseFile, parseFileAuto, detectSource, SOURCES, displayFor };
+export { parseFile, parseFileAuto, detectSource, SOURCES, displayFor };

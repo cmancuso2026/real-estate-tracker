@@ -10,7 +10,7 @@
 // an Amex Blue file detected as "Amex Gold". Internal whitespace is also
 // collapsed so a re-export that reflows spaces ("NA PA" vs "NA  PA") still
 // matches.
-const crypto = require('crypto');
+import crypto from 'crypto';
 
 /**
  * @param {string} date         ISO date string, e.g. '2026-04-28'
@@ -24,4 +24,4 @@ function dedupHash(date, description, amount) {
   return crypto.createHash('sha256').update(str).digest('hex').slice(0, 32);
 }
 
-module.exports = { dedupHash };
+export { dedupHash };

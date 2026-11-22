@@ -8,7 +8,7 @@
 //
 // Used by POST /api/transactions/recategorize AND automatically after each
 // upload, so newly-added history retroactively rescues older uncategorized rows.
-const { buildHistoryIndex, categorizeWithHistory } = require('./categorize');
+import { buildHistoryIndex, categorizeWithHistory } from './categorize.js';
 
 /**
  * @param {import('knex').Knex} knex
@@ -52,4 +52,4 @@ async function recategorizeUncategorized(knex) {
   return { scanned: targets.length, updated };
 }
 
-module.exports = { recategorizeUncategorized };
+export { recategorizeUncategorized };

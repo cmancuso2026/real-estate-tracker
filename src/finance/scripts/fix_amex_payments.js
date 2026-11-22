@@ -15,7 +15,10 @@
 // Usage:
 //   node scripts/fix_amex_payments.js          # dry run — prints what would change
 //   node scripts/fix_amex_payments.js --apply  # performs the update
-const knex = require('knex')(require('../knexfile').development);
+import knexFactory from 'knex';
+import config from '../knexfile.js';
+
+const knex = knexFactory(config.development);
 
 const APPLY = process.argv.includes('--apply');
 const TARGET = { category: 'Amex', category_group: 'Financials' };

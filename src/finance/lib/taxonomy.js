@@ -32,4 +32,4 @@ function groupFor(category) {
   return CAT_TO_GROUP[category] || 'Other';
 }
 
-module.exports = { GROUPS, CAT_TO_GROUP, groupFor };
+export { GROUPS, CAT_TO_GROUP, groupFor };

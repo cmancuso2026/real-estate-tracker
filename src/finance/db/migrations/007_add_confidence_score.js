@@ -5,7 +5,7 @@
  * or predates this feature. Surfaced in the UI so the user can see which
  * auto-assignments are shaky.
  */
-exports.up = async function (knex) {
+export async function up(knex) {
   const has = await knex.schema.hasColumn('transactions', 'confidence_score');
   if (!has) {
     await knex.schema.alterTable('transactions', (t) => {
@@ -14,7 +14,7 @@ exports.up = async function (knex) {
   }
 };
 
-exports.down = async function (knex) {
+export async function down(knex) {
   const has = await knex.schema.hasColumn('transactions', 'confidence_score');
   if (has) {
     await knex.schema.alterTable('transactions', (t) => {

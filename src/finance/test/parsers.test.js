@@ -1,9 +1,12 @@
-const test = require('node:test');
-const assert = require('node:assert');
-const fs = require('fs');
-const path = require('path');
-const { parseFile, parseFileAuto, detectSource } = require('../parsers');
-const { fileToRows } = require('../parsers/util');
+import test from 'node:test';
+import assert from 'node:assert';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+import { parseFile, parseFileAuto, detectSource } from '../parsers/index.js';
+import { fileToRows } from '../parsers/util.js';
 
 const fixture = (name) => fs.readFileSync(path.join(__dirname, 'fixtures', name));
 const detect = (name) => detectSource(fileToRows(fixture(name), name));

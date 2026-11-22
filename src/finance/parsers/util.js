@@ -1,7 +1,7 @@
 // Shared parsing helpers: date normalization, amount parsing, header/column
 // resolution. Used by every bank parser.
-const Papa = require('papaparse');
-const XLSX = require('xlsx');
+import Papa from 'papaparse';
+import * as XLSX from 'xlsx';
 
 // Convert an Excel serial date (days since 1899-12-30) to a JS Date (UTC).
 function excelSerialToDate(serial) {
@@ -109,7 +109,7 @@ function columnMap(headerRow) {
   return map;
 }
 
-module.exports = {
+export {
   toISODate,
   parseAmount,
   fileToRows,

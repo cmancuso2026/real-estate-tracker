@@ -2,7 +2,7 @@
  * category_overrides — persists user category changes keyed by dedup_hash so
  * they survive re-uploads of the same CSV.
  */
-exports.up = async function (knex) {
+export async function up(knex) {
   await knex.schema.createTable('category_overrides', (t) => {
     t.increments('id').primary();
     t.text('dedup_hash').notNullable().unique(); // matches transactions.dedup_hash
@@ -13,6 +13,6 @@ exports.up = async function (knex) {
   });
 };
 
-exports.down = async function (knex) {
+export async function down(knex) {
   await knex.schema.dropTableIfExists('category_overrides');
 };

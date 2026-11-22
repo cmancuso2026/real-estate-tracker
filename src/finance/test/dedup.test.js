@@ -1,6 +1,6 @@
-const test = require('node:test');
-const assert = require('node:assert');
-const { dedupHash } = require('../lib/dedup');
+import test from 'node:test';
+import assert from 'node:assert';
+import { dedupHash } from '../lib/dedup.js';
 
 test('dedupHash is stable and 32 hex chars', () => {
   const h = dedupHash('2026-04-28', 'UM MY CHART BILLING', -1430.95);

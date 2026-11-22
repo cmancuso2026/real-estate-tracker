@@ -16,7 +16,7 @@
 // Both skip Capital One payments that appear as *credits* (those inflows are
 // captured on the SoFi side, so importing them here would double-count).
 // Dates are MM/DD/YYYY.
-const { toISODate, parseAmount, findHeaderRow, columnMap } = require('./util');
+import { toISODate, parseAmount, findHeaderRow, columnMap } from './util.js';
 
 const SOURCE = 'Bank of America';
 
@@ -106,4 +106,4 @@ function parseRows(rows) {
   return [];
 }
 
-module.exports = { parseRows, SOURCE };
+export { parseRows, SOURCE };

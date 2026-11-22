@@ -13,7 +13,7 @@
 //     stays Living/Healthcare.
 //   * Amex also matches "WHOLE FOODS" (with a space) in addition to the spec's
 //     "WHOLEFDS", since real statements use both spellings.
-const { groupFor } = require('./taxonomy');
+import { groupFor } from './taxonomy.js';
 
 // True if `haystack` contains any of the given needles (all upper-cased).
 function has(haystack, ...needles) {
@@ -371,7 +371,7 @@ function categorizeWithHistory(description, rawCategory, source, index) {
   return { category, group, confidence };
 }
 
-module.exports = {
+export {
   categorize,
   buildHistoryIndex,
   scoreFromHistory,

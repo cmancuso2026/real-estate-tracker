@@ -40,4 +40,4 @@ function applyFilters(q, { year, months, group, category, source, search } = {})
   return q;
 }
 
-module.exports = { isoDate, monthRange, parseMonths, applyFilters };
+export { isoDate, monthRange, parseMonths, applyFilters };

@@ -28,22 +28,30 @@
     "test:email": "tsx src/scripts/test-email.ts",
     "v2:recap": "tsx src/scripts/v2-recap.ts",
     "v2:alerts": "tsx src/scripts/v2-alerts.ts",
-    "seed:properties": "tsx src/scripts/seed-properties.ts"
+    "seed:properties": "tsx src/scripts/seed-properties.ts",
+    "test": "node --test 'src/finance/test/*.test.js'",
+    "finance:fix-amex": "node src/finance/scripts/fix_amex_payments.js"
   },
   "engines": {
     "node": ">=20"
   },
   "dependencies": {
     "dotenv": "^16.4.7",
+    "knex": "3.3.0",
     "node-cron": "^3.0.3",
+    "papaparse": "5.5.4",
     "pg": "^8.13.1",
     "tsx": "^4.19.2",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "zod": "^3.24.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.5",
     "@types/node-cron": "^3.0.11",
     "@types/pg": "^8.11.10",
+    "express": "4.22.2",
+    "multer": "2.2.0",
+    "pg-mem": "3.0.14",
     "typescript": "^5.7.3"
   }
 }

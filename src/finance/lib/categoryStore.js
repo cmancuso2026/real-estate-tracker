@@ -2,7 +2,7 @@
 // stored in the `custom_categories` table. Everything that needs the *full*
 // set of categories (the categories API, transaction category validation) goes
 // through here so custom categories are honored everywhere.
-const { GROUPS, groupFor } = require('./taxonomy');
+import { GROUPS, groupFor } from './taxonomy.js';
 
 const BASE_GROUP_NAMES = Object.keys(GROUPS);
 const BASE_CATS = new Set(Object.values(GROUPS).flat());
@@ -32,4 +32,4 @@ async function resolveGroup(knex, category) {
   return c ? c.category_group : null;
 }
 
-module.exports = { mergedTaxonomy, resolveGroup, BASE_GROUP_NAMES, BASE_CATS };
+export { mergedTaxonomy, resolveGroup, BASE_GROUP_NAMES, BASE_CATS };

@@ -1,8 +1,8 @@
-const express = require('express');
+import express from 'express';
 
-const { applyFilters, isoDate } = require('./_query');
-const { resolveGroup } = require('../lib/categoryStore');
-const { recategorizeUncategorized } = require('../lib/recategorize');
+import { applyFilters, isoDate } from './_query.js';
+import { resolveGroup } from '../lib/categoryStore.js';
+import { recategorizeUncategorized } from '../lib/recategorize.js';
 
 const router = express.Router();
 
@@ -236,4 +236,4 @@ router.put('/:id/category', async (req, res, next) => {
   }
 });
 
-module.exports = router;
+export default router;

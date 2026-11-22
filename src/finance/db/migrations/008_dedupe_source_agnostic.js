@@ -18,7 +18,7 @@
  *
  * Irreversible (deletes data); `down` is a no-op.
  */
-const crypto = require('crypto');
+import crypto from 'crypto';
 
 function fmtDate(d) {
   if (d == null) return '';
@@ -42,7 +42,7 @@ function hashOf(key) {
   return crypto.createHash('sha256').update(key).digest('hex').slice(0, 32);
 }
 
-exports.up = async function up(knex) {
+export async function up(knex) {
   const rows = await knex('transactions').select(
     'id',
     'date',
@@ -84,6 +84,6 @@ exports.up = async function up(knex) {
   }
 };
 
-exports.down = async function down() {
+export async function down() {
   // Deleted duplicates can't be restored; nothing to do.
 };

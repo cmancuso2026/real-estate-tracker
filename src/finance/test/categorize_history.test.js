@@ -1,12 +1,12 @@
-const test = require('node:test');
-const assert = require('node:assert');
-const {
+import test from 'node:test';
+import assert from 'node:assert';
+import {
   buildHistoryIndex,
   scoreFromHistory,
   categorizeWithHistory,
   normalizeTokens,
   jaccard,
-} = require('../lib/categorize');
+} from '../lib/categorize.js';
 
 // Helper: a historical row.
 const row = (description, category, category_group, is_manual = false) => ({

@@ -1,6 +1,6 @@
-const express = require('express');
+import express from 'express';
 
-const { mergedTaxonomy, resolveGroup, BASE_GROUP_NAMES, BASE_CATS } = require('../lib/categoryStore');
+import { mergedTaxonomy, resolveGroup, BASE_GROUP_NAMES, BASE_CATS } from '../lib/categoryStore.js';
 
 const router = express.Router();
 
@@ -47,4 +47,4 @@ router.post('/', async (req, res, next) => {
   }
 });
 
-module.exports = router;
+export default router;

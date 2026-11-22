@@ -2,7 +2,7 @@
  * upload_log — one row per file upload, recording how many rows were parsed,
  * newly inserted, and skipped as duplicates.
  */
-exports.up = async function (knex) {
+export async function up(knex) {
   await knex.schema.createTable('upload_log', (t) => {
     t.increments('id').primary();
     t.text('filename');
@@ -14,6 +14,6 @@ exports.up = async function (knex) {
   });
 };
 
-exports.down = async function (knex) {
+export async function down(knex) {
   await knex.schema.dropTableIfExists('upload_log');
 };

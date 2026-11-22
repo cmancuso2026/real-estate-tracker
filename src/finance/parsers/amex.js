@@ -10,7 +10,7 @@
 //     BofA/SoFi outflow) so the category nets to ~zero. Skipping them would
 //     leave the bank-side payment double-counting against the real charges.
 //   * dates are MM/DD/YYYY
-const { toISODate, parseAmount, findHeaderRow, columnMap } = require('./util');
+import { toISODate, parseAmount, findHeaderRow, columnMap } from './util.js';
 
 // source is the display label ('Amex Gold' | 'Amex Blue').
 function parseRows(rows, source = 'Amex Gold') {
@@ -47,4 +47,4 @@ function parseRows(rows, source = 'Amex Gold') {
   return out;
 }
 
-module.exports = { parseRows };
+export { parseRows };

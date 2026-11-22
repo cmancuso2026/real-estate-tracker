@@ -4,7 +4,7 @@
  * categories table. Dedup skips already-imported rows on re-upload, so the
  * note lives on the row and survives re-uploads of the same file.
  */
-exports.up = async function (knex) {
+export async function up(knex) {
   const has = await knex.schema.hasColumn('transactions', 'note');
   if (!has) {
     await knex.schema.alterTable('transactions', (t) => {
@@ -13,7 +13,7 @@ exports.up = async function (knex) {
   }
 };
 
-exports.down = async function (knex) {
+export async function down(knex) {
   const has = await knex.schema.hasColumn('transactions', 'note');
   if (has) {
     await knex.schema.alterTable('transactions', (t) => {

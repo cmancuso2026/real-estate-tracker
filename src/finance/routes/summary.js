@@ -1,6 +1,6 @@
-const express = require('express');
+import express from 'express';
 
-const { applyFilters, isoDate } = require('./_query');
+import { applyFilters, isoDate } from './_query.js';
 
 const router = express.Router();
 
@@ -68,4 +68,4 @@ router.get('/', async (req, res, next) => {
   }
 });
 
-module.exports = router;
+export default router;

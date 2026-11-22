@@ -1,28 +1,41 @@
-const express = require('express');
-const path = require('path');
+import express from 'express';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+import db from './db/knex.js';
+import uploadRouter from './routes/upload.js';
+import transactionsRouter from './routes/transactions.js';
+import summaryRouter from './routes/summary.js';
+import categoriesRouter from './routes/categories.js';
+import yearsRouter from './routes/years.js';
+import monthsRouter from './routes/months.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// The legacy dashboard stays in finance/public until the Phase 4 React rebuild.
+const PUBLIC_DIR = path.join(__dirname, '..', '..', 'finance', 'public');
 
 const app = express();
 
 // Shared DB handle. Routes read `req.app.locals.db` so tests can inject an
 // in-memory Postgres without touching the modules.
-app.locals.db = require('./db/knex');
+app.locals.db = db;
 
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(PUBLIC_DIR));
 
-app.use('/api/upload', require('./routes/upload'));
-app.use('/api/transactions', require('./routes/transactions'));
-app.use('/api/summary', require('./routes/summary'));
-app.use('/api/categories', require('./routes/categories'));
-app.use('/api/years', require('./routes/years'));
-app.use('/api/months', require('./routes/months'));
+app.use('/api/upload', uploadRouter);
+app.use('/api/transactions', transactionsRouter);
+app.use('/api/summary', summaryRouter);
+app.use('/api/categories', categoriesRouter);
+app.use('/api/years', yearsRouter);
+app.use('/api/months', monthsRouter);
 
 // Health check for Railway.
 app.get('/healthz', (req, res) => res.json({ ok: true }));
 
 // Fallback — serve the dashboard for any non-API route.
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
 });
 
 // Central error handler so route handlers can just `throw` / `next(err)`.
@@ -33,8 +46,8 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 3000;
-if (require.main === module) {
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   app.listen(PORT, () => console.log(`Running on port ${PORT}`));
 }
 
-module.exports = app;
+export default app;

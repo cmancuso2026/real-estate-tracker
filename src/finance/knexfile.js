@@ -3,7 +3,7 @@
 // On Railway a Postgres plugin injects DATABASE_URL. Locally you can set
 // DATABASE_URL in a .env file (see .env.example). SSL is enabled in production
 // because Railway's managed Postgres requires it.
-require('dotenv').config();
+import 'dotenv/config';
 
 const connection = process.env.DATABASE_URL
   ? {
@@ -29,7 +29,7 @@ const shared = {
   },
 };
 
-module.exports = {
+export default {
   development: shared,
   production: shared,
 };
