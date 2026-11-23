@@ -9,6 +9,7 @@ import { buildChart, type Granularity } from '@/lib/finance-ui/chart';
 import { fmt } from '@/lib/finance-ui/format';
 import { heroTotals } from '@/lib/finance-ui/transactions';
 import { InfoTip } from '@/components/finance/InfoTip';
+import { TransfersNote } from '@/components/finance/TransfersNote';
 import { SankeyChart } from '@/components/finance/SankeyChart';
 import { buildGroupSankey, buildSankey, transfersLeftOut } from '@/lib/finance-ui/sankey';
 
@@ -114,7 +115,7 @@ export default function FinanceOverviewPage() {
           </div>
           <div className="mt-1 text-xs text-gray-500" data-testid="kpi-transfers">
             Net for period
-            {hero.transferCount > 0 && ` · ${hero.transferCount} transfer${hero.transferCount === 1 ? '' : 's'} between your accounts left out`}
+            {hero.transferCount > 0 && ' · card payments netted out'}
           </div>
         </Card>
       </section>
@@ -211,21 +212,7 @@ export default function FinanceOverviewPage() {
           {model && <FinanceChart model={model} kind={kind} stack={stack} />}
         </div>
         )}
-        {view === 'sankey' && transfers.length > 0 && (
-          <p className="mt-3 border-t border-gray-100 pt-2 text-xs text-gray-500" data-testid="transfers-note">
-            <strong className="font-medium text-gray-700">Not shown: transfers between your own accounts</strong> —{' '}
-            {transfers.map((t, i) => (
-              <span key={t.cat}>
-                {i > 0 && ', '}
-                {t.cat} ({t.count}: {t.out > 0 && `$${Math.round(t.out).toLocaleString()} out`}
-                {t.out > 0 && t.in > 0 && ' / '}
-                {t.in > 0 && `$${Math.round(t.in).toLocaleString()} in`})
-              </span>
-            ))}
-            . Paying a credit card from checking, or moving money to Venmo, isn&apos;t new spending: the purchases themselves
-            are already counted. That&apos;s the Financials group; it&apos;s left out of income, spending and cash flow.
-          </p>
-        )}
+        {view === 'sankey' && <TransfersNote items={transfers} />}
       </Card>
     </div>
   );

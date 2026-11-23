@@ -52,13 +52,19 @@ export function heroTotals(rows: Txn[], ctx: MetricsCtx = DEFAULT_METRICS_CTX) {
   };
 }
 
-/** Summary bar under the transactions table (old renderSummaryBar). */
-export function summaryBar(rows: Txn[]) {
+/**
+ * Summary bar under the transactions table. Expenses and income use the same
+ * definition as the KPI cards (card payments / transfers netted out, refunds
+ * reduce expenses), so they match the Overview for the same rows.
+ */
+export function summaryBar(rows: Txn[], ctx: MetricsCtx = DEFAULT_METRICS_CTX) {
+  const t = totalsOf(rows, ctx);
   return {
     count: rows.length,
-    expenses: rows.filter((t) => t.amt < 0).reduce((s, t) => s + t.amt, 0),
-    income: rows.filter((t) => t.amt > 0).reduce((s, t) => s + t.amt, 0),
-    uncategorized: rows.filter((t) => t.cat === 'Uncategorized').length,
+    expenses: -t.spending,
+    income: t.income,
+    uncategorized: rows.filter((r) => r.cat === 'Uncategorized').length,
+    transfers: t.transfer_count,
   };
 }
 

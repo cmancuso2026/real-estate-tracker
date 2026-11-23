@@ -150,3 +150,22 @@ test('exclude investments: Investments group, property-mapped categories and any
   ];
   assert.deepEqual(withoutInvestments(rows, tax, props2).map((t) => t.desc), ['PAYROLL', 'PUBLIX']);
 });
+
+test('card payments are netted out of the Categories table and the Transactions summary', async () => {
+  const { summaryBar } = await import('../lib/finance-ui/transactions');
+  const { metricsContext } = await import('../lib/finance-ui/metrics');
+  const { categoryKind } = await import('../../finance/lib/metrics.js');
+  const tax2 = buildTaxonomy({ 'W2 Income': ['Paycheck'], Food: ['Groceries'], Financials: ['Amex'] });
+  const ctx = metricsContext(tax2.catToGroup, []);
+  const rows = [
+    tx('2026-11-01', 'PAYROLL', 4000, 'Paycheck'),
+    tx('2026-11-05', 'PUBLIX', -100, 'Groceries'),
+    tx('2026-11-20', 'AMEX PAYMENT', -100, 'Amex'),
+    tx('2026-11-21', 'PAYMENT THANK YOU', 100, 'Amex'),
+  ];
+  const t = buildCategoryTable(rows, rows, tax2, [], 'aggregate', '', (c) => categoryKind(c, ctx) === 'transfer');
+  assert.deepEqual(t.groups.map((g) => g.group), ['W2 Income', 'Food']);
+  assert.deepEqual(t.totals, [3900]);
+  const s = summaryBar(rows, ctx);
+  assert.deepEqual([s.income, s.expenses, s.count], [4000, -100, 4]);
+});

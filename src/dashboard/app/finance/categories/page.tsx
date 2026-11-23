@@ -12,7 +12,9 @@ import {
 } from '@/lib/finance-ui/categoryTable';
 import { fmt } from '@/lib/finance-ui/format';
 import { GROUP_ICON } from '@/lib/finance-ui/taxonomy';
-import { merchantLabel } from '@/lib/finance-ui/sankey';
+import { merchantLabel, transfersLeftOut } from '@/lib/finance-ui/sankey';
+import { categoryKind } from '@finance/lib/metrics.js';
+import { TransfersNote } from '@/components/finance/TransfersNote';
 
 const colBg: Record<ColClass, string> = {
   '': '',
@@ -37,7 +39,7 @@ function AmountCell({ cell, cls, bold = false }: { cell: Cell; cls: ColClass; bo
 }
 
 export default function FinanceSpendingPage() {
-  const { txns, filteredTxns, comparePool, tax, props } = useFinance();
+  const { txns, filteredTxns, comparePool, tax, props, metricsCtx } = useFinance();
   const [view, setView] = useState<CatView>('monthly');
   const [compare, setCompare] = useState('');
   // Groups and properties start collapsed (as on the old page).
@@ -47,8 +49,8 @@ export default function FinanceSpendingPage() {
   const [openCats, setOpenCats] = useState<Set<string>>(new Set());
 
   const table = useMemo(
-    () => buildCategoryTable(filteredTxns, comparePool, tax, props, view, compare),
-    [filteredTxns, comparePool, tax, props, view, compare],
+    () => buildCategoryTable(filteredTxns, comparePool, tax, props, view, compare, (c) => categoryKind(c, metricsCtx) === 'transfer'),
+    [filteredTxns, comparePool, tax, props, view, compare, metricsCtx],
   );
   const options = useMemo(() => compareOptions(txns), [txns]);
   useEffect(() => {
@@ -256,6 +258,9 @@ export default function FinanceSpendingPage() {
               </tr>
             </tbody>
           </table>
+          <div className="px-4 pb-3">
+            <TransfersNote items={transfersLeftOut(filteredTxns, metricsCtx)} />
+          </div>
         </div>
       )}
     </Card>

@@ -56,13 +56,33 @@ function StatementsUpload() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<UploadResult | null>(null);
+  // Files picked or dropped so far (several at once; the list can be trimmed before uploading).
+  const [files, setFiles] = useState<File[]>([]);
+  const [drag, setDrag] = useState(false);
+  const [skipped, setSkipped] = useState<string[]>([]);
+
+  function addFiles(list: FileList | File[] | null | undefined) {
+    if (!list) return;
+    const ok: File[] = [];
+    const notOk: string[] = [];
+    for (const f of Array.from(list)) {
+      if (/\.(csv|xlsx|xls)$/i.test(f.name)) ok.push(f);
+      else notOk.push(f.name);
+    }
+    setSkipped(notOk);
+    setResult(null);
+    setError(null);
+    setFiles((cur) => {
+      const seen = new Set(cur.map((f) => `${f.name}|${f.size}`));
+      return [...cur, ...ok.filter((f) => !seen.has(`${f.name}|${f.size}`))].slice(0, 20);
+    });
+  }
 
   async function upload() {
     setError(null);
     setResult(null);
-    const files = input.current?.files;
-    if (!files || !files.length) {
-      setError('Please choose at least one file first.');
+    if (!files.length) {
+      setError('Drop or choose at least one file first.');
       return;
     }
     const fd = new FormData();
@@ -72,6 +92,8 @@ function StatementsUpload() {
     try {
       const data = await financeApi.post<UploadResult>('/api/finance/upload', fd);
       setResult(data);
+      setFiles([]);
+      setSkipped([]);
       if (input.current) input.current.value = '';
       // refresh the Needs Property badge in the header
       const c = await financeApi.get<{ count: number }>('/api/finance/attribution/count').catch(() => null);
@@ -94,6 +116,72 @@ function StatementsUpload() {
           </p>
         </div>
 
+        <div
+          data-testid="statement-drop"
+          role="button"
+          tabIndex={0}
+          onClick={() => input.current?.click()}
+          onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && input.current?.click()}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDrag(true);
+          }}
+          onDragLeave={() => setDrag(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDrag(false);
+            addFiles(e.dataTransfer.files);
+          }}
+          className={`flex h-32 cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed text-sm transition-colors ${
+            drag ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-300 bg-gray-50 text-gray-600 hover:border-gray-400'
+          }`}
+        >
+          <svg aria-hidden viewBox="0 0 24 24" className="mb-2 h-7 w-7 fill-current opacity-70">
+            <path d="M19 15v4H5v-4H3v4a2 2 0 002 2h14a2 2 0 002-2v-4h-2zM12 3l-5 5h3v6h4V8h3l-5-5z" />
+          </svg>
+          Drop statement files here (several at once), or click to choose
+          <span className="mt-0.5 text-xs text-gray-400">CSV or Excel · up to 20 files</span>
+          <input
+            ref={input}
+            type="file"
+            aria-label="Statement files"
+            accept=".csv,.xlsx,.xls"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              addFiles(e.target.files);
+              e.target.value = '';
+            }}
+          />
+        </div>
+
+        {skipped.length > 0 && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800" data-testid="statement-skipped">
+            Not added: {skipped.join(', ')}. Bank statements need to be CSV or Excel exports (PDF statements can&apos;t be read
+            yet). For a lease, insurance or escrow PDF, use{' '}
+            <a href="/upload?kind=documents" className="font-medium underline">
+              Property documents
+            </a>
+            .
+          </div>
+        )}
+
+        {files.length > 0 && (
+          <ul className="divide-y divide-gray-100 rounded-lg border border-gray-200 text-sm" data-testid="statement-files">
+            {files.map((f, i) => (
+              <li key={`${f.name}|${f.size}`} className="flex items-center justify-between px-3 py-1.5">
+                <span className="truncate">{f.name}</span>
+                <span className="flex items-center gap-3 text-xs text-gray-400">
+                  {(f.size / 1024).toFixed(0)} KB
+                  <button type="button" className="text-gray-400 hover:text-red-600" aria-label={`Remove ${f.name}`} onClick={() => setFiles((cur) => cur.filter((_, k) => k !== i))}>
+                    ✕
+                  </button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex flex-col gap-1 text-xs font-medium text-gray-600">
             Source
@@ -105,19 +193,8 @@ function StatementsUpload() {
               ))}
             </select>
           </label>
-          <label className="flex flex-col gap-1 text-xs font-medium text-gray-600">
-            Files (.csv, .xlsx)
-            <input
-              ref={input}
-              type="file"
-              aria-label="Statement files"
-              accept=".csv,.xlsx,.xls"
-              multiple
-              className="text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-gray-100 file:px-3 file:py-1.5 file:text-sm file:font-medium hover:file:bg-gray-200"
-            />
-          </label>
-          <button className={btnPrimary} disabled={busy} onClick={() => void upload()}>
-            {busy ? 'Uploading…' : 'Upload'}
+          <button className={btnPrimary} disabled={busy || files.length === 0} onClick={() => void upload()}>
+            {busy ? 'Uploading…' : files.length ? `Upload ${files.length} file${files.length === 1 ? '' : 's'}` : 'Upload'}
           </button>
         </div>
         <p className="text-xs text-gray-400">

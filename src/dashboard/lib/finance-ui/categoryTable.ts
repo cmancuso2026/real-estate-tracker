@@ -109,7 +109,11 @@ export function buildCategoryTable(
   props: PropertyGroup[],
   view: CatView,
   compare: string,
+  /** Categories to leave out entirely (card payments / transfers, which are netted out). */
+  skipCat: (cat: string) => boolean = () => false,
 ): CategoryTable {
+  rows = rows.filter((t) => !skipCat(t.cat));
+  comparePool = comparePool.filter((t) => !skipCat(t.cat));
   const mkBycat = (rs: Txn[]) => {
     const m: Record<string, number> = {};
     rs.forEach((t) => sharesOf(t, props).forEach(([k, v]) => (m[k] = (m[k] || 0) + v)));

@@ -29,7 +29,7 @@ const COLUMNS: { key: SortKey; label: string; right?: boolean }[] = [
 ];
 
 export default function FinanceTransactionsPage() {
-  const { txns, filteredTxns, periodTxns, tax, patchTxns, requiresProperty, propertyOptions } = useFinance();
+  const { txns, filteredTxns, periodTxns, tax, patchTxns, requiresProperty, propertyOptions, metricsCtx } = useFinance();
   // Inline property picker: for a category that needs a property, or to edit a row's property.
   const [picker, setPicker] = useState<{ id: number; category?: string } | null>(null);
   const [flaggedOnly, setFlaggedOnly] = useState(false);
@@ -50,7 +50,7 @@ export default function FinanceTransactionsPage() {
     [filteredTxns, flaggedOnly, tax, disc, sort],
   );
   const flaggedInView = filteredTxns.filter((t) => disc.flags.has(t.id)).length;
-  const sum = summaryBar(rows);
+  const sum = summaryBar(rows, metricsCtx);
 
   // Like the old page, a re-filter drops the selection, so a bulk action can
   // never hit rows that are no longer on screen.
@@ -333,7 +333,7 @@ export default function FinanceTransactionsPage() {
           <div className="font-semibold tabular" data-testid="sum-count">{sum.count}</div>
         </div>
         <div>
-          <div className="text-xs text-gray-500">Expenses</div>
+          <div className="text-xs text-gray-500" title="Card payments and transfers between your own accounts are netted out">Expenses</div>
           <div className="font-semibold tabular text-red-600" data-testid="sum-exp">{fmt(sum.expenses)}</div>
         </div>
         <div>
