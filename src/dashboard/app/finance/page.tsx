@@ -196,7 +196,7 @@ export default function FinanceOverviewPage() {
             data-flows={sankey ? JSON.stringify({ income: sankey.income, spending: sankey.spending, flows: sankey.flows }) : ''}
           >
             {sankey ? (
-              <SankeyChart model={sankey} onPickGroup={setFocus} />
+              <SankeyChart key={focus || 'all'} model={sankey} onPickGroup={setFocus} />
             ) : (
               <div className="flex h-full items-center justify-center text-sm text-gray-400">No income or spending in this period.</div>
             )}
