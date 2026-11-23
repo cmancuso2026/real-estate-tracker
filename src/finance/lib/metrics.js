@@ -21,9 +21,9 @@ export const TRANSFER_GROUPS = ['Financials'];
 export const INCOME_GROUPS = ['W2 Income'];
 
 export const DEFINITIONS = {
-  income: 'Money in to income categories (W2 Income, property rent) and uncategorized deposits. Card payments and transfers between your accounts (Financials) are left out.',
-  spending: 'Money out, net of refunds, in every category except Financials (card payments and transfers between your accounts). Includes mortgage/PITI and property costs.',
-  cash_flow: 'Income minus spending; card payments and transfers between your accounts are left out.',
+  income: 'Money in to income categories (W2 Income, property rent) and uncategorized deposits. Card payments and transfers between your own accounts are netted out.',
+  spending: 'What you bought, net of refunds: every purchase on your cards and accounts, including mortgage/PITI and property costs. Paying the card bill is netted out, so nothing is counted twice.',
+  cash_flow: 'Income minus spending. Card payments and transfers between your own accounts are netted out.',
 };
 
 const r2 = (n) => Math.round(n * 100) / 100;
