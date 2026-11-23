@@ -17,7 +17,9 @@ import {
   type SortKey,
   type SortState,
 } from '@/lib/finance-ui/transactions';
-import type { ApiTxn, PropertyOption, Txn } from '@/lib/finance-ui/types';
+import { attributionOf, singleAllocation, type ApiTxn, type PropertyOption, type Txn } from '@/lib/finance-ui/types';
+import { SplitEditor, type SplitMode, type SplitRow } from '@/components/finance/SplitEditor';
+import { bulkSplitStart, sliceCounts, sliceRows, type AssignSlice, type PropertySlice } from '@/lib/finance-ui/propertySlicer';
 
 const COLUMNS: { key: SortKey; label: string; right?: boolean }[] = [
   { key: 'date', label: 'Date' },
@@ -29,7 +31,7 @@ const COLUMNS: { key: SortKey; label: string; right?: boolean }[] = [
 ];
 
 export default function FinanceTransactionsPage() {
-  const { txns, filteredTxns, periodTxns, tax, patchTxns, requiresProperty, propertyOptions, metricsCtx } = useFinance();
+  const { txns, filteredTxns, periodTxns, tax, patchTxns, requiresProperty, propertyOptions, metricsCtx, allowProjectTag } = useFinance();
   // Inline property picker: for a category that needs a property, or to edit a row's property.
   const [picker, setPicker] = useState<{ id: number; category?: string } | null>(null);
   const [flaggedOnly, setFlaggedOnly] = useState(false);
@@ -40,21 +42,30 @@ export default function FinanceTransactionsPage() {
   const [savingId, setSavingId] = useState<number | null>(null);
   const [bulkCat, setBulkCat] = useState('');
   const [busy, setBusy] = useState(false);
+  // Property slicers + bulk property tools
+  const [propSlice, setPropSlice] = useState<PropertySlice>('');
+  const [assignSlice, setAssignSlice] = useState<AssignSlice>('');
+  const [bulkProperty, setBulkProperty] = useState('');
+  const [bulkSplit, setBulkSplit] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
   // Flags are computed over ALL transactions (old computeDiscrepancies).
   const disc = useMemo(() => computeDiscrepancies(txns, tax), [txns, tax]);
   // The global filters (bar above) are already applied; this page adds only
   // the ⚠ Review toggle and sorting.
+  const baseRows = useMemo(() => (flaggedOnly ? filteredTxns.filter((t) => disc.flags.has(t.id)) : filteredTxns), [filteredTxns, flaggedOnly, disc]);
+  const counts = useMemo(() => sliceCounts(baseRows), [baseRows]);
   const rows = useMemo(
-    () => (flaggedOnly ? filteredTxns.filter((t) => disc.flags.has(t.id)) : filteredTxns.slice()).sort(txnComparator(sort, tax)),
-    [filteredTxns, flaggedOnly, tax, disc, sort],
+    () => sliceRows(baseRows, propSlice, assignSlice).sort(txnComparator(sort, tax)),
+    [baseRows, propSlice, assignSlice, tax, sort],
   );
   const flaggedInView = filteredTxns.filter((t) => disc.flags.has(t.id)).length;
   const sum = summaryBar(rows, metricsCtx);
 
   // Like the old page, a re-filter drops the selection, so a bulk action can
   // never hit rows that are no longer on screen.
-  useEffect(() => setSelected(new Set()), [filteredTxns, flaggedOnly]);
+  useEffect(() => setSelected(new Set()), [filteredTxns, flaggedOnly, propSlice, assignSlice]);
+  useEffect(() => setBulkSplit(false), [selected]);
   useEffect(() => {
     if (!bulkCat && tax.allSubcats.length) setBulkCat(tax.allSubcats[0]!);
   }, [bulkCat, tax.allSubcats]);
@@ -139,6 +150,55 @@ export default function FinanceTransactionsPage() {
     }
   }
 
+  const selRows = rows.filter((t) => selected.has(t.id));
+  const sameAmount = selRows.length && selRows.every((t) => Math.round(t.amt * 100) === Math.round(selRows[0]!.amt * 100)) ? selRows[0]!.amt : null;
+  const projectsOn = selRows.every((t) => allowProjectTag(t.cat));
+
+  /** Put the saved transactions back into the shared data, keep the filters. */
+  function applyServerRows(list: ApiTxn[]) {
+    for (const u of list) patchTxns([u.id], attributionOf(u));
+  }
+  async function bulkAssign() {
+    if (!bulkProperty) return;
+    setBusy(true);
+    setNotice(null);
+    try {
+      const ids = selRows.map((t) => t.id);
+      await financeApi.patch('/api/finance/transactions/attribution', { ids, property_id: Number(bulkProperty) });
+      for (const t of selRows) patchTxns([t.id], singleAllocation(t.amt, Number(bulkProperty), null, null));
+      setNotice(`Assigned ${ids.length} to ${propertyOptions.find((p) => String(p.id) === bulkProperty)?.name ?? 'the property'}.`);
+      setSelected(new Set());
+    } catch (err) {
+      setNotice('Failed: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function bulkAllocate(mode: SplitMode | null, splitRows: SplitRow[]) {
+    setBusy(true);
+    setNotice(null);
+    try {
+      const r = await financeApi.put<{ updated: number; transactions: ApiTxn[] }>('/api/finance/transactions/allocations', {
+        ids: selRows.map((t) => t.id),
+        mode: mode ?? undefined,
+        rows: splitRows.map((x) => ({
+          property_id: Number(x.property_id),
+          unit_id: x.unit_id ? Number(x.unit_id) : null,
+          work_order_id: x.work_order_id ? Number(x.work_order_id) : null,
+          value: Number(x.value),
+        })),
+      });
+      applyServerRows(r.transactions);
+      setNotice(splitRows.length ? `Split ${r.updated} transaction${r.updated === 1 ? '' : 's'}.` : `Removed the property from ${r.updated}.`);
+      setBulkSplit(false);
+      setSelected(new Set());
+    } catch (err) {
+      setNotice('Failed: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const toggleIn = (set: Set<number>, id: number) => {
     const n = new Set(set);
     if (n.has(id)) n.delete(id);
@@ -163,6 +223,39 @@ export default function FinanceTransactionsPage() {
         </span>
       </div>
 
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-gray-100 px-4 py-2" data-testid="property-slicers">
+        <span className="mr-1 text-xs font-medium text-gray-500">Property</span>
+        {[
+          { v: '', label: 'All', n: baseRows.length },
+          { v: 'none', label: 'Not assigned', n: counts.none },
+          ...propertyOptions.map((p) => ({ v: String(p.id), label: p.name, n: counts.byProperty.get(p.id) ?? 0 })),
+        ].map((c) => (
+          <button
+            key={c.v || 'all'}
+            type="button"
+            aria-pressed={propSlice === c.v}
+            onClick={() => setPropSlice(c.v)}
+            className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+              propSlice === c.v ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            {c.label} <span className={propSlice === c.v ? 'text-gray-300' : 'text-gray-400'}>{c.n}</span>
+          </button>
+        ))}
+        <span className="mx-1 h-4 w-px bg-gray-200" />
+        <select aria-label="Assigned as" className={selectCls} value={assignSlice} onChange={(e) => setAssignSlice(e.target.value as AssignSlice)}>
+          <option value="">Any assignment</option>
+          <option value="single">One property (100%)</option>
+          <option value="split">Split across properties</option>
+          <option value="partial">Partly assigned</option>
+        </select>
+      </div>
+      {notice && (
+        <div role="status" className="border-b border-green-100 bg-green-50 px-4 py-1.5 text-sm text-green-800">
+          {notice}
+        </div>
+      )}
+
       {nSel > 0 && (
         <div className="flex flex-wrap items-center gap-2 border-b border-blue-100 bg-blue-50 px-4 py-2 text-sm">
           <span className="font-medium text-blue-800">{nSel} selected</span>
@@ -183,9 +276,50 @@ export default function FinanceTransactionsPage() {
           >
             ✓ Mark reviewed
           </button>
+          <span className="mx-1 h-5 w-px bg-blue-200" />
+          <select aria-label="Bulk property" className={selectCls} value={bulkProperty} onChange={(e) => setBulkProperty(e.target.value)}>
+            <option value="">Assign to property…</option>
+            {propertyOptions.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+          <button className={btnSecondary} disabled={busy || !bulkProperty} onClick={() => void bulkAssign()} data-testid="txn-bulk-assign">
+            Assign {nSel}
+          </button>
+          <button className={btnSecondary} disabled={busy} onClick={() => setBulkSplit((v) => !v)} data-testid="txn-bulk-split">
+            Split {nSel}…
+          </button>
+          {selRows.some((t) => t.allocations.length) && (
+            <button className="text-xs text-red-600 hover:underline disabled:opacity-50" disabled={busy} onClick={() => void bulkAllocate(null, [])}>
+              Remove property
+            </button>
+          )}
           <button className="rounded-full border border-gray-300 bg-white px-3 py-1 text-xs" onClick={() => setSelected(new Set())}>
             Clear selection
           </button>
+        </div>
+      )}
+      {nSel > 0 && bulkSplit && (
+        <div className="border-b border-blue-100 bg-blue-50/40 px-4 py-3" data-testid="txn-bulk-split-editor">
+          <SplitEditor
+            key={selRows.map((t) => t.id).join(',')}
+            txn={{ ...selRows[0]!, amt: sameAmount ?? selRows[0]!.amt }}
+            properties={propertyOptions}
+            projectsOn={projectsOn}
+            initial={bulkSplitStart(selRows, propSlice)}
+            busy={busy}
+            title={
+              sameAmount != null
+                ? `Split each of the ${nSel} selected (${fmt(sameAmount)} each)`
+                : `Split each of the ${nSel} selected — replaces any split they have`
+            }
+            amountDisabledReason={sameAmount == null ? 'Dollar amounts need every selected transaction to have the same amount; percentages work for any mix.' : undefined}
+            saveLabel={`Save split for ${nSel}`}
+            onSave={(mode, r) => void bulkAllocate(mode, r)}
+            onCancel={() => setBulkSplit(false)}
+          />
         </div>
       )}
 

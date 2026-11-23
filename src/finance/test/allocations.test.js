@@ -197,7 +197,7 @@ test('splits end to end (pg-mem + route handlers)', async (t) => {
       assert.match(bad.body.error, /LAWN 3/);
       assert.equal((await knex('transaction_allocations').whereIn('transaction_id', [a, b, c])).length, 0, 'nothing saved');
       const dollars = await call('PUT', '/finance/transactions/allocations', { ids: [a, b], mode: 'amount', rows: [{ property_id: p1, value: 40 }, { property_id: p2, value: 25 }] });
-      assert.deepEqual(dollars.body, { success: true, updated: 2 });
+      assert.deepEqual([dollars.body.success, dollars.body.updated, dollars.body.transactions.length], [true, 2, 2]);
       // percentages work for any mix, each on its own amount
       const pct = await call('PUT', '/finance/transactions/allocations', { ids: [a, c], mode: 'percent', rows: [{ property_id: p1, value: 50 }, { property_id: p3, unit_id: unit('20'), value: 50 }] });
       assert.equal(pct.status, 200);
@@ -208,6 +208,11 @@ test('splits end to end (pg-mem + route handlers)', async (t) => {
       );
       const q = (await call('GET', '/finance/attribution/queue')).body.transactions.map((r) => r.id);
       assert.ok(![a, b, c].some((id) => q.includes(id)), 'all three left the queue');
+      // rows: [] takes the properties off again (bulk "Remove property")
+      const cleared = await call('PUT', '/finance/transactions/allocations', { ids: [a, b], rows: [] });
+      assert.equal(cleared.status, 200);
+      assert.deepEqual(cleared.body.transactions.map((t) => t.allocations.length), [0, 0]);
+      assert.equal((await knex('transaction_allocations').whereIn('transaction_id', [a, b])).length, 0);
     });
 
     await t.test('clearing with rows: [] puts it back in the queue', async () => {

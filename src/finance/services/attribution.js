@@ -62,17 +62,25 @@ export async function setAllocations(knex, params, body) {
 // amount; dollar amounts must add up to every selected transaction's amount
 // (so they work when the amounts are the same). All or nothing: if any
 // transaction can't take the split, nothing is saved and the 400 names it.
-// → { success, updated }
+// rows: [] removes the property (and split) from all of them.
+// → { success, updated, transactions }
 export async function bulkAllocations(knex, body) {
   let { ids } = body || {};
   if (!Array.isArray(ids) || ids.length === 0) throw httpError(400, 'Body must include a non-empty "ids" array');
   ids = [...new Set(ids.map(Number).filter((n) => Number.isInteger(n)))];
   const mode = body?.mode;
   const rows = Array.isArray(body?.rows) ? body.rows : null;
-  if (!rows || !rows.length) throw httpError(400, 'Body must include a non-empty rows array');
-  if (!MODES.includes(mode)) throw httpError(400, `mode must be one of: ${MODES.join(', ')}`);
+  if (!rows) throw httpError(400, 'Body must include a rows array ([] removes the properties)');
+  if (rows.length && !MODES.includes(mode)) throw httpError(400, `mode must be one of: ${MODES.join(', ')}`);
   const txns = await knex('transactions').whereIn('id', ids).select(ROW_FIELDS);
   if (txns.length !== ids.length) throw httpError(404, 'Some transactions were not found');
+  if (!rows.length) {
+    // rows: [] — take the property (and any split) off every selected transaction
+    await knex.transaction(async (trx) => {
+      for (const t of txns) await saveAllocations(trx, t, [], null);
+    });
+    return { success: true, updated: txns.length, transactions: await serializeRows(knex, await knex('transactions').whereIn('id', ids)) };
+  }
   const plan = [];
   for (const t of txns) {
     let allocs;
@@ -89,7 +97,7 @@ export async function bulkAllocations(knex, body) {
   await knex.transaction(async (trx) => {
     for (const [t, allocs] of plan) await saveAllocations(trx, t, allocs, spec);
   });
-  return { success: true, updated: plan.length };
+  return { success: true, updated: plan.length, transactions: await serializeRows(knex, await knex('transactions').whereIn('id', ids)) };
 }
 
 // PATCH /api/finance/transactions/attribution — { ids: number[], property_id, work_order_id?, unit_id? }.
