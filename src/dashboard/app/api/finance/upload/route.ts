@@ -3,10 +3,12 @@ import { httpError, run } from '@/lib/finance';
 
 export const dynamic = 'force-dynamic';
 
-// POST /api/finance/upload — multipart form, up to 20 files in field "files".
-// Each file's bank is auto-detected from its headers. → { success, files,
-// files_parsed, total_rows, new_rows, skipped, recategorized, by_source,
-// errors, upload_ids }
+// POST /api/finance/upload — multipart form, up to 20 files in field "files",
+// and optional field "source" (bankofamerica, amex_gold, amex_blue, sofi,
+// capitalone; empty = detect each file's bank from its headers).
+// → { success, files, files_parsed, total_rows, new_rows, skipped,
+// recategorized, needs_property, rent: { matched, already_recorded,
+// needs_unit }, by_source, errors, upload_ids }
 export async function POST(req: Request) {
   return run(async (knex) => {
     let form: FormData | null = null;
@@ -28,6 +30,7 @@ export async function POST(req: Request) {
       }
       files.push({ buffer: Buffer.from(await f.arrayBuffer()), originalname: f.name });
     }
-    return processUpload(knex, files);
+    const source = form?.get('source');
+    return processUpload(knex, files, { sourceKey: typeof source === 'string' && source ? source : null });
   });
 }

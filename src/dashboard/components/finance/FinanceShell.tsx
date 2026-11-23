@@ -11,7 +11,7 @@ import { selectCls } from './ui';
 
 
 /** Pages that don't use the global filters. */
-const NO_FILTERS = ['/finance/upload', '/finance/attribution'];
+const NO_FILTERS = ['/finance/attribution'];
 
 /** The global filters: every value here applies to every finance page. */
 function FilterBar() {

@@ -14,6 +14,7 @@ const nextConfig = {
     return [
       { source: '/settings', destination: '/admin/investor-profile', permanent: true },
       { source: '/rent', destination: '/properties', permanent: false },
+      { source: '/finance/upload', destination: '/upload', permanent: true },
     ];
   },
   // This app has its own lockfile separate from the tracker root; pin the

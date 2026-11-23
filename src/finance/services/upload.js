@@ -1,4 +1,4 @@
-import { parseFileAuto } from '../parsers/index.js';
+import { parseFile, parseFileAuto, SOURCES } from '../parsers/index.js';
 import { buildHistoryIndex, categorizeWithHistory } from '../lib/categorize.js';
 import { recategorizeUncategorized } from '../lib/recategorize.js';
 import { dedupHash } from '../lib/dedup.js';
@@ -18,10 +18,20 @@ export const MAX_FILE_BYTES = 15 * 1024 * 1024; // 15 MB per file
 // are parsed, deduplicated across the whole batch AND against existing DB rows,
 // then inserted in a single DB transaction. The response is a combined summary
 // broken out by detected source.
-export async function processUpload(knex, uploadedFiles) {
+//
+// opts.sourceKey (optional, a SOURCES key such as 'amex_blue') parses every file
+// with that bank's parser instead of detecting it — detection can't tell Amex
+// Gold from Amex Blue (both files look the same), so the upload page lets you say.
+export async function processUpload(knex, uploadedFiles, opts = {}) {
   const files = uploadedFiles || [];
   if (!files.length) {
     const e = new Error('No files uploaded (form field "files")');
+    e.status = 400;
+    throw e;
+  }
+  const sourceKey = opts.sourceKey || null;
+  if (sourceKey && !SOURCES[sourceKey]) {
+    const e = new Error(`Unknown source '${sourceKey}'. Expected one of: ${Object.keys(SOURCES).join(', ')}`);
     e.status = 400;
     throw e;
   }
@@ -32,7 +42,9 @@ export async function processUpload(knex, uploadedFiles) {
   const fileErrors = []; // { filename, error }
   files.forEach((f) => {
     try {
-      const { source, transactions } = parseFileAuto(f.buffer, f.originalname);
+      const { source, transactions } = sourceKey
+        ? parseFile(f.buffer, f.originalname, sourceKey)
+        : parseFileAuto(f.buffer, f.originalname);
       parsed.push({ filename: f.originalname, source, transactions });
     } catch (err) {
       fileErrors.push({ filename: f.originalname, error: err.message });

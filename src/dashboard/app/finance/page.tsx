@@ -50,7 +50,12 @@ export default function FinanceOverviewPage() {
         <Card>
           <div className="text-sm text-gray-500">Total Spending</div>
           <div data-testid="kpi-spend" className="mt-1 text-3xl font-bold tabular text-red-600">{fmt(-hero.spend)}</div>
-          <div className="mt-1 text-xs text-gray-500">{hero.expenseCount} expense transactions</div>
+          <div className="mt-1 flex justify-between text-xs text-gray-500">
+            <span>{hero.expenseCount} expense transactions</span>
+            <Link href="/finance/spending" className="font-medium text-blue-600 hover:underline">
+              By category →
+            </Link>
+          </div>
         </Card>
         <Card>
           <div className="text-sm text-gray-500">Cash Flow</div>

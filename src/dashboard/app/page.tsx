@@ -192,7 +192,7 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
           <Card>
             <div className="flex items-baseline justify-between">
               <Label>Latest uploads by source</Label>
-              <Link href="/finance/upload" className="text-xs text-blue-600 hover:underline">
+              <Link href="/upload" className="text-xs text-blue-600 hover:underline">
                 Upload
               </Link>
             </div>

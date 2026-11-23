@@ -1,5 +1,5 @@
 /** Shared bits for the finance pages, in the dashboard's card style. */
-export function Card({ children, className = '', ...rest }: { children: React.ReactNode; className?: string; 'data-testid'?: string }) {
+export function Card({ children, className = '', ...rest }: { children: React.ReactNode; className?: string; id?: string; 'data-testid'?: string }) {
   return (
     <div {...rest} className={`rounded-xl border border-gray-200 bg-white p-4 shadow-sm ${className}`}>
       {children}

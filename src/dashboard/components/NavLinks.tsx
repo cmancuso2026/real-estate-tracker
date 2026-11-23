@@ -21,10 +21,8 @@ const GROUPS: { label: string; links: NavLink[] }[] = [
   {
     label: 'Finances',
     links: [
-      { href: '/finance', label: 'Overview', exact: true },
-      { href: '/finance/spending', label: 'Spending' },
+      { href: '/finance', label: 'Overview', exact: true, also: ['/finance/spending'] },
       { href: '/finance/transactions', label: 'Transactions' },
-      { href: '/finance/upload', label: 'Upload' },
       { href: '/finance/attribution', label: 'Needs Property', badge: true },
     ],
   },
@@ -45,6 +43,7 @@ const GROUPS: { label: string; links: NavLink[] }[] = [
 ];
 
 function isActive(pathname: string, l: NavLink) {
+  if (l.also?.some((p) => pathname.startsWith(p))) return true;
   if (l.exact) return pathname === l.href;
   return pathname.startsWith(l.href) || !!l.also?.some((p) => pathname.startsWith(p));
 }
@@ -126,9 +125,19 @@ export function SiteHeader() {
         </div>
       ))}
       <Link
+        href="/upload"
+        data-testid="nav-upload"
+        aria-current={pathname === '/upload' ? 'page' : undefined}
+        className={`flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold shadow-sm transition-colors md:ml-auto ${
+          pathname === '/upload' ? 'bg-blue-700 text-white' : 'bg-blue-600 text-white hover:bg-blue-700'
+        }`}
+      >
+        <span aria-hidden>⬆</span> Upload
+      </Link>
+      <Link
         href="/admin"
         aria-current={pathname.startsWith('/admin') ? 'page' : undefined}
-        className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors md:ml-auto ${
+        className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
           pathname.startsWith('/admin') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100'
         }`}
       >

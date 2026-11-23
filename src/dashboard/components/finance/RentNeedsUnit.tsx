@@ -74,7 +74,7 @@ export function RentNeedsUnit() {
 
   if (!items || items.length === 0) return null;
   return (
-    <Card className="space-y-3" data-testid="rent-needs-unit">
+    <Card className="scroll-mt-4 space-y-3" id="rent" data-testid="rent-needs-unit">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-base font-semibold">Rent needs a unit</h2>
         <span className="text-sm text-gray-500" data-testid="rent-needs-unit-count">
