@@ -12,6 +12,7 @@ import { createTrackerStubs } from './helpers/tracker-stubs.js';
 import { assignMonth, checkLate, extractZelleName, isHousingAuthority, matchScore, paymentFlags } from '../lib/rentMatch.js';
 import { assignRentUnit, rentNeedingUnit, rentUnitOptions, syncRent } from '../lib/rentSync.js';
 import { setCategory } from '../services/transactions.js';
+import { rentBackfill } from '../services/admin.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS = path.join(__dirname, '..', 'db', 'migrations');
@@ -87,20 +88,27 @@ test('rent sync: create, match, already recorded, needs a unit, recategorize awa
           txn('Zelle payment from JOE BLOGGS', 1650, '20 Rent', '2026-11-08'), // single unit; late
           txn('Zelle payment from JOE BLOGGS', 1650, '20 Rent', '2026-10-03'), // entered by hand already
           txn('WHOLE FOODS', -80, 'Groceries', '2026-11-03', { category_group: 'Food' }),
+          txn('Zelle payment from ANA RUIZ', 1850, '1205 Rent', '2026-09-04'), // entered by hand on 09-02
         ])
         .returning('id')
     ).map((r) => r.id);
-    const [samuel, other, phcd, joeNov, joeOct, groceries] = ids;
+    const [samuel, other, phcd, joeNov, joeOct, groceries, anaSep] = ids;
+    // the same payment typed in by hand, two days earlier than the bank date
+    await knex('rent_collections').insert({ unit_id: u1205, lease_id: l1205, due_date: '2026-09-01', amount_due: 1850, paid_date: '2026-09-02', amount_paid: 1850, source: 'manual' });
     await knex('rent_collections').insert({ unit_id: u20, lease_id: l20, due_date: '2026-10-01', amount_due: 1650, paid_date: '10/03/2026', amount_paid: 1650, source: 'csv_import' });
 
-    const preview = await syncRent(knex, null, { dryRun: true });
+    // Admin → Rent from uploads: the preview (GET) writes nothing
+    const preview = await rentBackfill(knex, { dry_run: true });
     assert.deepEqual(
       { created: preview.created, already: preview.already_recorded, unmatched: preview.unmatched.map((u) => u.id) },
-      { created: 3, already: 1, unmatched: [phcd] },
+      { created: 3, already: 2, unmatched: [phcd] },
     );
     assert.equal(await knex('rent_collections').where({ source: 'finance_upload' }).count({ c: '*' }).first().then((r) => Number(r.c)), 0, 'dry run writes nothing');
 
-    await syncRent(knex);
+    // …Apply writes and logs it in the change log
+    const applied = await rentBackfill(knex, {});
+    assert.equal(applied.created, 3);
+    assert.match((await knex('admin_audit').where({ action: 'rent.backfill' }).first()).summary, /3 created/);
     const rows = await knex('rent_collections').where({ source: 'finance_upload' }).orderBy('transaction_id');
     const by = new Map(rows.map((r) => [r.transaction_id, r]));
     assert.equal(by.get(samuel).unit_id, u1207);
@@ -112,6 +120,7 @@ test('rent sync: create, match, already recorded, needs a unit, recategorize awa
     assert.equal(by.get(joeNov).due_date, '2026-11-01');
     assert.equal(by.get(joeNov).paid_date, '2026-11-08');
     assert.equal(by.has(joeOct), false, 'the csv_import row already covers it');
+    assert.equal(by.has(anaSep), false, 'a hand-entered row within 7 days covers it (dates arrive as Date objects, as in the app)');
     assert.equal((await knex('rent_collections').where({ source: 'csv_import' }).first()).transaction_id, null, 'old rows untouched');
 
     // Idempotent.

@@ -7,7 +7,7 @@ import { writeAudit, listAudit } from '../lib/audit.js';
 import * as cats from '../lib/categories.js';
 import { listPropertyCategoryMap, ROLES } from '../lib/propertyMap.js';
 import { buildSuggestionContext, suggestFor } from '../lib/suggest.js';
-import { refreshLinkedRent } from '../lib/rentSync.js';
+import { refreshLinkedRent, syncRent } from '../lib/rentSync.js';
 
 function httpError(status, message) {
   const e = new Error(message);
@@ -177,4 +177,24 @@ export async function getAttributionSummary(knex) {
 // GET /api/admin/audit — the change log, newest first.
 export async function getAudit(knex, query = {}) {
   return { entries: await listAudit(knex, { limit: query.limit }) };
+}
+
+// ── Rent from uploads ───────────────────────────────────────────────────────
+
+// GET /api/admin/rent-backfill — preview recording rent_collections rows for
+// rent payments already in transactions (lib/rentSync.js). Writes nothing.
+// POST /api/admin/rent-backfill — { dry_run? } — apply it (idempotent).
+export async function rentBackfill(knex, body = {}) {
+  const dryRun = dry(body);
+  const r = await syncRent(knex, null, { dryRun });
+  if (!dryRun && r.created + r.updated + r.relinked + r.removed > 0) {
+    await writeAudit(
+      knex,
+      'rent.backfill',
+      `Recorded rent from transactions: ${r.created} created, ${r.updated} updated, ${r.relinked} relinked, ${r.removed} removed; ${r.already_recorded} already recorded, ${r.unmatched.length} need a unit`,
+      null,
+      { created: r.created, updated: r.updated, relinked: r.relinked, removed: r.removed, already_recorded: r.already_recorded, needs_unit: r.unmatched.length },
+    );
+  }
+  return r;
 }

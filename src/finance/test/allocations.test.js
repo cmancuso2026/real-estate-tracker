@@ -41,7 +41,7 @@ test('split math: percent and dollar modes, cents rounding, rejects unbalanced',
   assert.throws(() => computeAllocations(-100, 'ratio', [{ property_id: 1, value: 100 }]), /mode must be one of/);
 });
 
-test('migration: existing single attributions become 100% allocations, then the columns go', async () => {
+test('migration: existing single attributions become 100% allocations; the later drop works', async () => {
   const knex = newDb({ noAstCoverageCheck: true }).adapters.createKnex();
   try {
     await createTrackerStubs(knex);
@@ -63,7 +63,12 @@ test('migration: existing single attributions become 100% allocations, then the 
       allocs.map((a) => [Number(a.amount), Number(a.percent), a.input_mode, a.property_id, a.unit_id, a.work_order_id]),
       [[-900, 100, 'percent', p.id, u.id, w.id], [-65, 100, 'percent', p.id, null, null]],
     );
-    await knex.migrate.up(cfg); // 014
+    // The old columns stay for now (an untouched copy of the attributions)…
+    assert.equal(await knex.schema.hasColumn('transactions', 'property_id'), true);
+    assert.equal((await knex.migrate.list(cfg))[1].length, 0, 'no pending migrations: 014 is not in this release');
+    // …and the later migration that drops them works when it is moved in.
+    const later = await import('../db/later/014_drop_transaction_property_columns.js');
+    await later.up(knex);
     assert.equal(await knex.schema.hasColumn('transactions', 'property_id'), false);
     assert.equal(await knex.schema.hasColumn('transactions', 'work_order_id'), false);
     assert.equal(await knex.schema.hasColumn('transactions', 'unit_id'), false);

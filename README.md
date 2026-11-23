@@ -11,7 +11,7 @@ One app for personal finances, the rental properties you own, and the ones you m
 - **Property attribution** — spending in categories that need a property (Repairs, Lawn Care, Home Depot by default; set per category in Admin) is tied to an owned property, and optionally a unit and a project. A **Needs Property** queue with suggestions and bulk tools clears the backlog; the property page shows repairs and spend, the Projects tab shows actual spend against the quote, and the Vendors page shows actual spend next to quotes.
 - **Properties (`/properties`, `/vendors`)** — tenants, leases, rent collection (from bank uploads + manual entry), projects with vendor quotes, vendors, escrow and insurance. Claude parses lease, quote, escrow and insurance PDFs and answers questions via a Slack bot.
 - **Investing (`/tracker`, `/grade`)** — pulls for-sale listings and rental comps, grades each property A–F with a weighted investment model, and sends alerts.
-- **Admin (`/admin`)** — categories and groups (add, rename, move, merge, archive, reorder; per-category property rules), property mapping, merchant rules, attribution, investor profile, and a change log. Every destructive or bulk action shows how many rows will change and waits for you to confirm.
+- **Admin (`/admin`)** — categories and groups (add, rename, move, merge, archive, reorder; per-category property rules), property mapping, merchant rules, attribution, rent from uploads (catch-up), investor profile, and a change log. Every destructive or bulk action shows how many rows will change and waits for you to confirm.
 
 ---
 
@@ -144,6 +144,7 @@ A transaction's property attribution lives in `transaction_allocations`: one row
 - A transaction counts as attributed only when it is fully allocated. A partly allocated row stays in Needs Property and shows how much is unallocated.
 - A unit or project must belong to the row's property.
 - Splits survive re-uploads: like category overrides, they are remembered by the bank row's hash.
+- The old `transactions.property_id` / `unit_id` / `work_order_id` columns are still in the database but unused: an untouched copy of the attributions from before splits, kept as a safety net. `src/finance/db/later/014_drop_transaction_property_columns.js` removes them; move it into `src/finance/db/migrations` in a later release once splits have been checked.
 - Roll-ups use each property's share: per-property cash flow on the Overview, a property's Repairs and spend tab, project actual spend, and vendor spend.
 
 ## How income, spending and cash flow are counted
@@ -164,7 +165,7 @@ A transaction is a rent payment when it is money in and its category is mapped t
 - Payments without a clear unit wait under **Needs Property → Rent needs a unit**; picking one records it and later syncs keep your pick.
 - Rows you entered by hand or with the old CSV import are never changed. A transaction they already cover (same unit, paid date and amount; or same unit, rent month and amount paid within 7 days) creates nothing.
 - Recategorizing a payment away from rent removes its row; deleting the transaction unlinks it, and uploading the same bank row again links it back.
-- Past transactions: `npm run rent:backfill` previews (created / already recorded / need a unit); `npm run rent:backfill -- --apply` writes it. Safe to run again.
+- Past transactions: **Admin → Rent from uploads** previews what would be recorded, what is already recorded and what needs a unit; **Apply** writes it (safe to repeat). From a terminal: `npm run rent:backfill` (preview) and `npm run rent:backfill -- --apply`.
 
 ---
 
@@ -196,7 +197,7 @@ Tracker timestamps are TEXT in UTC `YYYY-MM-DD HH:MM:SS`.
 ### Finance (`src/finance/db/migrations`)
 | Table | Purpose |
 |---|---|
-| `transactions` | One row per bank transaction (expenses negative); property attribution is in `transaction_allocations` |
+| `transactions` | One row per bank transaction (expenses negative); property attribution is in `transaction_allocations` (the old `property_id` / `unit_id` / `work_order_id` columns are unused, kept for now) |
 | `category_overrides`, `attribution_overrides` | Your category and property edits, keyed by dedup hash so they survive re-uploads |
 | `upload_log` | One row per uploaded file |
 | `category_groups`, `categories`, `category_aliases` | The category list (seeded from `lib/taxonomy.js`); aliases keep renamed/merged names working |

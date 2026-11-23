@@ -190,7 +190,7 @@ function nearMatch(rows, t, unitId, dueDate) {
       !rows.used.has(r.id) &&
       isoOf(r.due_date) === dueDate &&
       Math.abs(Number(r.amount_paid) - Number(t.amount)) <= 1 &&
-      Math.abs(dayNum(r.paid_date) - dayNum(t.date)) <= 7,
+      Math.abs(dayNum(r.paid_date) - dayNum(ymd(t.date))) <= 7, // t.date may be a Date (pg DATE)
   );
 }
 

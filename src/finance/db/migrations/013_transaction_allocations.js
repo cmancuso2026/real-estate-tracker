@@ -8,7 +8,9 @@
  *
  * Existing single attributions (transactions.property_id) become one 100% row
  * each; the migration checks the counts and stops if they differ. The old
- * columns are dropped by 014 once nothing reads them.
+ * columns are left in place (nothing reads or writes them any more) as a
+ * copy of the original attributions; src/finance/db/later/014_… drops them
+ * in a later release, once splits have been checked in production.
  *
  * attribution_overrides.allocations_json remembers a split by dedup_hash so a
  * re-uploaded row gets it back (like category_overrides).

@@ -1,4 +1,9 @@
 /**
+ * NOT RUN YET — kept out of src/finance/db/migrations on purpose. Move this
+ * file into src/finance/db/migrations (a one-line change) in a later release,
+ * after transaction_allocations has been checked in production; until then the
+ * old columns stay as an untouched copy of the attributions from before splits.
+ *
  * Drop transactions.property_id / unit_id / work_order_id: every reader now
  * uses transaction_allocations (013 copied them and verified the counts).
  * down() puts the columns back, filled from transactions with exactly one

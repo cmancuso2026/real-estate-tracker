@@ -8,6 +8,7 @@ export const ADMIN_SECTIONS = [
   { href: '/admin/property-mapping', label: 'Property mapping' },
   { href: '/admin/merchant-rules', label: 'Merchant rules' },
   { href: '/admin/attribution', label: 'Attribution' },
+  { href: '/admin/rent-backfill', label: 'Rent from uploads' },
   { href: '/admin/investor-profile', label: 'Investor profile' },
   { href: '/admin/change-log', label: 'Change log' },
 ];
