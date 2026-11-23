@@ -88,6 +88,9 @@ export function SplitEditor({
   onSave,
   onCancel,
   onSingle,
+  title,
+  amountDisabledReason,
+  saveLabel = 'Save split',
 }: {
   txn: Txn;
   properties: PropertyOption[];
@@ -96,7 +99,12 @@ export function SplitEditor({
   busy: boolean;
   onSave: (mode: SplitMode, rows: SplitRow[]) => void;
   onCancel: () => void;
-  onSingle: () => void;
+  onSingle?: () => void;
+  /** Heading (default "Split $X across properties"). */
+  title?: string;
+  /** When set, $ mode is unavailable and this explains why (bulk with different amounts). */
+  amountDisabledReason?: string;
+  saveLabel?: string;
 }) {
   const [mode, setMode] = useState<SplitMode>(initial.mode);
   const [rows, setRows] = useState<SplitRow[]>(initial.rows);
@@ -141,15 +149,17 @@ export function SplitEditor({
   return (
     <div className="space-y-2" data-testid="split-editor">
       <div className="flex flex-wrap items-center gap-2 text-sm">
-        <span className="font-medium">Split {fmt(txn.amt)} across properties</span>
+        <span className="font-medium">{title ?? `Split ${fmt(txn.amt)} across properties`}</span>
         <div role="group" aria-label="Split by" className="inline-flex overflow-hidden rounded-lg border border-gray-300 text-xs font-medium">
           {(['percent', 'amount'] as const).map((m) => (
             <button
               key={m}
               type="button"
               aria-pressed={mode === m}
+              disabled={m === 'amount' && !!amountDisabledReason}
+              title={m === 'amount' && amountDisabledReason ? amountDisabledReason : undefined}
               onClick={() => switchMode(m)}
-              className={`px-2.5 py-1 ${mode === m ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'}`}
+              className={`px-2.5 py-1 disabled:cursor-not-allowed disabled:opacity-40 ${mode === m ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'}`}
             >
               {m === 'percent' ? '%' : '$'}
             </button>
@@ -205,7 +215,7 @@ export function SplitEditor({
                 />
                 {mode === 'percent' && <span className="text-gray-500">%</span>}
               </label>
-              {mode === 'percent' && Number.isFinite(num(r.value)) && (
+              {mode === 'percent' && !amountDisabledReason && Number.isFinite(num(r.value)) && (
                 <span className="text-xs text-gray-400 tabular">{usd(Math.abs(txn.amt) * (num(r.value) / 100))}</span>
               )}
               {rows.length > 1 && (
@@ -230,14 +240,17 @@ export function SplitEditor({
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <button className={btnPrimary} disabled={!canSave || busy} onClick={() => onSave(mode, rows)}>
-          {busy ? 'Saving…' : 'Save split'}
+          {busy ? 'Saving…' : saveLabel}
         </button>
         <button className={btnSecondary} disabled={busy} onClick={onCancel}>
           Cancel
         </button>
-        <button type="button" className="text-xs text-gray-500 hover:underline" disabled={busy} onClick={onSingle}>
-          One property instead
-        </button>
+        {onSingle && (
+          <button type="button" className="text-xs text-gray-500 hover:underline" disabled={busy} onClick={onSingle}>
+            One property instead
+          </button>
+        )}
+        {amountDisabledReason && <span className="text-xs text-gray-400">{amountDisabledReason}</span>}
       </div>
     </div>
   );

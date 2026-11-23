@@ -187,6 +187,28 @@ test('splits end to end (pg-mem + route handlers)', async (t) => {
       assert.equal(back.fully_allocated, true);
     });
 
+    await t.test('bulk: the same split for many transactions, all or nothing', async () => {
+      const mk = (d, amt) => ({ date: '2026-05-0' + d, description: `LAWN ${d}`, amount: amt, source: 'Bank of America', category: 'Lawn Care', category_group: 'Investments', dedup_hash: `lawn-${d}` });
+      const [a, b, c] = (await knex('transactions').insert([mk(1, -65), mk(2, -65), mk(3, -100)]).returning('id')).map((r) => r.id);
+      // dollars only fit when the amounts match: -65 / -65 / -100 → 400, nothing saved
+      const bad = await call('PUT', '/finance/transactions/allocations', { ids: [a, b, c], mode: 'amount', rows: [{ property_id: p1, value: 40 }, { property_id: p2, value: 25 }] });
+      assert.equal(bad.status, 400);
+      assert.match(bad.body.error, /LAWN 3/);
+      assert.equal((await knex('transaction_allocations').whereIn('transaction_id', [a, b, c])).length, 0, 'nothing saved');
+      const dollars = await call('PUT', '/finance/transactions/allocations', { ids: [a, b], mode: 'amount', rows: [{ property_id: p1, value: 40 }, { property_id: p2, value: 25 }] });
+      assert.deepEqual(dollars.body, { success: true, updated: 2 });
+      // percentages work for any mix, each on its own amount
+      const pct = await call('PUT', '/finance/transactions/allocations', { ids: [a, c], mode: 'percent', rows: [{ property_id: p1, value: 50 }, { property_id: p3, unit_id: unit('20'), value: 50 }] });
+      assert.equal(pct.status, 200);
+      const rows = await knex('transaction_allocations').whereIn('transaction_id', [a, b, c]).orderBy('transaction_id').orderBy('id');
+      assert.deepEqual(
+        rows.map((r) => [r.transaction_id, r.property_id, Number(r.amount)]),
+        [[a, p1, -32.5], [a, p3, -32.5], [b, p1, -40], [b, p2, -25], [c, p1, -50], [c, p3, -50]],
+      );
+      const q = (await call('GET', '/finance/attribution/queue')).body.transactions.map((r) => r.id);
+      assert.ok(![a, b, c].some((id) => q.includes(id)), 'all three left the queue');
+    });
+
     await t.test('clearing with rows: [] puts it back in the queue', async () => {
       const back = await txnBy('max appliance');
       const r = await call('PUT', `/finance/transactions/${back.id}/allocations`, { rows: [] });

@@ -4,6 +4,8 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { financeApi } from '@/components/finance/api';
 import { AttributionPicker } from '@/components/finance/AttributionPicker';
 import { RentNeedsUnit } from '@/components/finance/RentNeedsUnit';
+import { QUEUE_EVENT } from '@/components/NavLinks';
+import { SplitEditor, type SplitMode, type SplitRow } from '@/components/finance/SplitEditor';
 import { useFinance } from '@/components/finance/FinanceData';
 import { Card, btnPrimary, btnSecondary, selectCls } from '@/components/finance/ui';
 import { fmt, shortDate } from '@/lib/finance-ui/format';
@@ -25,7 +27,8 @@ interface Queue {
 
 /** The Needs-property queue: unattributed transactions, newest first, with bulk tools. */
 export default function AttributionQueuePage() {
-  const { propertyOptions, patchTxns, allowProjectTag, txns } = useFinance();
+  const { propertyOptions, patchTxns, allowProjectTag, txns, reload: reloadTxns } = useFinance();
+  const [bulkSplit, setBulkSplit] = useState(false);
   const [queue, setQueue] = useState<Queue | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [category, setCategory] = useState('');
@@ -58,12 +61,45 @@ export default function AttributionQueuePage() {
   const nameOf = (id: number) => propertyOptions.find((p) => p.id === id)?.name ?? `Property ${id}`;
   const projectOf = (id: number | null) => (id ? propertyOptions.flatMap((p) => p.projects).find((w) => w.id === id)?.name : null);
   const bulkProp = propertyOptions.find((p) => String(p.id) === bulkProperty);
+  // $ splits need one amount for all of them; % works for any mix.
+  const sameAmount = selRows.length && selRows.every((t) => Math.round(t.amount * 100) === Math.round(selRows[0]!.amount * 100)) ? selRows[0]!.amount : null;
+  const emptyRow = (): SplitRow => ({ property_id: '', unit_id: '', work_order_id: '', value: '' });
   const projectAllowed = selRows.every((t) => allowProjectTag(t.category));
 
   const allRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (allRef.current) allRef.current.indeterminate = selRows.length > 0 && selRows.length < rows.length;
   }, [selRows.length, rows.length]);
+
+  /** The same split for every selected row (PUT /api/finance/transactions/allocations). */
+  async function bulkSplitSave(mode: SplitMode, rows: SplitRow[]) {
+    setBusy(true);
+    setNotice(null);
+    try {
+      const ids = selRows.map((t) => t.id);
+      const r = await financeApi.put<{ updated: number }>('/api/finance/transactions/allocations', {
+        ids,
+        mode,
+        rows: rows.map((x) => ({
+          property_id: Number(x.property_id),
+          unit_id: x.unit_id ? Number(x.unit_id) : null,
+          work_order_id: x.work_order_id ? Number(x.work_order_id) : null,
+          value: Number(x.value),
+        })),
+      });
+      setNotice(`Split ${r.updated} transaction${r.updated === 1 ? '' : 's'}.`);
+      setBulkSplit(false);
+      setSelected(new Set());
+      await load();
+      const c = await financeApi.get<{ count: number }>('/api/finance/attribution/count').catch(() => null);
+      if (c) window.dispatchEvent(new CustomEvent(QUEUE_EVENT, { detail: c.count }));
+      await reloadTxns();
+    } catch (err) {
+      setNotice('Failed: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   /** Save attributions, then drop the rows from the queue and update the shared data. */
   async function assign(groups: { ids: number[]; property_id: number; work_order_id: number | null; unit_id: number | null }[]) {
@@ -188,6 +224,7 @@ export default function AttributionQueuePage() {
               <button
                 className={btnSecondary}
                 disabled={busy || !bulkProperty}
+                data-testid="bulk-assign"
                 onClick={() =>
                   void assign([
                     {
@@ -201,6 +238,31 @@ export default function AttributionQueuePage() {
               >
                 Assign {selRows.length}
               </button>
+              <span className="mx-1 h-5 w-px bg-blue-200" />
+              <button className={btnSecondary} disabled={busy} data-testid="bulk-split-button" onClick={() => setBulkSplit((v) => !v)}>
+                Split {selRows.length} across properties…
+              </button>
+            </div>
+          )}
+          {selRows.length > 0 && bulkSplit && (
+            <div className="border-b border-blue-100 bg-blue-50/40 px-4 py-3" data-testid="bulk-split">
+              <SplitEditor
+                key={selRows.map((t) => t.id).join(',')}
+                txn={mapTxn({ ...selRows[0]!, amount: sameAmount ?? selRows[0]!.amount })}
+                properties={propertyOptions}
+                projectsOn={projectAllowed}
+                initial={{ mode: 'percent', rows: [emptyRow(), emptyRow()] }}
+                busy={busy}
+                title={
+                  sameAmount != null
+                    ? `Split each of the ${selRows.length} selected (${fmt(sameAmount)} each) across properties`
+                    : `Split each of the ${selRows.length} selected across properties`
+                }
+                amountDisabledReason={sameAmount == null ? 'Dollar amounts need every selected transaction to have the same amount; percentages work for any mix.' : undefined}
+                saveLabel={`Save split for ${selRows.length}`}
+                onSave={(mode, rows) => void bulkSplitSave(mode, rows)}
+                onCancel={() => setBulkSplit(false)}
+              />
             </div>
           )}
           <div className="max-h-[65vh] overflow-auto">

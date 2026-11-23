@@ -1,180 +1,183 @@
 'use client';
 
-import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useFinance } from '@/components/finance/FinanceData';
-import { FinanceChart, type ChartKind, type StackMode } from '@/components/finance/FinanceChart';
-import { Card, Field, selectCls } from '@/components/finance/ui';
-import { buildChart, type Granularity } from '@/lib/finance-ui/chart';
+import { Card, Field, btnSecondary, selectCls } from '@/components/finance/ui';
+import {
+  buildCategoryTable,
+  compareOptions,
+  type Cell,
+  type ColClass,
+  type CatView,
+} from '@/lib/finance-ui/categoryTable';
 import { fmt } from '@/lib/finance-ui/format';
-import { heroTotals } from '@/lib/finance-ui/transactions';
-import { InfoTip } from '@/components/finance/InfoTip';
-import { SankeyChart } from '@/components/finance/SankeyChart';
-import { buildSankey } from '@/lib/finance-ui/sankey';
+import { GROUP_ICON } from '@/lib/finance-ui/taxonomy';
 
-type ChartView = 'bar' | 'sankey';
-const VIEW_KEY = 'mancuso.finance.overviewChart';
+const colBg: Record<ColClass, string> = {
+  '': '',
+  total: 'bg-gray-50 font-semibold',
+  cmp: 'bg-blue-50/60',
+  delta: 'bg-amber-50/60',
+};
 
-export default function FinanceOverviewPage() {
-  const { filteredTxns, tax, filters, unattributedCount, metricsCtx, definitions } = useFinance();
-  const [gran, setGran] = useState<Granularity>('monthly');
-  const [kind, setKind] = useState<ChartKind>('line');
-  const [stack, setStack] = useState<StackMode>('grouped');
-  const [view, setView] = useState<ChartView>('bar');
-  // Remember Bar / Sankey per browser (storage can be unavailable: private mode).
-  useEffect(() => {
-    try {
-      const v = window.localStorage.getItem(VIEW_KEY);
-      if (v === 'bar' || v === 'sankey') setView(v);
-    } catch {
-      /* default view */
-    }
-  }, []);
-  function pickView(v: ChartView) {
-    setView(v);
-    try {
-      window.localStorage.setItem(VIEW_KEY, v);
-    } catch {
-      /* not remembered, still switches */
-    }
-  }
-
-  // Cards and chart both use the shared rows (period + global filters). The
-  // Group / Category filters also pick the chart's shape: a group alone breaks
-  // into one line per category; a property shows Rent / Costs / Net.
-  const hero = heroTotals(filteredTxns, metricsCtx);
-  const model = useMemo(
-    () => buildChart(filteredTxns, tax, filters.group, filters.category, gran, metricsCtx),
-    [filteredTxns, tax, filters.group, filters.category, gran, metricsCtx],
+function AmountCell({ cell, cls, bold = false }: { cell: Cell; cls: ColClass; bold?: boolean }) {
+  const zero = Math.abs(cell.v) < 0.01;
+  const color = zero ? 'text-gray-300' : cell.v > 0 ? 'text-green-700' : 'text-red-600';
+  return (
+    <td
+      data-note={cell.note || undefined}
+      className={`whitespace-nowrap px-3 py-1.5 text-right tabular ${color} ${colBg[cls]} ${bold ? 'font-semibold' : ''} ${
+        cell.note ? 'cursor-help underline decoration-dotted underline-offset-2' : ''
+      }`}
+    >
+      {zero ? '—' : fmt(cell.v)}
+    </td>
   );
-  const sankey = useMemo(() => (view === 'sankey' ? buildSankey(filteredTxns, tax, metricsCtx) : null), [view, filteredTxns, tax, metricsCtx]);
+}
+
+export default function FinanceSpendingPage() {
+  const { txns, filteredTxns, comparePool, tax, props } = useFinance();
+  const [view, setView] = useState<CatView>('monthly');
+  const [compare, setCompare] = useState('');
+  // Groups and properties start collapsed (as on the old page).
+  const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
+  const [openProps, setOpenProps] = useState<Set<number>>(new Set());
+
+  const table = useMemo(
+    () => buildCategoryTable(filteredTxns, comparePool, tax, props, view, compare),
+    [filteredTxns, comparePool, tax, props, view, compare],
+  );
+  const options = useMemo(() => compareOptions(txns), [txns]);
+  useEffect(() => {
+    if (compare && !options.some((o) => o.value === compare)) setCompare('');
+  }, [options, compare]);
+
+  const groupNames = Object.keys(tax.groups);
+  const allCollapsed = groupNames.length > 0 && groupNames.every((g) => !openGroups.has(g));
+  const toggle = <T,>(set: Set<T>, v: T) => {
+    const n = new Set(set);
+    if (n.has(v)) n.delete(v);
+    else n.add(v);
+    return n;
+  };
 
   return (
-    <div className="space-y-5">
-      {unattributedCount > 0 && (
-        <Link
-          href="/finance/attribution"
-          data-testid="attribution-callout"
-          className="flex items-center justify-between gap-4 rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm hover:bg-orange-100"
-        >
-          <span>
-            <strong className="text-orange-800">
-              {unattributedCount} transaction{unattributedCount === 1 ? '' : 's'} need{unattributedCount === 1 ? 's' : ''} a property.
-            </strong>{' '}
-            <span className="text-orange-900/80">Repairs and other property costs count toward a property once they're assigned.</span>
-          </span>
-          <span className="shrink-0 font-medium text-orange-800">Review queue →</span>
-        </Link>
-      )}
-      <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
-        <Card>
-          <div className="text-sm text-gray-500">
-            Income
-            <InfoTip text={definitions.income} testId="def-income" />
-          </div>
-          <div data-testid="kpi-income" className="mt-1 text-3xl font-bold tabular text-green-700">{fmt(hero.income)}</div>
-          <div className="mt-1 text-xs text-gray-500">{hero.paychecks} paycheck deposits</div>
-        </Card>
-        <Card>
-          <div className="text-sm text-gray-500">
-            Total Spending
-            <InfoTip text={definitions.spending} testId="def-spending" />
-          </div>
-          <div data-testid="kpi-spend" className="mt-1 text-3xl font-bold tabular text-red-600">{fmt(-hero.spend)}</div>
-          <div className="mt-1 flex justify-between text-xs text-gray-500">
-            <span>{hero.expenseCount} expense transactions</span>
-            <Link href="/finance/spending" className="font-medium text-blue-600 hover:underline">
-              By category →
-            </Link>
-          </div>
-        </Card>
-        <Card>
-          <div className="text-sm text-gray-500">
-            Cash Flow
-            <InfoTip text={definitions.cash_flow} testId="def-cashflow" />
-          </div>
-          <div
-            data-testid="kpi-flow"
-            className={`mt-1 text-3xl font-bold tabular ${hero.flow >= 0 ? 'text-green-700' : 'text-red-600'}`}
-          >
-            {fmt(hero.flow)}
-          </div>
-          <div className="mt-1 text-xs text-gray-500" data-testid="kpi-transfers">
-            Net for period
-            {hero.transferCount > 0 && ` · ${hero.transferCount} transfer${hero.transferCount === 1 ? '' : 's'} between your accounts left out`}
-          </div>
-        </Card>
-      </section>
-
-      <Card>
-        <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2">
-          <h2 className="mr-auto font-semibold">{view === 'sankey' ? 'Where the money went' : 'Income vs. Spending Over Time'}</h2>
-          <div role="group" aria-label="Chart view" className="inline-flex overflow-hidden rounded-lg border border-gray-300 text-xs font-medium">
-            {(
-              [
-                ['bar', 'Bar'],
-                ['sankey', 'Sankey'],
-              ] as const
-            ).map(([v, label]) => (
-              <button
-                key={v}
-                type="button"
-                aria-pressed={view === v}
-                data-testid={`view-${v}`}
-                onClick={() => pickView(v)}
-                className={`px-3 py-1.5 ${view === v ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'}`}
-              >
-                {label}
-              </button>
+    <Card className="p-0">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-gray-100 px-4 py-3">
+        <Field label="View:">
+          <select aria-label="Table view" className={selectCls} value={view} onChange={(e) => setView(e.target.value as CatView)}>
+            <option value="aggregate">Aggregate</option>
+            <option value="monthly">By month (columns)</option>
+          </select>
+        </Field>
+        <Field label="Compare to:">
+          <select aria-label="Compare to" className={selectCls} value={compare} onChange={(e) => setCompare(e.target.value)}>
+            <option value="">None</option>
+            {options.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
             ))}
-          </div>
-          {view === 'bar' && (
-          <>
-          <Field label="View:">
-            <select aria-label="Chart granularity" className={selectCls} value={gran} onChange={(e) => setGran(e.target.value as Granularity)}>
-              <option value="daily">Daily</option>
-              <option value="weekly">Weekly</option>
-              <option value="monthly">Monthly</option>
-            </select>
-          </Field>
-          <Field label="Chart:">
-            <select aria-label="Chart type" className={selectCls} value={kind} onChange={(e) => setKind(e.target.value as ChartKind)}>
-              <option value="line">Line</option>
-              <option value="bar">Bar</option>
-            </select>
-          </Field>
-          <Field label="Bars:">
-            <select aria-label="Bar stacking" className={selectCls} value={stack} onChange={(e) => setStack(e.target.value as StackMode)}>
-              <option value="grouped">Separate</option>
-              <option value="stacked">Stacked</option>
-            </select>
-          </Field>
-          </>
-          )}
-        </div>
-        {view === 'sankey' ? (
-          <div
-            className="relative h-[32rem]"
-            data-testid="finance-sankey"
-            data-flows={sankey ? JSON.stringify({ income: sankey.income, spending: sankey.spending, flows: sankey.flows }) : ''}
-          >
-            {sankey ? (
-              <SankeyChart model={sankey} />
-            ) : (
-              <div className="flex h-full items-center justify-center text-sm text-gray-400">No income or spending in this period.</div>
-            )}
-          </div>
-        ) : (
-        <div
-          className="relative h-80"
-          data-testid="finance-chart"
-          // The plotted series, for automated checks (the canvas itself isn't inspectable).
-          data-series={model ? JSON.stringify({ labels: model.labels, series: model.series.map((s) => [s.label, s.data]) }) : ''}
+          </select>
+        </Field>
+        <button
+          className={btnSecondary}
+          onClick={() => setOpenGroups(allCollapsed ? new Set(groupNames) : new Set())}
         >
-          {model && <FinanceChart model={model} kind={kind} stack={stack} />}
+          {allCollapsed ? 'Expand all' : 'Collapse all'}
+        </button>
+        <span className="text-xs text-gray-400" data-testid="spending-caption">
+          {table.caption}
+        </span>
+      </div>
+
+      {table.groups.length === 0 ? (
+        <div className="px-4 py-10 text-center text-sm text-gray-400">No activity for the selected period.</div>
+      ) : (
+        <div className="max-h-[70vh] overflow-auto">
+          <table className="min-w-full text-sm" data-testid="spending-table">
+            <thead className="sticky top-0 z-10 bg-white">
+              <tr className="border-b border-gray-200 text-xs uppercase tracking-wide text-gray-500">
+                <th className="px-4 py-2 text-left font-medium">Category</th>
+                {table.cols.map((c, i) => (
+                  <th key={i} className={`whitespace-nowrap px-3 py-2 text-right font-medium ${colBg[c.cls]}`}>
+                    {c.label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {table.groups.map((g) => {
+                const open = openGroups.has(g.group);
+                return (
+                  <FragmentRows key={g.group}>
+                    <tr
+                      className="cursor-pointer border-t border-gray-200 bg-gray-50/70 font-semibold hover:bg-gray-100"
+                      onClick={() => setOpenGroups((s) => toggle(s, g.group))}
+                    >
+                      <td className="px-4 py-2">
+                        <span className="mr-1.5 inline-block w-3 text-gray-400">{open ? '▾' : '▸'}</span>
+                        {GROUP_ICON[g.group] || ''} {g.group}
+                      </td>
+                      {g.cells.map((c, i) => (
+                        <AmountCell key={i} cell={c} cls={table.cols[i]!.cls} bold />
+                      ))}
+                    </tr>
+                    {open &&
+                      g.props.map((p) => {
+                        const pOpen = openProps.has(p.prop.id);
+                        return (
+                          <FragmentRows key={p.prop.id}>
+                            <tr
+                              className="cursor-pointer border-t border-gray-100 font-medium hover:bg-gray-50"
+                              onClick={() => setOpenProps((s) => toggle(s, p.prop.id))}
+                            >
+                              <td className="py-1.5 pl-8 pr-4">
+                                <span className="mr-1.5 inline-block w-3 text-gray-400">{pOpen ? '▾' : '▸'}</span>
+                                🏠 {p.prop.name}
+                              </td>
+                              {p.cells.map((c, i) => (
+                                <AmountCell key={i} cell={c} cls={table.cols[i]!.cls} />
+                              ))}
+                            </tr>
+                            {pOpen &&
+                              p.cats.map((r) => (
+                                <tr key={r.cat} className="border-t border-gray-50">
+                                  <td className="py-1.5 pl-16 pr-4 text-gray-700">{r.cat}</td>
+                                  {r.cells.map((c, i) => (
+                                    <AmountCell key={i} cell={c} cls={table.cols[i]!.cls} />
+                                  ))}
+                                </tr>
+                              ))}
+                          </FragmentRows>
+                        );
+                      })}
+                    {open &&
+                      g.standalone.map((r) => (
+                        <tr key={r.cat} className="border-t border-gray-50">
+                          <td className="py-1.5 pl-12 pr-4 text-gray-700">{r.cat}</td>
+                          {r.cells.map((c, i) => (
+                            <AmountCell key={i} cell={c} cls={table.cols[i]!.cls} />
+                          ))}
+                        </tr>
+                      ))}
+                  </FragmentRows>
+                );
+              })}
+              <tr className="border-t-2 border-gray-300 font-bold">
+                <td className="px-4 py-2">Net total</td>
+                {table.totals.map((v, i) => (
+                  <AmountCell key={i} cell={{ v, note: '' }} cls={table.cols[i]!.cls} bold />
+                ))}
+              </tr>
+            </tbody>
+          </table>
         </div>
-        )}
-      </Card>
-    </div>
+      )}
+    </Card>
   );
+}
+
+function FragmentRows({ children }: { children: React.ReactNode }) {
+  return <>{children}</>;
 }
