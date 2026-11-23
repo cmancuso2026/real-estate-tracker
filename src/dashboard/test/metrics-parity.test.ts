@@ -84,3 +84,22 @@ test('landing page, summary API and /finance agree for the same month', async ()
     await knex.destroy();
   }
 });
+
+test('a "Transfer" category is netted out wherever it sits (e.g. in W2 Income)', async () => {
+  const { categoryKind, financeTotals, metricsContext } = await import('../../finance/lib/metrics.js');
+  const ctx = metricsContext({ Paycheck: 'W2 Income', Transfer: 'W2 Income', Groceries: 'Food', 'Transfers out': 'Other' }, []);
+  assert.equal(categoryKind('Transfer', ctx), 'transfer');
+  assert.equal(categoryKind('Transfers out', ctx), 'transfer');
+  assert.equal(categoryKind('Paycheck', ctx), 'income');
+  const t = financeTotals(
+    [
+      { amount: 4000, category: 'Paycheck' },
+      { amount: 2500, category: 'Transfer' }, // ONLINE BANKING TRANSFER in
+      { amount: -2500, category: 'Transfer' }, // … and out
+      { amount: -300, category: 'Transfer' }, // OVERDRAFT PROTECTION TO
+      { amount: -100, category: 'Groceries' },
+    ],
+    ctx,
+  );
+  assert.deepEqual([t.income, t.spending, t.cash_flow, t.transfer_count], [4000, 100, 3900, 3]);
+});
