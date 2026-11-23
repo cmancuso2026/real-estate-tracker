@@ -11,7 +11,7 @@ One app for personal finances, the rental properties you own, and the ones you m
 - **Property attribution** — spending in categories that need a property (Repairs, Lawn Care, Home Depot by default; set per category in Admin) is tied to an owned property, and optionally a unit and a project. A **Needs Property** queue with suggestions and bulk tools clears the backlog; the property page shows repairs and spend, the Projects tab shows actual spend against the quote, and the Vendors page shows actual spend next to quotes.
 - **Properties (`/properties`, `/rent`, `/vendors`)** — tenants, leases, rent collection (BofA CSV import + manual entry), projects with vendor quotes, vendors, escrow and insurance. Claude parses lease, quote, escrow and insurance PDFs and answers questions via a Slack bot.
 - **Investing (`/tracker`, `/grade`)** — pulls for-sale listings and rental comps, grades each property A–F with a weighted investment model, and sends alerts.
-- **Admin (`/admin`)** — categories and groups (add, rename, move, merge, archive, reorder; per-category property rules), property mapping, merchant rules, attribution, data and uploads (history, re-categorization, CSV export), investor profile, and a change log. Every destructive or bulk action shows how many rows will change and waits for you to confirm.
+- **Admin (`/admin`)** — categories and groups (add, rename, move, merge, archive, reorder; per-category property rules), property mapping, merchant rules, attribution, investor profile, and a change log. Every destructive or bulk action shows how many rows will change and waits for you to confirm.
 
 ---
 

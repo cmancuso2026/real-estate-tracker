@@ -6,9 +6,7 @@ import { getCategorySetting, setCategorySetting, unattributedQuery } from '../li
 import { writeAudit, listAudit } from '../lib/audit.js';
 import * as cats from '../lib/categories.js';
 import { listPropertyCategoryMap, ROLES } from '../lib/propertyMap.js';
-import { recategorizeUncategorized } from '../lib/recategorize.js';
 import { buildSuggestionContext, suggestFor } from '../lib/suggest.js';
-import { isoDate } from './_query.js';
 
 function httpError(status, message) {
   const e = new Error(message);
@@ -165,60 +163,6 @@ export async function getAttributionSummary(knex) {
     by_category: Object.values(byCategory).map(round).sort((a, b) => b.count - a.count),
     by_suggested_property: Object.values(byProperty).sort((a, b) => b.count - a.count),
   };
-}
-
-// ── Data and uploads ────────────────────────────────────────────────────────
-
-// GET /api/admin/uploads — upload history, newest first.
-export async function getUploads(knex) {
-  const rows = await knex('upload_log').select('*').orderBy('id', 'desc').limit(500);
-  return { uploads: rows };
-}
-
-// POST /api/admin/recategorize — { dry_run } — re-run categorization over
-// Uncategorized, non-manual rows (your rules → history → built-in rules).
-export async function recategorize(knex, body) {
-  if (dry(body)) return { dry_run: true, ...(await recategorizeUncategorized(knex, { dryRun: true })) };
-  const r = await recategorizeUncategorized(knex);
-  await writeAudit(knex, 'data.recategorize', `Re-ran categorization: ${r.updated} of ${r.scanned} uncategorized rows categorized`, null, r);
-  return { dry_run: false, ...r };
-}
-
-const csvCell = (v) => {
-  if (v == null) return '';
-  const s = String(v);
-  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-};
-
-// GET /api/admin/export/transactions — CSV of every transaction with its
-// property, unit and project.
-export async function exportTransactionsCsv(knex) {
-  const rows = await knex('transactions as t')
-    .leftJoin('owned_properties as p', 'p.id', 't.property_id')
-    .leftJoin('units as u', 'u.id', 't.unit_id')
-    .leftJoin('work_orders as w', 'w.id', 't.work_order_id')
-    .select('t.*', 'p.address as property', 'u.unit_label as unit', 'w.project_name as project')
-    .orderBy('t.date', 'desc')
-    .orderBy('t.id', 'desc');
-  const cols = [
-    ['id', (r) => r.id],
-    ['date', (r) => isoDate(r.date)],
-    ['description', (r) => r.description],
-    ['amount', (r) => Number(r.amount).toFixed(2)],
-    ['source', (r) => r.source],
-    ['category', (r) => r.category],
-    ['group', (r) => r.category_group],
-    ['manual', (r) => (r.is_manual ? 'yes' : '')],
-    ['note', (r) => r.note],
-    ['property_id', (r) => r.property_id],
-    ['property', (r) => r.property],
-    ['unit', (r) => r.unit],
-    ['project_id', (r) => r.work_order_id],
-    ['project', (r) => r.project],
-  ];
-  const lines = [cols.map(([h]) => h).join(',')];
-  for (const r of rows) lines.push(cols.map(([, f]) => csvCell(f(r))).join(','));
-  return lines.join('\n') + '\n';
 }
 
 // GET /api/admin/audit — the change log, newest first.

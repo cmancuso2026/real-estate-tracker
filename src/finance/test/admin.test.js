@@ -203,22 +203,9 @@ test('admin portal (pg-mem)', async (t) => {
       assert.equal((await knex('property_category_map').where({ category: '1821 Rent' }).first()).confirmed, true);
     });
 
-    await t.test('recategorize dry run writes nothing; export has property columns; change log records actions', async () => {
-      await knex('transactions').insert({ date: '2026-05-01', description: 'NEW MYSTERY SHOP', amount: -5, source: 'Amex Gold', category: 'Uncategorized', category_group: 'Other', is_manual: false, dedup_hash: 'mystery-1' });
-      await call('POST', '/admin/merchant-rules', { pattern: 'MYSTERY', category: 'Shopping' });
-      const preview = (await call('POST', '/admin/recategorize', { dry_run: true })).body;
-      assert.ok(preview.changes.some((c) => c.description === 'NEW MYSTERY SHOP' && c.to === 'Shopping' && /your rule/.test(c.by)));
-      assert.equal((await knex('transactions').where({ dedup_hash: 'mystery-1' }).first()).category, 'Uncategorized');
-      await call('POST', '/admin/recategorize', {});
-      assert.equal((await knex('transactions').where({ dedup_hash: 'mystery-1' }).first()).category, 'Shopping');
-
-      const csv = await call('GET', '/admin/export/transactions');
-      assert.match(csv.headers.get('content-type'), /text\/csv/);
-      assert.match(csv.body.split('\n')[0], /property_id,property,unit,project_id,project/);
-      assert.ok(csv.body.includes('1205-1207 NE 117th St')); // the attributed UBER EATS row
-
+    await t.test('change log records actions', async () => {
       const log = (await call('GET', '/admin/audit')).body.entries.map((e) => e.action);
-      for (const a of ['category.rename', 'category.merge', 'category.archive', 'rule.create', 'rule.apply', 'settings.update', 'mapping.confirm_all', 'data.recategorize']) {
+      for (const a of ['category.rename', 'category.merge', 'category.archive', 'rule.create', 'rule.apply', 'settings.update', 'mapping.confirm_all']) {
         assert.ok(log.includes(a), a);
       }
     });
