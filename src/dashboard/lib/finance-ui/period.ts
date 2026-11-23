@@ -53,13 +53,11 @@ export function filterByPeriod(
 }
 
 /**
- * The property a category rolls up to, by its leading number matching a unit
- * label ("1207 Rent" → the property with unit 1207). null if none.
+ * The property a category rolls up to, from property_category_map
+ * ("1207 Rent" → 1205-1207 NE 117th St). null if it isn't mapped.
  */
 export function propertyOfCat(cat: string, props: PropertyGroup[]): PropertyGroup | null {
-  const m = String(cat).match(/^(\d+)\b/);
-  if (!m) return null;
-  return props.find((p) => p.units.includes(m[1]!)) ?? null;
+  return props.find((p) => p.categories.includes(cat)) ?? null;
 }
 
 /** The (up to) three largest-|amount| noted transactions — for note tooltips. */

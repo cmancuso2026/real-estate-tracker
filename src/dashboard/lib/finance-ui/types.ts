@@ -53,11 +53,12 @@ export interface PropertyOption {
 /** group → categories, as served by GET /api/finance/categories. */
 export type Groups = Record<string, string[]>;
 
-/** A property and the unit labels whose categories roll up to it ("1207 Rent" → unit 1207). */
+/** A property and the categories mapped to it (property_category_map), e.g. "1207 Rent". */
 export interface PropertyGroup {
   id: number;
   name: string;
   units: string[];
+  categories: string[];
 }
 
 export function mapTxn(t: ApiTxn): Txn {

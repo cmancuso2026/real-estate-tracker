@@ -197,6 +197,12 @@ Or restore the full Step 1 backup of the real-estate DB.
 
 ## Afterwards
 
+- Redeploy the web service, or run `npm run db:migrate` with
+  `DATABASE_URL="$NEW_DB_URL"`. Each run proposes property mappings
+  (`property_category_map`) for per-property categories it hasn't seen yet,
+  such as a custom "1821 Rent" that came over with the copy. They show up as
+  unconfirmed on the Overview until you confirm them in Admin.
+
 - Leave the old finance service and its database running, unused, until you're
   happy with the merged app. Then delete them in Railway yourself.
 - After Phase 5 deploys, this gives the size of the "Needs property" backlog:

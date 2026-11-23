@@ -20,7 +20,7 @@ const tax = buildTaxonomy({
   'W2 Income': ['Paycheck'],
   Other: ['Uncategorized'],
 });
-const props: PropertyGroup[] = [{ id: 7, name: '1205-1207 NE 117th St', units: ['1205', '1207'] }];
+const props: PropertyGroup[] = [{ id: 7, name: '1205-1207 NE 117th St', units: ['1205', '1207'], categories: ['1205 Rent', '1207 Rent'] }];
 let nextId = 1;
 const tx = (date: string, desc: string, amt: number, cat: string, extra: Partial<Txn> = {}): Txn => ({
   id: nextId++, date, desc, src: 'Amex Gold', amt, cat, manual: false, cleared: false, note: '',
@@ -47,7 +47,7 @@ test('taxonomy is sorted A→Z; unknown categories fall into Other', () => {
   assert.deepEqual(tax.groups.Food, ['Eating Out', 'Groceries']);
 });
 
-test('unit categories roll up to their property by leading number', () => {
+test('mapped categories roll up to their property', () => {
   assert.equal(propertyOfCat('1207 Rent', props)?.id, 7);
   assert.equal(propertyOfCat('Repairs', props), null);
   assert.equal(propertyOfCat('20 Rent', props), null);

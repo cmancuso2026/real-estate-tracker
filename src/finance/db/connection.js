@@ -6,6 +6,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import knexFactory from 'knex';
 import pg from 'pg';
+import { seedPropertyCategoryMap } from '../lib/propertyMap.js';
 
 // node-postgres parses DATE (OID 1082) into a JS Date at local midnight, which
 // shifts the day in non-UTC zones. Keep DATE as the raw 'YYYY-MM-DD' string.
@@ -67,6 +68,10 @@ export async function migrateFinance(knex, { lockWaitMs = 60_000, log = () => {}
   for (;;) {
     try {
       const [, applied] = await knex.migrate.latest(MIGRATION_CONFIG);
+      // Propose property mappings for categories that appeared since the last
+      // deploy (e.g. after the finance data copy). Only adds missing rows.
+      const seeded = await seedPropertyCategoryMap(knex);
+      if (seeded.length) log(`Proposed ${seeded.length} property mapping(s): ${seeded.map((r) => r.category).join(', ')}`);
       return applied;
     } catch (err) {
       const locked = /already locked/i.test(String(err && err.message));

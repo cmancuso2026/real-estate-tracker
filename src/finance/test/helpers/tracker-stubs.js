@@ -1,8 +1,11 @@
-// Minimal stand-ins for the tracker tables the finance migrations reference
-// (owned_properties, units, vendors, work_orders, project_quotes). Real
+// Minimal stand-ins for the tracker tables finance code reads (owned_properties,
+// units, vendors, work_orders, project_quotes, tenants, leases, rent_collections,
+// insurance_policies). Real
 // Postgres gets the full versions from src/db/schema.sql, which db:migrate
 // runs first; pg-mem can't run that file (DO $$ blocks), so tests create these
 // columns — the ones finance code reads — before running the finance migrations.
+// Boolean defaults use knex.raw('true'/'false'): Knex otherwise emits '1'/'0',
+// which real Postgres casts to booleans but pg-mem stores as numbers.
 export async function createTrackerStubs(knex) {
   await knex.schema.createTable('owned_properties', (t) => {
     t.increments('id').primary();
@@ -14,6 +17,7 @@ export async function createTrackerStubs(knex) {
     t.increments('id').primary();
     t.integer('property_id').notNullable().references('id').inTable('owned_properties').onDelete('CASCADE');
     t.text('unit_label').notNullable();
+    t.boolean('is_owner_unit').notNullable().defaultTo(knex.raw('false'));
   });
   await knex.schema.createTable('vendors', (t) => {
     t.increments('id').primary();
@@ -40,6 +44,37 @@ export async function createTrackerStubs(knex) {
     t.integer('vendor_id').notNullable();
     t.decimal('quoted_cost', 12, 2);
     t.decimal('final_cost', 12, 2);
-    t.boolean('is_selected').notNullable().defaultTo(false);
+    t.boolean('is_selected').notNullable().defaultTo(knex.raw('false'));
+  });
+  await knex.schema.createTable('tenants', (t) => {
+    t.increments('id').primary();
+    t.integer('unit_id').notNullable();
+    t.text('first_name').notNullable();
+    t.text('last_name').notNullable();
+    t.boolean('is_active').notNullable().defaultTo(knex.raw('true'));
+  });
+  await knex.schema.createTable('leases', (t) => {
+    t.increments('id').primary();
+    t.integer('tenant_id').notNullable();
+    t.integer('unit_id').notNullable();
+    t.text('start_date').notNullable();
+    t.text('end_date').notNullable();
+    t.integer('rent_amount').notNullable();
+  });
+  await knex.schema.createTable('rent_collections', (t) => {
+    t.increments('id').primary();
+    t.integer('unit_id').notNullable();
+    t.text('due_date').notNullable();
+    t.integer('amount_due').notNullable();
+    t.text('paid_date');
+    t.integer('amount_paid');
+  });
+  await knex.schema.createTable('insurance_policies', (t) => {
+    t.increments('id').primary();
+    t.integer('property_id').notNullable();
+    t.text('carrier').notNullable();
+    t.text('policy_type');
+    t.text('effective_date').notNullable();
+    t.text('expiration_date').notNullable();
   });
 }
