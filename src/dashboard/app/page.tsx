@@ -162,6 +162,7 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
             </Card>
           ))}
         </div>
+        <CashCard cash={f.cash} />
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <Card>
             <Label>Top spending groups</Label>
@@ -385,5 +386,64 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
         </Card>
       </section>
     </div>
+  );
+}
+
+type Cash = { account: string; latest: { date: string; balance: number } | null; change_30d?: number | null; change_ytd?: number | null; month_ends?: { month: string; balance: number }[] };
+
+/** Cash position: the checking balance now, how it moved, and a 12-month trend (month-end balances). */
+function CashCard({ cash }: { cash: Cash[] }) {
+  const a = cash?.[0];
+  const usd = (n: number) => (n < 0 ? '-$' : '$') + Math.abs(Math.round(n)).toLocaleString('en-US');
+  const signed = (n: number | null | undefined) =>
+    n == null ? '—' : <span className={n >= 0 ? 'text-green-700' : 'text-red-600'}>{(n >= 0 ? '+' : '') + usd(n)}</span>;
+  if (!a?.latest) {
+    return (
+      <Card>
+        <Label>Cash position</Label>
+        <p className="mt-1 text-sm text-gray-500">
+          Upload Bank of America checking statements to track your balance over time.{' '}
+          <Link href="/upload?kind=statements" className="text-blue-600 hover:underline">
+            Upload →
+          </Link>
+        </p>
+      </Card>
+    );
+  }
+  const pts = a.month_ends ?? [];
+  const min = Math.min(...pts.map((p) => p.balance));
+  const max = Math.max(...pts.map((p) => p.balance));
+  const W = 240;
+  const H = 48;
+  const path = pts
+    .map((p, i) => {
+      const x = pts.length === 1 ? W / 2 : (i / (pts.length - 1)) * W;
+      const y = max === min ? H / 2 : H - ((p.balance - min) / (max - min)) * (H - 4) - 2;
+      return `${i ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(' ');
+  return (
+    <Card>
+      <div className="flex flex-wrap items-center justify-between gap-4" data-testid="cash-card">
+        <div>
+          <Label>Cash position · {a.account}</Label>
+          <div className="mt-1 text-3xl font-bold tabular">{usd(a.latest.balance)}</div>
+          <div className="mt-1 text-xs text-gray-500">
+            as of {a.latest.date} · 30 days {signed(a.change_30d)} · this year {signed(a.change_ytd)}
+          </div>
+        </div>
+        {pts.length > 1 && (
+          <Link href="/finance" title="Month-end balances, last 12 months — open the full chart" className="text-blue-600">
+            <svg viewBox={`0 0 ${W} ${H}`} className="h-12 w-60" aria-label="Month-end balance trend">
+              <path d={path} fill="none" stroke="currentColor" strokeWidth="2" />
+            </svg>
+            <div className="flex justify-between text-[10px] text-gray-400">
+              <span>{pts[0]!.month}</span>
+              <span>{pts[pts.length - 1]!.month}</span>
+            </div>
+          </Link>
+        )}
+      </div>
+    </Card>
   );
 }

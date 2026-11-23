@@ -15,6 +15,7 @@ import { unattributedCount } from '../lib/attribution.js';
 import { propertyCashFlow } from '../lib/cashflow.js';
 import { DEFINITIONS, financeTotals, loadMetricsContext, spendingByGroup } from '../lib/metrics.js';
 import { withAllocations } from '../lib/allocations.js';
+import { cashSummary } from '../lib/balances.js';
 import { isoDate } from './_query.js';
 
 const r2 = (n) => Math.round(n * 100) / 100;
@@ -73,6 +74,7 @@ export async function getOverview(knex, opts = {}) {
     month: totals(monthRows, mctx),
     ytd: totals(ytdRows, mctx),
     definitions: DEFINITIONS,
+    cash: await cashSummary(knex),
     top_groups: { month: spendingByGroup(monthRows, mctx, 5), ytd: spendingByGroup(ytdRows, mctx, 5) },
     latest_uploads: sourceSpan
       .map((s) => {

@@ -7,6 +7,8 @@ import { canonicalName, loadTaxonomy } from '../lib/categories.js';
 import { unattributedQuery } from '../lib/attribution.js';
 import { syncRentQuietly } from '../lib/rentSync.js';
 import { reapplyAllocations } from '../lib/allocations.js';
+import { BOFA_CHECKING, bofaCheckingBalances } from '../parsers/balances.js';
+import { saveBalances } from '../lib/balances.js';
 
 // Same limits the Express route enforced through multer.
 export const MAX_FILES = 20;
@@ -46,7 +48,10 @@ export async function processUpload(knex, uploadedFiles, opts = {}) {
       const { source, transactions } = sourceKey
         ? parseFile(f.buffer, f.originalname, sourceKey)
         : parseFileAuto(f.buffer, f.originalname);
-      parsed.push({ filename: f.originalname, source, transactions });
+      // Bank of America checking exports also carry a running balance: kept for
+      // the cash position chart (read separately; the transactions are unchanged).
+      const balances = source === 'Bank of America' ? bofaCheckingBalances(f.buffer, f.originalname) : [];
+      parsed.push({ filename: f.originalname, source, transactions, balances });
     } catch (err) {
       fileErrors.push({ filename: f.originalname, error: err.message });
     }
@@ -165,6 +170,7 @@ export async function processUpload(knex, uploadedFiles, opts = {}) {
   // One upload_log row per file (preserves provenance); each transaction links
   // to its originating file's upload_id.
   const uploadIds = [];
+  let balancesSaved = 0;
   await knex.transaction(async (trx) => {
     const fileUploadId = new Array(parsed.length).fill(null);
     for (let i = 0; i < parsed.length; i += 1) {
@@ -181,6 +187,7 @@ export async function processUpload(knex, uploadedFiles, opts = {}) {
       const id = inserted[0].id ?? inserted[0];
       fileUploadId[i] = id;
       uploadIds.push(id);
+      if (p.balances.length) balancesSaved += await saveBalances(trx, BOFA_CHECKING, p.balances, id);
     }
 
     if (toInsert.length) {
@@ -238,6 +245,7 @@ export async function processUpload(knex, uploadedFiles, opts = {}) {
     skipped,
     recategorized,
     needs_property: needsProperty,
+    balances_saved: balancesSaved,
     rent,
     by_source: Object.values(bySource),
     errors: fileErrors,

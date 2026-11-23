@@ -158,6 +158,10 @@ One definition, in `src/finance/lib/metrics.js`, used by the landing page, the /
 
 The landing page shows one calendar month and the year to date; /finance opens on the current month and the two before it. For the same months they show the same numbers (`src/dashboard/test/metrics-parity.test.ts`). The group names are constants in `metrics.js` (`TRANSFER_GROUPS`, `INCOME_GROUPS`): if you rename the Financials or W2 Income group in Admin, update them there.
 
+## Cash position
+
+Bank of America **checking** exports (CSV) carry a running balance on every row. On upload, the closing balance of each day is saved in `account_balances` (one row per account and day; a later upload of the same day replaces it), read by `src/finance/parsers/balances.js` separately from the transaction parser. Finances → Overview charts the balance over the selected months (now, change over the period, low point); the home page shows the latest balance, its change over 30 days and this year, and a 12-month trend. Balances only exist for statements uploaded since this was added: re-upload older checking statements to fill in the history (their transactions are skipped as duplicates).
+
 ## How rent is recorded
 
 A transaction is a rent payment when it is money in and its category is mapped to a property as rent (Admin → Property mapping, role "income"). Whenever an upload, a category change, a merchant rule or a re-categorization produces one, it is written to `rent_collections` (`source = 'finance_upload'`, linked by `transaction_id`). The unit is found with the rules the old Import Rent page used (`src/finance/lib/rentMatch.js`), in this order: the property's only unit; the tenant's name in the description ("Zelle payment from …"); a category naming the unit ("1207 Rent"); the amount equal to exactly one unit's lease rent. The rent month, late flag and late fee come from the lease in force on the payment date (last 5 days of a month count toward the next month).
@@ -203,6 +207,7 @@ Tracker timestamps are TEXT in UTC `YYYY-MM-DD HH:MM:SS`.
 | `category_groups`, `categories`, `category_aliases` | The category list (seeded from `lib/taxonomy.js`); aliases keep renamed/merged names working |
 | `custom_categories` | Categories added in the old finance app (kept as a seed source) |
 | `category_settings` | Per category: requires a property, allows project tags, default property |
+| `account_balances` | Daily closing balance per bank account (Bank of America checking), for the cash position chart |
 | `transaction_allocations` | A transaction's share per property (and unit / project); see Splitting above |
 | `property_category_map` | Per-property categories ("1205 Rent") → property and role (rent / PITI / expense) |
 | `merchant_rules` | Your categorization rules |

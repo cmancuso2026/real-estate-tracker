@@ -1,0 +1,14 @@
+Description,,Summary Amt.
+Beginning balance as of 10/01/2026,,"5,000.00"
+Total credits,,"6,200.00"
+Total debits,,"-4,150.00"
+Ending balance as of 11/30/2026,,"7,050.00"
+
+Date,Description,Amount,Running Bal.
+10/01/2026,Beginning balance as of 10/01/2026,,"5,000.00"
+10/03/2026,ZELLE FROM TENANT 1205,"1,850.00","6,850.00"
+10/03/2026,HOME DEPOT #6321,-150.00,"6,700.00"
+10/15/2026,PAYROLL FRANCHISE WORLD,"2,500.00","9,200.00"
+10/20/2026,AMERICAN EXPRESS ACH PMT,"-3,000.00","6,200.00"
+11/03/2026,ZELLE FROM TENANT 1205,"1,850.00","8,050.00"
+11/21/2026,AMERICAN EXPRESS ACH PMT,"-1,000.00","7,050.00"
