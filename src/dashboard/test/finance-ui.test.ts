@@ -136,3 +136,17 @@ test('categories: assigned shares sit under their property, income first, the re
   assert.deepEqual(p9.cats.map((r) => [r.cat, r.cells[0]!.v]), [['Repairs', -20]]);
   assert.deepEqual(inv.standalone.map((r) => [r.cat, r.cells[0]!.v]), [['Repairs', -70]], 'handyman + the unassigned $20');
 });
+
+test('exclude investments: Investments group, property-mapped categories and anything assigned to a property', async () => {
+  const { withoutInvestments } = await import('../lib/finance-ui/filters');
+  const props2: PropertyGroup[] = [{ id: 7, name: '1205-1207 NE 117th St', units: [], categories: ['1205 Rent', 'Figure Lending'] }];
+  const rows = [
+    tx('2026-11-01', 'PAYROLL', 4000, 'Paycheck'),
+    tx('2026-11-03', 'ZELLE', 1850, '1205 Rent'),
+    tx('2026-11-04', 'PLUMBER', -300, 'Repairs'),
+    tx('2026-11-05', 'FIGURE', -1210, 'Figure Lending'),
+    tx('2026-11-06', 'FPL', -150, 'Shopping', { allocations: [{ property_id: 7, unit_id: null, work_order_id: null, amount: -150, percent: 100, input_mode: 'percent' }] }),
+    tx('2026-11-07', 'PUBLIX', -80, 'Groceries'),
+  ];
+  assert.deepEqual(withoutInvestments(rows, tax, props2).map((t) => t.desc), ['PAYROLL', 'PUBLIX']);
+});
