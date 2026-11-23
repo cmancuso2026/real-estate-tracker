@@ -154,6 +154,9 @@ const COMPONENTS: Array<{ key: string; gradeCol: string; label: string; weight: 
 ];
 
 // Latest grade per property (highest grades.id), joined to its listing.
+// DISTINCT ON reads grades once. The old correlated MAX(id) subquery ran once
+// per grade row and slowed down as every grading run added rows (2.1 s vs
+// 0.06 s at 120k grades), which is what made the Tracker time out.
 const LATEST_GRADE_JOIN = `
   SELECT
     l.id AS listing_id, l.source, l.source_id, l.address, l.city, l.state,
@@ -165,9 +168,9 @@ const LATEST_GRADE_JOIN = `
     g.coc_return, g.monthly_cashflow, g.price_per_sqft, g.crime_index,
     g.rental_prevalence, g.interest_rate_used, g.reasoning, g.assumptions_json,
     g.graded_at
-  FROM grades g
+  FROM (SELECT DISTINCT ON (property_id) * FROM grades ORDER BY property_id, id DESC) g
   JOIN listings l ON l.id = g.property_id
-  WHERE g.id = (SELECT MAX(g2.id) FROM grades g2 WHERE g2.property_id = g.property_id)
+  WHERE TRUE
     AND ${investableTypesOnly('l.property_type')}
 `;
 
@@ -297,7 +300,7 @@ export async function getListingZips(): Promise<string[]> {
  * distribution, average CoC and best opportunity reflect only the matching
  * properties; totalProperties remains the full count of tracked listings.
  */
-export async function getSummary(profile?: InvestorProfile): Promise<Summary> {
+export async function getSummary(profile?: InvestorProfile, gradedRows?: GradedRow[]): Promise<Summary> {
   const empty: Summary = {
     totalProperties: 0,
     totalGraded: 0,
@@ -313,7 +316,8 @@ export async function getSummary(profile?: InvestorProfile): Promise<Summary> {
   );
   const totalProperties = Number(totalRow?.n ?? 0);
 
-  const graded = await getGradedProperties(profile);
+  // gradedRows: the caller already loaded them (the Tracker page) — skip the query.
+  const graded = gradedRows ?? (await getGradedProperties(profile));
   const gradeCounts: Record<Letter, number> = { A: 0, B: 0, C: 0, D: 0, F: 0 };
   let cocSum = 0;
   let cocCount = 0;

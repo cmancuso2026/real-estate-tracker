@@ -11,7 +11,8 @@ import {
 } from '../lib/attribution.js';
 import { buildSuggestionContext, suggestFor } from '../lib/suggest.js';
 import { isoDate } from './_query.js';
-import { serialize } from './transactions.js';
+import { loadSerialized, serializeRows } from './transactions.js';
+import { computeAllocations, MODES, saveAllocations, validateRows } from '../lib/allocations.js';
 
 function httpError(status, message) {
   const e = new Error(message);
@@ -19,7 +20,7 @@ function httpError(status, message) {
   return e;
 }
 
-const ROW_FIELDS = ['id', 'dedup_hash', 'description', 'category'];
+const ROW_FIELDS = ['id', 'dedup_hash', 'description', 'category', 'amount'];
 
 // PATCH /api/finance/transactions/:id/attribution — { property_id, unit_id?, work_order_id? }.
 // property_id null clears it. → the updated transaction
@@ -31,7 +32,28 @@ export async function setTransactionAttribution(knex, params, body) {
   const attr = await validateAttribution(knex, body);
   await assertProjectTagAllowed(knex, [existing.category], attr.work_order_id);
   await knex.transaction((trx) => applyAttribution(trx, [existing], attr));
-  return serialize(await knex('transactions').where({ id }).first());
+  return loadSerialized(knex, id);
+}
+
+// PUT /api/finance/transactions/:id/allocations — split a transaction across
+// properties. Body: { mode: 'percent' | 'amount', rows: [{ property_id,
+// unit_id?, work_order_id?, value }] }. Replaces all of its allocations at once;
+// 400 unless percentages total 100 / amounts total the transaction. rows: []
+// clears it. → the updated transaction
+export async function setAllocations(knex, params, body) {
+  const id = Number(params.id);
+  const existing = await knex('transactions').where({ id }).first(ROW_FIELDS);
+  if (!existing) throw httpError(404, `Transaction ${id} not found`);
+  const mode = body?.mode;
+  const rows = Array.isArray(body?.rows) ? body.rows : null;
+  if (!rows) throw httpError(400, 'Body must include a rows array ([] to clear)');
+  if (rows.length && !MODES.includes(mode)) throw httpError(400, `mode must be one of: ${MODES.join(', ')}`);
+  const allocs = rows.length ? computeAllocations(existing.amount, mode, rows) : [];
+  await validateRows(knex, allocs);
+  for (const a of allocs) await assertProjectTagAllowed(knex, [existing.category], a.work_order_id);
+  const spec = { mode, rows: rows.map((r) => ({ property_id: r.property_id, unit_id: r.unit_id ?? null, work_order_id: r.work_order_id ?? null, value: Number(r.value) })) };
+  await knex.transaction((trx) => saveAllocations(trx, existing, allocs, spec));
+  return loadSerialized(knex, id);
 }
 
 // PATCH /api/finance/transactions/attribution — { ids: number[], property_id, work_order_id?, unit_id? }.
@@ -76,7 +98,8 @@ export async function createProjectFromTransaction(knex, params, body) {
       })
       .returning('*');
     await applyAttribution(trx, [t], { ...base, work_order_id: wo.id });
-    return { work_order: wo, transaction: serialize(await trx('transactions').where({ id }).first()) };
+    const [txn] = await serializeRows(trx, [await trx('transactions').where({ id }).first()]);
+    return { work_order: wo, transaction: txn };
   });
 }
 
@@ -100,10 +123,12 @@ export async function getQueue(knex, query = {}) {
   if (query.category) q.where('t.category', query.category);
   const rows = await q;
   const ctx = await buildSuggestionContext(knex);
+  const out = await serializeRows(knex, rows);
   return {
     count: byCategory.reduce((s, r) => s + Number(r.c), 0),
     by_category: byCategory.map((r) => ({ category: r.category, count: Number(r.c) })),
-    transactions: rows.map((r) => ({ ...serialize(r), suggestion: suggestFor(ctx, r)[0] || null })),
+    // partly allocated rows carry allocations + unallocated ("$X unallocated")
+    transactions: out.map((r, i) => ({ ...r, suggestion: suggestFor(ctx, rows[i])[0] || null })),
   };
 }
 
@@ -142,40 +167,52 @@ export async function getPropertyOptions(knex) {
   };
 }
 
-// GET /api/finance/rollups/property/:id?year= — transactions linked to a
-// property, with per-category totals by month and year-to-date.
+// GET /api/finance/rollups/property/:id?year= — the property's share of every
+// transaction allocated to it (a split counts only its share), with
+// per-category totals by month and year-to-date.
 export async function getPropertySpend(knex, params, query = {}) {
   const id = Number(params.id);
   const year = String(query.year || new Date().getFullYear());
-  const rows = await knex('transactions as t')
-    .leftJoin('work_orders as w', 'w.id', 't.work_order_id')
-    .leftJoin('units as u', 'u.id', 't.unit_id')
-    .where('t.property_id', id)
-    .select('t.*', 'w.project_name', 'u.unit_label')
+  const shares = await knex('transaction_allocations as a')
+    .join('transactions as t', 't.id', 'a.transaction_id')
+    .leftJoin('work_orders as w', 'w.id', 'a.work_order_id')
+    .leftJoin('units as u', 'u.id', 'a.unit_id')
+    .where('a.property_id', id)
+    .select('t.*', 'a.amount as share', 'a.unit_id as share_unit_id', 'a.work_order_id as share_work_order_id', 'w.project_name', 'u.unit_label')
     .orderBy('t.date', 'desc')
-    .orderBy('t.id', 'desc');
+    .orderBy('t.id', 'desc')
+    .orderBy('a.id');
   const months = {}; // 'YYYY-MM' → { category → amount }
   const ytd = {}; // category → amount
-  for (const r of rows) {
+  for (const r of shares) {
     const d = isoDate(r.date);
     if (d.slice(0, 4) !== year) continue;
     const ym = d.slice(0, 7);
-    const amt = Number(r.amount);
+    const amt = Number(r.share);
     (months[ym] = months[ym] || {})[r.category] = Math.round(((months[ym][r.category] || 0) + amt) * 100) / 100;
     ytd[r.category] = Math.round(((ytd[r.category] || 0) + amt) * 100) / 100;
   }
+  const txns = await serializeRows(knex, shares);
   return {
     property_id: id,
     year: Number(year),
     ytd,
     ytd_total: Math.round(Object.values(ytd).reduce((s, v) => s + v, 0) * 100) / 100,
     months,
-    transactions: rows.map((r) => ({ ...serialize(r), project_name: r.project_name || null, unit_label: r.unit_label || null })),
+    // one entry per share; share = this property's part of the amount
+    transactions: shares.map((r, i) => ({
+      ...txns[i],
+      share: Number(r.share),
+      share_unit_id: r.share_unit_id == null ? null : Number(r.share_unit_id),
+      share_work_order_id: r.share_work_order_id == null ? null : Number(r.share_work_order_id),
+      project_name: r.project_name || null,
+      unit_label: r.unit_label || null,
+    })),
   };
 }
 
 // GET /api/finance/rollups/projects?propertyId= — actual spend per project:
-// the sum of linked transactions, as a positive cost (refunds reduce it).
+// the sum of allocations linked to it, as a positive cost (refunds reduce it).
 // → { projects: { [work_order_id]: { actual_spend, transaction_count } } }
 export async function getProjectSpend(knex, query = {}) {
   // Summed in JS (like summary.js): portable, and the per-property row count is small.
@@ -183,14 +220,19 @@ export async function getProjectSpend(knex, query = {}) {
   // database) mis-answers IS NOT NULL combined with an equality on two indexed
   // columns, and the result is the same on real Postgres.
   const q = query.propertyId
-    ? knex('transactions').where('property_id', Number(query.propertyId)).select('work_order_id', 'amount')
-    : knex('transactions').whereNotNull('work_order_id').select('work_order_id', 'amount');
+    ? knex('transaction_allocations').where('property_id', Number(query.propertyId)).select('work_order_id', 'amount', 'transaction_id')
+    : knex('transaction_allocations').whereNotNull('work_order_id').select('work_order_id', 'amount', 'transaction_id');
   const projects = {};
+  const seen = {};
   for (const r of await q) {
     if (r.work_order_id == null) continue;
     const p = (projects[r.work_order_id] = projects[r.work_order_id] || { actual_spend: 0, transaction_count: 0 });
     p.actual_spend = Math.round((p.actual_spend - Number(r.amount)) * 100) / 100;
-    p.transaction_count += 1;
+    const k = `${r.work_order_id}|${r.transaction_id}`;
+    if (!seen[k]) {
+      seen[k] = true;
+      p.transaction_count += 1;
+    }
   }
   return { projects };
 }

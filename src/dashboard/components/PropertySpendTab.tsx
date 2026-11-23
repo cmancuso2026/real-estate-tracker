@@ -8,6 +8,9 @@ interface SpendTxn {
   date: string;
   description: string;
   amount: number;
+  /** This property's part of the amount (all of it unless the transaction is split). */
+  share: number;
+  allocations: unknown[];
   category: string;
   source: string;
   project_name: string | null;
@@ -31,7 +34,7 @@ const tone = (n: number) => (Math.abs(n) < 0.005 ? 'text-gray-300' : n < 0 ? 'te
 
 /**
  * "Repairs & spend" on a property: finance transactions linked to this property
- * (transactions.property_id), with totals by category per month and year-to-date.
+ * (its share of transaction_allocations), with totals by category per month and year-to-date.
  */
 export function PropertySpendTab({ id }: { id: string }) {
   const [year, setYear] = useState(new Date().getFullYear());
@@ -158,8 +161,8 @@ export function PropertySpendTab({ id }: { id: string }) {
                 </tr>
               </thead>
               <tbody>
-                {yearTxns.map((t) => (
-                  <tr key={t.id} className="border-t border-gray-100">
+                {yearTxns.map((t, i) => (
+                  <tr key={`${t.id}-${i}`} className="border-t border-gray-100">
                     <td className="whitespace-nowrap px-3 py-1.5 text-gray-600">{t.date}</td>
                     <td className="px-3 py-1.5">{t.description}</td>
                     <td className="whitespace-nowrap px-3 py-1.5 text-gray-600">{t.category}</td>
@@ -167,7 +170,14 @@ export function PropertySpendTab({ id }: { id: string }) {
                       {t.project_name && <span className="rounded bg-purple-100 px-1.5 py-0.5 text-purple-700">{t.project_name}</span>}
                       {t.unit_label && <span className="ml-1 rounded bg-gray-100 px-1.5 py-0.5">Unit {t.unit_label}</span>}
                     </td>
-                    <td className={`whitespace-nowrap px-3 py-1.5 text-right tabular ${tone(t.amount)}`}>{money(t.amount)}</td>
+                    <td className={`whitespace-nowrap px-3 py-1.5 text-right tabular ${tone(t.share)}`}>
+                      {money(t.share)}
+                      {t.allocations.length > 1 && (
+                        <div className="text-[11px] font-normal text-gray-400" title="This property's share of a split transaction">
+                          share of {money(t.amount)}
+                        </div>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

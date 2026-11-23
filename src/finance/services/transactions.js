@@ -2,6 +2,8 @@ import { applyFilters, isoDate } from './_query.js';
 import { resolveGroup } from '../lib/categoryStore.js';
 import { recategorizeUncategorized } from '../lib/recategorize.js';
 import { applyAttribution, assertProjectTagAllowed, requiresProperty, validateAttribution } from '../lib/attribution.js';
+import { syncRentQuietly } from '../lib/rentSync.js';
+import { allocationStatus, allocationsByTxn, withAllocations } from '../lib/allocations.js';
 
 export function serialize(row) {
   return {
@@ -16,10 +18,36 @@ export function serialize(row) {
     review_cleared: !!row.review_cleared,
     note: row.note || '',
     confidence_score: row.confidence_score == null ? null : Number(row.confidence_score),
-    property_id: row.property_id == null ? null : Number(row.property_id),
-    work_order_id: row.work_order_id == null ? null : Number(row.work_order_id),
-    unit_id: row.unit_id == null ? null : Number(row.unit_id),
+    // Property attribution (transaction_allocations). property_id / unit_id /
+    // work_order_id are filled only for a single-property allocation; a split
+    // lists every share in allocations.
+    ...attributionFields(row.amount, row.allocations || []),
   };
+}
+
+function attributionFields(amount, allocs) {
+  const one = allocs.length === 1 ? allocs[0] : null;
+  const st = allocationStatus(amount, allocs);
+  return {
+    property_id: one ? one.property_id : null,
+    work_order_id: one ? one.work_order_id : null,
+    unit_id: one ? one.unit_id : null,
+    allocations: allocs.map((a) => ({ property_id: a.property_id, unit_id: a.unit_id, work_order_id: a.work_order_id, amount: a.amount, percent: a.percent, input_mode: a.input_mode })),
+    allocated: st.allocated,
+    unallocated: allocs.length ? st.unallocated : null,
+    fully_allocated: st.full,
+  };
+}
+
+/** serialize() for rows read from the database: loads their allocations first. */
+export async function serializeRows(knex, rows) {
+  return (await withAllocations(knex, rows)).map(serialize);
+}
+
+/** One transaction by id, serialized with its allocations. */
+export async function loadSerialized(knex, id) {
+  const row = await knex('transactions').where({ id }).first();
+  return row ? (await serializeRows(knex, [row]))[0] : null;
 }
 
 // GET /api/finance/transactions — filtered + paginated list.
@@ -42,7 +70,7 @@ export async function listTransactions(knex, query) {
     .offset(offset)
     .select('*');
 
-  return { transactions: rows.map(serialize), total };
+  return { transactions: await serializeRows(knex, rows), total };
 }
 
 // PUT /api/finance/transactions/bulk-category — override many transactions at once.
@@ -90,6 +118,7 @@ export async function bulkCategory(knex, body) {
     }
   });
 
+  await syncRentQuietly(knex, rows.map((r) => r.id));
   return { success: true, updated: rows.length, category, category_group: categoryGroup };
 }
 
@@ -116,7 +145,9 @@ export async function bulkReview(knex, body) {
 // overrides (is_manual) are never touched. The bank's raw category/Type column
 // isn't stored per-row, so the rule fallback runs description-only here.
 export async function recategorizeTransactions(knex) {
-  const { scanned, updated } = await recategorizeUncategorized(knex);
+  const changedIds = [];
+  const { scanned, updated } = await recategorizeUncategorized(knex, { changedIds });
+  await syncRentQuietly(knex, changedIds);
   return { success: true, scanned, updated };
 }
 
@@ -133,8 +164,7 @@ export async function setReview(knex, params, body) {
     throw e;
   }
   await knex('transactions').where({ id }).update({ review_cleared: cleared });
-  const updated = await knex('transactions').where({ id }).first();
-  return serialize(updated);
+  return loadSerialized(knex, id);
 }
 
 // PUT /api/finance/transactions/:id/note — attach/update/clear a free-text note.
@@ -151,8 +181,7 @@ export async function setNote(knex, params, body) {
   }
 
   await knex('transactions').where({ id }).update({ note: note || null });
-  const updated = await knex('transactions').where({ id }).first();
-  return serialize(updated);
+  return loadSerialized(knex, id);
 }
 
 // PUT /api/finance/transactions/:id/category — override a transaction's category and
@@ -181,9 +210,13 @@ export async function setCategory(knex, params, body) {
   // Optional body fields: property_id, unit_id, work_order_id.
   const sentProperty = body && body.property_id != null && body.property_id !== '';
   const attr = sentProperty ? await validateAttribution(knex, body) : null;
-  if (!attr && !existing.property_id && (await requiresProperty(knex, category))) {
+  const allocs = (await allocationsByTxn(knex, [id])).get(id) || [];
+  const fullyAllocated = allocationStatus(existing.amount, allocs).full;
+  if (!attr && !fullyAllocated && (await requiresProperty(knex, category))) {
     const e = new Error(
-      `Category '${category}' requires a property. Send property_id (and optionally unit_id / work_order_id) with the category change.`,
+      allocs.length
+        ? `Category '${category}' requires a property and this transaction is only partly allocated. Finish the split, or send property_id to give it all to one property.`
+        : `Category '${category}' requires a property. Send property_id (and optionally unit_id / work_order_id) with the category change.`,
     );
     e.status = 400;
     throw e;
@@ -213,8 +246,8 @@ export async function setCategory(knex, params, body) {
   }
 
   if (attr) await knex.transaction((trx) => applyAttribution(trx, [existing], attr));
+  await syncRentQuietly(knex, [id]);
 
-  const updated = await knex('transactions').where({ id }).first();
-  return serialize(updated);
+  return loadSerialized(knex, id);
 }
 

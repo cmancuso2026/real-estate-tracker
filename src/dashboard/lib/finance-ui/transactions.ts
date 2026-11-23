@@ -1,6 +1,7 @@
 import type { Taxonomy } from './taxonomy';
 import { groupOf } from './taxonomy';
 import type { Txn } from './types';
+import { DEFAULT_METRICS_CTX, totalsOf, type MetricsCtx } from './metrics';
 
 export type SortKey = 'date' | 'desc' | 'src' | 'group' | 'cat' | 'amt';
 export interface SortState {
@@ -33,16 +34,21 @@ export function nextSort(cur: SortState, key: SortKey): SortState {
   return { key, dir: key === 'date' || key === 'amt' ? 'desc' : 'asc' };
 }
 
-/** KPI cards (old updateHeroCards). */
-export function heroTotals(rows: Txn[]) {
-  const income = rows.filter((t) => t.amt > 0).reduce((s, t) => s + t.amt, 0);
-  const spend = rows.filter((t) => t.amt < 0).reduce((s, t) => s + Math.abs(t.amt), 0);
+/**
+ * KPI cards: income, spending and cash flow from the shared definition
+ * (src/finance/lib/metrics.js — transfers between your accounts left out,
+ * refunds netted against spending), so they match the landing page and API.
+ */
+export function heroTotals(rows: Txn[], ctx: MetricsCtx = DEFAULT_METRICS_CTX) {
+  const t = totalsOf(rows, ctx);
   return {
-    income,
-    spend,
-    flow: income - spend,
-    paychecks: rows.filter((t) => t.cat === 'Paycheck').length,
-    expenseCount: rows.filter((t) => t.amt < 0).length,
+    income: t.income,
+    spend: t.spending,
+    flow: t.cash_flow,
+    paychecks: rows.filter((r) => r.cat === 'Paycheck').length,
+    expenseCount: t.expense_count,
+    transfers: t.transfers,
+    transferCount: t.transfer_count,
   };
 }
 

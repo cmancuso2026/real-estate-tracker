@@ -1,28 +1,53 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useFinance } from '@/components/finance/FinanceData';
 import { FinanceChart, type ChartKind, type StackMode } from '@/components/finance/FinanceChart';
 import { Card, Field, selectCls } from '@/components/finance/ui';
 import { buildChart, type Granularity } from '@/lib/finance-ui/chart';
 import { fmt } from '@/lib/finance-ui/format';
 import { heroTotals } from '@/lib/finance-ui/transactions';
+import { InfoTip } from '@/components/finance/InfoTip';
+import { SankeyChart } from '@/components/finance/SankeyChart';
+import { buildSankey } from '@/lib/finance-ui/sankey';
+
+type ChartView = 'bar' | 'sankey';
+const VIEW_KEY = 'mancuso.finance.overviewChart';
 
 export default function FinanceOverviewPage() {
-  const { filteredTxns, tax, filters, unattributedCount } = useFinance();
+  const { filteredTxns, tax, filters, unattributedCount, metricsCtx, definitions } = useFinance();
   const [gran, setGran] = useState<Granularity>('monthly');
   const [kind, setKind] = useState<ChartKind>('line');
   const [stack, setStack] = useState<StackMode>('grouped');
+  const [view, setView] = useState<ChartView>('bar');
+  // Remember Bar / Sankey per browser (storage can be unavailable: private mode).
+  useEffect(() => {
+    try {
+      const v = window.localStorage.getItem(VIEW_KEY);
+      if (v === 'bar' || v === 'sankey') setView(v);
+    } catch {
+      /* default view */
+    }
+  }, []);
+  function pickView(v: ChartView) {
+    setView(v);
+    try {
+      window.localStorage.setItem(VIEW_KEY, v);
+    } catch {
+      /* not remembered, still switches */
+    }
+  }
 
   // Cards and chart both use the shared rows (period + global filters). The
   // Group / Category filters also pick the chart's shape: a group alone breaks
   // into one line per category; a property shows Rent / Costs / Net.
-  const hero = heroTotals(filteredTxns);
+  const hero = heroTotals(filteredTxns, metricsCtx);
   const model = useMemo(
-    () => buildChart(filteredTxns, tax, filters.group, filters.category, gran),
-    [filteredTxns, tax, filters.group, filters.category, gran],
+    () => buildChart(filteredTxns, tax, filters.group, filters.category, gran, metricsCtx),
+    [filteredTxns, tax, filters.group, filters.category, gran, metricsCtx],
   );
+  const sankey = useMemo(() => (view === 'sankey' ? buildSankey(filteredTxns, tax, metricsCtx) : null), [view, filteredTxns, tax, metricsCtx]);
 
   return (
     <div className="space-y-5">
@@ -43,30 +68,68 @@ export default function FinanceOverviewPage() {
       )}
       <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <Card>
-          <div className="text-sm text-gray-500">Income</div>
+          <div className="text-sm text-gray-500">
+            Income
+            <InfoTip text={definitions.income} testId="def-income" />
+          </div>
           <div data-testid="kpi-income" className="mt-1 text-3xl font-bold tabular text-green-700">{fmt(hero.income)}</div>
           <div className="mt-1 text-xs text-gray-500">{hero.paychecks} paycheck deposits</div>
         </Card>
         <Card>
-          <div className="text-sm text-gray-500">Total Spending</div>
+          <div className="text-sm text-gray-500">
+            Total Spending
+            <InfoTip text={definitions.spending} testId="def-spending" />
+          </div>
           <div data-testid="kpi-spend" className="mt-1 text-3xl font-bold tabular text-red-600">{fmt(-hero.spend)}</div>
-          <div className="mt-1 text-xs text-gray-500">{hero.expenseCount} expense transactions</div>
+          <div className="mt-1 flex justify-between text-xs text-gray-500">
+            <span>{hero.expenseCount} expense transactions</span>
+            <Link href="/finance/spending" className="font-medium text-blue-600 hover:underline">
+              By category →
+            </Link>
+          </div>
         </Card>
         <Card>
-          <div className="text-sm text-gray-500">Cash Flow</div>
+          <div className="text-sm text-gray-500">
+            Cash Flow
+            <InfoTip text={definitions.cash_flow} testId="def-cashflow" />
+          </div>
           <div
             data-testid="kpi-flow"
             className={`mt-1 text-3xl font-bold tabular ${hero.flow >= 0 ? 'text-green-700' : 'text-red-600'}`}
           >
             {fmt(hero.flow)}
           </div>
-          <div className="mt-1 text-xs text-gray-500">Net for period</div>
+          <div className="mt-1 text-xs text-gray-500" data-testid="kpi-transfers">
+            Net for period
+            {hero.transferCount > 0 && ` · ${hero.transferCount} transfer${hero.transferCount === 1 ? '' : 's'} between your accounts left out`}
+          </div>
         </Card>
       </section>
 
       <Card>
         <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2">
-          <h2 className="mr-auto font-semibold">Income vs. Spending Over Time</h2>
+          <h2 className="mr-auto font-semibold">{view === 'sankey' ? 'Where the money went' : 'Income vs. Spending Over Time'}</h2>
+          <div role="group" aria-label="Chart view" className="inline-flex overflow-hidden rounded-lg border border-gray-300 text-xs font-medium">
+            {(
+              [
+                ['bar', 'Bar'],
+                ['sankey', 'Sankey'],
+              ] as const
+            ).map(([v, label]) => (
+              <button
+                key={v}
+                type="button"
+                aria-pressed={view === v}
+                data-testid={`view-${v}`}
+                onClick={() => pickView(v)}
+                className={`px-3 py-1.5 ${view === v ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {view === 'bar' && (
+          <>
           <Field label="View:">
             <select aria-label="Chart granularity" className={selectCls} value={gran} onChange={(e) => setGran(e.target.value as Granularity)}>
               <option value="daily">Daily</option>
@@ -86,7 +149,22 @@ export default function FinanceOverviewPage() {
               <option value="stacked">Stacked</option>
             </select>
           </Field>
+          </>
+          )}
         </div>
+        {view === 'sankey' ? (
+          <div
+            className="relative h-[32rem]"
+            data-testid="finance-sankey"
+            data-flows={sankey ? JSON.stringify({ income: sankey.income, spending: sankey.spending, flows: sankey.flows }) : ''}
+          >
+            {sankey ? (
+              <SankeyChart model={sankey} />
+            ) : (
+              <div className="flex h-full items-center justify-center text-sm text-gray-400">No income or spending in this period.</div>
+            )}
+          </div>
+        ) : (
         <div
           className="relative h-80"
           data-testid="finance-chart"
@@ -95,6 +173,7 @@ export default function FinanceOverviewPage() {
         >
           {model && <FinanceChart model={model} kind={kind} stack={stack} />}
         </div>
+        )}
       </Card>
     </div>
   );

@@ -79,8 +79,9 @@ export interface GradedProperty {
   graded_at: string;
 }
 
-// Latest grade per property (highest grades.id), joined to its listing. The
-// correlated subquery picks the most recent grading run for each property.
+// Latest grade per property (highest grades.id), joined to its listing.
+// DISTINCT ON reads grades once (a correlated MAX(id) subquery ran once per
+// grade row and grew slower with every grading run).
 const LATEST_GRADE_JOIN = `
   SELECT
     l.id AS listing_id, l.source, l.source_id, l.address, l.city, l.state,
@@ -88,9 +89,9 @@ const LATEST_GRADE_JOIN = `
     l.living_area, l.property_type, l.listing_url,
     g.overall_grade, g.overall_score, g.coc_return, g.monthly_cashflow,
     g.price_per_sqft, g.crime_index, g.rental_prevalence, g.reasoning, g.graded_at
-  FROM grades g
+  FROM (SELECT DISTINCT ON (property_id) * FROM grades ORDER BY property_id, id DESC) g
   JOIN listings l ON l.id = g.property_id
-  WHERE g.id = (SELECT MAX(g2.id) FROM grades g2 WHERE g2.property_id = g.property_id)
+  WHERE TRUE
 `;
 
 /**

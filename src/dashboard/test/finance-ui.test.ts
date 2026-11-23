@@ -24,7 +24,7 @@ const props: PropertyGroup[] = [{ id: 7, name: '1205-1207 NE 117th St', units: [
 let nextId = 1;
 const tx = (date: string, desc: string, amt: number, cat: string, extra: Partial<Txn> = {}): Txn => ({
   id: nextId++, date, desc, src: 'Amex Gold', amt, cat, manual: false, cleared: false, note: '',
-  propertyId: null, workOrderId: null, unitId: null, ...extra,
+  propertyId: null, workOrderId: null, unitId: null, allocations: [], fullyAllocated: false, unallocated: null, ...extra,
 });
 
 test('money formatting matches the old page', () => {
@@ -111,5 +111,5 @@ test('sorting defaults, KPI totals', () => {
   const rows = [tx('2026-11-01', 'PUBLIX', -60, 'Groceries'), tx('2026-11-15', 'PAYROLL', 4000, 'Paycheck')];
   assert.deepEqual(nextSort({ key: 'date', dir: 'desc' }, 'amt'), { key: 'amt', dir: 'desc' });
   assert.deepEqual(nextSort({ key: 'date', dir: 'desc' }, 'desc'), { key: 'desc', dir: 'asc' });
-  assert.deepEqual(heroTotals(rows), { income: 4000, spend: 60, flow: 3940, paychecks: 1, expenseCount: 1 });
+  assert.deepEqual(heroTotals(rows), { income: 4000, spend: 60, flow: 3940, paychecks: 1, expenseCount: 1, transfers: 0, transferCount: 0 });
 });

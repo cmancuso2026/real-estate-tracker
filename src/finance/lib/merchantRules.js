@@ -10,6 +10,7 @@ import { buildHistoryIndex, categorize, categorizeWithHistory } from './categori
 import { validateAttribution } from './attribution.js';
 import { writeAudit } from './audit.js';
 import { canonicalName, loadTaxonomy } from './categories.js';
+import { syncRentQuietly } from './rentSync.js';
 
 function httpError(status, message) {
   const e = new Error(message);
@@ -138,11 +139,17 @@ export async function applyRuleToExisting(knex, id, { dryRun = false } = {}) {
   const group = tax.byName.get(rule.category)?.group ?? 'Other';
   // Manual rows (your own edits) are never touched. Filtered here rather than in
   // SQL so it holds for rows whose is_manual came from the column default.
-  const rows = (await knex('transactions').select('id', 'date', 'description', 'category', 'is_manual', 'property_id', 'work_order_id')).filter(
+  const rows = (await knex('transactions').select('id', 'date', 'description', 'category', 'is_manual', 'amount')).filter(
     (t) => !isTrue(t.is_manual) && matches(t.description),
   );
   const recat = rows.filter((t) => t.category !== rule.category);
-  const attrib = rule.property_id ? rows.filter((t) => t.property_id == null) : [];
+  const allocated = new Set(
+    rule.property_id && rows.length
+      ? (await knex('transaction_allocations').whereIn('transaction_id', rows.map((t) => t.id)).distinct('transaction_id')).map((a) => Number(a.transaction_id))
+      : [],
+  );
+  // rows with no allocation yet get 100% to the rule's property
+  const attrib = rule.property_id ? rows.filter((t) => !allocated.has(Number(t.id)) && Number(t.amount) !== 0) : [];
   const plan = {
     summary: `Apply rule “${rule.pattern}” → ${rule.category} to existing transactions`,
     changes: { recategorized: recat.length, attributed: attrib.length, matched: rows.length },
@@ -154,10 +161,13 @@ export async function applyRuleToExisting(knex, id, { dryRun = false } = {}) {
       await trx('transactions').whereIn('id', recat.map((t) => t.id)).update({ category: rule.category, category_group: group, confidence_score: null });
     }
     if (attrib.length) {
-      await trx('transactions').whereIn('id', attrib.map((t) => t.id)).update({ property_id: rule.property_id, work_order_id: rule.work_order_id });
+      await trx('transaction_allocations').insert(
+        attrib.map((t) => ({ transaction_id: t.id, property_id: rule.property_id, unit_id: null, work_order_id: rule.work_order_id || null, amount: t.amount, percent: 100, input_mode: 'percent' })),
+      );
     }
     await writeAudit(trx, 'rule.apply', plan.summary, { rule_id: rule.id }, plan.changes);
   });
+  await syncRentQuietly(knex, recat.map((t) => t.id));
   return { dry_run: false, ...plan };
 }
 

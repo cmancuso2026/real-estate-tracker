@@ -21,6 +21,7 @@ import {
   monthsInData,
   yearsInData,
 } from '@/lib/finance-ui/period';
+import { DEFINITIONS, metricsContext, type MetricsCtx } from '@/lib/finance-ui/metrics';
 
 /**
  * One shared copy of the finance data for every /finance page, like the old
@@ -57,6 +58,9 @@ interface FinanceData {
   reload: () => Promise<void>;
   /** Category rules (category_settings), by category. */
   settings: Map<string, CategorySetting>;
+  /** How income / spending / cash flow are counted (src/finance/lib/metrics.js). */
+  metricsCtx: MetricsCtx;
+  definitions: typeof DEFINITIONS;
   requiresProperty: (category: string) => boolean;
   allowProjectTag: (category: string) => boolean;
   /** Properties with units and projects, for the attribution pickers. */
@@ -80,6 +84,7 @@ export function FinanceDataProvider({ children }: { children: React.ReactNode })
   const [txns, setTxns] = useState<Txn[]>([]);
   const [groups, setGroups] = useState<Groups>({});
   const [catToGroupApi, setCatToGroupApi] = useState<Record<string, string>>({});
+  const [incomeCats, setIncomeCats] = useState<string[]>([]);
   const [props, setProps] = useState<PropertyGroup[]>([]);
   const [selYears, setSelYearsState] = useState<Set<string>>(new Set());
   const [selMonths, setSelMonthsState] = useState<Set<string>>(new Set());
@@ -98,15 +103,17 @@ export function FinanceDataProvider({ children }: { children: React.ReactNode })
     setLoading(true);
     setError(null);
     try {
-      const [cats, list, pg, cs] = await Promise.all([
+      const [cats, list, pg, cs, metrics] = await Promise.all([
         financeApi.get<{ groups: Groups; cat_to_group: Record<string, string> }>('/api/finance/categories'),
         financeApi.get<{ transactions: ApiTxn[] }>('/api/finance/transactions?limit=100000'),
         financeApi
           .get<{ properties: PropertyGroup[] }>('/api/finance/property-groups')
           .catch(() => ({ properties: [] as PropertyGroup[] })), // roll-ups are optional
         financeApi.get<{ settings: CategorySetting[] }>('/api/finance/category-settings'),
+        financeApi.get<{ income_categories: string[] }>('/api/finance/metrics'),
         reloadPropertyOptions(),
       ]);
+      setIncomeCats(metrics.income_categories || []);
       setSettingsList(cs.settings || []);
       const loaded = (list.transactions || []).map(mapTxn);
       setGroups(cats.groups || {});
@@ -140,6 +147,7 @@ export function FinanceDataProvider({ children }: { children: React.ReactNode })
   }, [reload]);
 
   const tax = useMemo(() => buildTaxonomy(groups, catToGroupApi), [groups, catToGroupApi]);
+  const metricsCtx = useMemo(() => metricsContext(tax.catToGroup, incomeCats), [tax, incomeCats]);
   const years = useMemo(() => yearsInData(txns), [txns]);
   const months = useMemo(() => monthsInData(txns), [txns]);
   const periodTxns = useMemo(() => filterByPeriod(txns, selYears, selMonths, tax), [txns, selYears, selMonths, tax]);
@@ -153,7 +161,7 @@ export function FinanceDataProvider({ children }: { children: React.ReactNode })
   const requiresProperty = useCallback((c: string) => !!settings.get(c)?.requires_property, [settings]);
   const allowProjectTag = useCallback((c: string) => settings.get(c)?.allow_project_tag ?? true, [settings]);
   const unattributedCount = useMemo(
-    () => txns.filter((t) => !t.propertyId && requiresProperty(t.cat)).length,
+    () => txns.filter((t) => !t.fullyAllocated && requiresProperty(t.cat)).length,
     [txns, requiresProperty],
   );
 
@@ -188,6 +196,8 @@ export function FinanceDataProvider({ children }: { children: React.ReactNode })
     patchTxns,
     reload,
     settings,
+    metricsCtx,
+    definitions: DEFINITIONS,
     requiresProperty,
     allowProjectTag,
     propertyOptions,

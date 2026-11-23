@@ -2,13 +2,12 @@
 // actions take { dry_run: true } first (returns what would change, with row
 // counts) and run for real only when called again without it. Every real
 // change is written to admin_audit.
-import { getCategorySetting, setCategorySetting, unattributedQuery } from '../lib/attribution.js';
+import { getCategorySetting, notAllocatedCount, setCategorySetting, unattributedQuery } from '../lib/attribution.js';
 import { writeAudit, listAudit } from '../lib/audit.js';
 import * as cats from '../lib/categories.js';
 import { listPropertyCategoryMap, ROLES } from '../lib/propertyMap.js';
-import { recategorizeUncategorized } from '../lib/recategorize.js';
 import { buildSuggestionContext, suggestFor } from '../lib/suggest.js';
-import { isoDate } from './_query.js';
+import { refreshLinkedRent, syncRent } from '../lib/rentSync.js';
 
 function httpError(status, message) {
   const e = new Error(message);
@@ -72,7 +71,9 @@ const OPS = {
 export async function categoryOp(knex, body) {
   const fn = OPS[body && body.op];
   if (!fn) throw httpError(400, `Unknown op. Expected one of: ${Object.keys(OPS).join(', ')}`);
-  return fn(knex, body, { dryRun: dry(body) });
+  const out = await fn(knex, body, { dryRun: dry(body) });
+  if (!dry(body)) await refreshLinkedRent(knex); // a renamed/merged rent category
+  return out;
 }
 
 // PUT /api/admin/category-settings/:category — { requires_property?,
@@ -85,7 +86,7 @@ export async function updateCategorySettings(knex, category, body) {
   const patch = {};
   for (const k of ['requires_property', 'allow_project_tag', 'default_property_id']) if (body && k in body) patch[k] = body[k];
   const unattributed = Number(
-    (await knex('transactions').where({ category }).whereNull('property_id').count({ c: '*' }).first()).c,
+    await notAllocatedCount(knex, category),
   );
   const turningOn = patch.requires_property === true && !before.requires_property;
   const turningOff = patch.requires_property === false && before.requires_property;
@@ -119,6 +120,12 @@ export async function getPropertyMap(knex) {
 // PUT /api/admin/property-map — { category, property_id (null = not mapped),
 // role, confirmed } or { confirm_all: true }.
 export async function updatePropertyMap(knex, body) {
+  const out = await savePropertyMap(knex, body);
+  await refreshLinkedRent(knex); // an unmapped rent category stops being rent
+  return out;
+}
+
+async function savePropertyMap(knex, body) {
   if (body && body.confirm_all) {
     const n = await knex('property_category_map').whereNotNull('property_id').where('confirmed', false).update({ confirmed: true });
     await writeAudit(knex, 'mapping.confirm_all', `Confirmed ${n} property mapping(s)`, null, { confirmed: n });
@@ -167,61 +174,27 @@ export async function getAttributionSummary(knex) {
   };
 }
 
-// ── Data and uploads ────────────────────────────────────────────────────────
-
-// GET /api/admin/uploads — upload history, newest first.
-export async function getUploads(knex) {
-  const rows = await knex('upload_log').select('*').orderBy('id', 'desc').limit(500);
-  return { uploads: rows };
-}
-
-// POST /api/admin/recategorize — { dry_run } — re-run categorization over
-// Uncategorized, non-manual rows (your rules → history → built-in rules).
-export async function recategorize(knex, body) {
-  if (dry(body)) return { dry_run: true, ...(await recategorizeUncategorized(knex, { dryRun: true })) };
-  const r = await recategorizeUncategorized(knex);
-  await writeAudit(knex, 'data.recategorize', `Re-ran categorization: ${r.updated} of ${r.scanned} uncategorized rows categorized`, null, r);
-  return { dry_run: false, ...r };
-}
-
-const csvCell = (v) => {
-  if (v == null) return '';
-  const s = String(v);
-  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-};
-
-// GET /api/admin/export/transactions — CSV of every transaction with its
-// property, unit and project.
-export async function exportTransactionsCsv(knex) {
-  const rows = await knex('transactions as t')
-    .leftJoin('owned_properties as p', 'p.id', 't.property_id')
-    .leftJoin('units as u', 'u.id', 't.unit_id')
-    .leftJoin('work_orders as w', 'w.id', 't.work_order_id')
-    .select('t.*', 'p.address as property', 'u.unit_label as unit', 'w.project_name as project')
-    .orderBy('t.date', 'desc')
-    .orderBy('t.id', 'desc');
-  const cols = [
-    ['id', (r) => r.id],
-    ['date', (r) => isoDate(r.date)],
-    ['description', (r) => r.description],
-    ['amount', (r) => Number(r.amount).toFixed(2)],
-    ['source', (r) => r.source],
-    ['category', (r) => r.category],
-    ['group', (r) => r.category_group],
-    ['manual', (r) => (r.is_manual ? 'yes' : '')],
-    ['note', (r) => r.note],
-    ['property_id', (r) => r.property_id],
-    ['property', (r) => r.property],
-    ['unit', (r) => r.unit],
-    ['project_id', (r) => r.work_order_id],
-    ['project', (r) => r.project],
-  ];
-  const lines = [cols.map(([h]) => h).join(',')];
-  for (const r of rows) lines.push(cols.map(([, f]) => csvCell(f(r))).join(','));
-  return lines.join('\n') + '\n';
-}
-
 // GET /api/admin/audit — the change log, newest first.
 export async function getAudit(knex, query = {}) {
   return { entries: await listAudit(knex, { limit: query.limit }) };
+}
+
+// ── Rent from uploads ───────────────────────────────────────────────────────
+
+// GET /api/admin/rent-backfill — preview recording rent_collections rows for
+// rent payments already in transactions (lib/rentSync.js). Writes nothing.
+// POST /api/admin/rent-backfill — { dry_run? } — apply it (idempotent).
+export async function rentBackfill(knex, body = {}) {
+  const dryRun = dry(body);
+  const r = await syncRent(knex, null, { dryRun });
+  if (!dryRun && r.created + r.updated + r.relinked + r.removed > 0) {
+    await writeAudit(
+      knex,
+      'rent.backfill',
+      `Recorded rent from transactions: ${r.created} created, ${r.updated} updated, ${r.relinked} relinked, ${r.removed} removed; ${r.already_recorded} already recorded, ${r.unmatched.length} need a unit`,
+      null,
+      { created: r.created, updated: r.updated, relinked: r.relinked, removed: r.removed, already_recorded: r.already_recorded, needs_unit: r.unmatched.length },
+    );
+  }
+  return r;
 }

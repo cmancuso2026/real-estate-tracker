@@ -1,11 +1,11 @@
 import Link from 'next/link';
-import { getGradedProperties, getSummary } from '@/lib/queries';
+import { filterByProfile, getGradedProperties, getSummary } from '@/lib/queries';
 import { getProfile, isProfileActive, type InvestorProfile } from '@/lib/profile';
 import { fmtMoney, fmtPct } from '@/lib/format';
 import { SummaryCards } from '@/components/SummaryCards';
 import { ListingsExplorer } from '@/components/ListingsExplorer';
 
-// Always read the live SQLite database on each request.
+// Always read the live database on each request.
 export const dynamic = 'force-dynamic';
 
 /** Short human-readable chips describing the active profile constraints. */
@@ -21,12 +21,28 @@ function profileChips(p: InvestorProfile): string[] {
 }
 
 export default async function TrackerPage() {
+  const started = Date.now();
   const profile = await getProfile();
   const active = isProfileActive(profile);
 
-  const allGraded = await getGradedProperties();
-  const properties = active ? await getGradedProperties(profile) : allGraded;
-  const summary = await getSummary(active ? profile : undefined);
+  // One query for every graded listing; the profile filter and the summary
+  // reuse it (this used to run the same query up to three times per load).
+  let allGraded, summary;
+  try {
+    allGraded = await getGradedProperties();
+  } catch (err) {
+    console.error('[tracker] loading graded listings failed:', err);
+    throw err; // shown by app/tracker/error.tsx
+  }
+  const properties = active ? filterByProfile(allGraded, profile) : allGraded;
+  try {
+    summary = await getSummary(active ? profile : undefined, properties);
+  } catch (err) {
+    console.error('[tracker] summary failed:', err);
+    throw err;
+  }
+  const ms = Date.now() - started;
+  if (ms > 2000) console.warn(`[tracker] slow render: ${ms} ms for ${allGraded.length} graded listings`);
 
   return (
     <>

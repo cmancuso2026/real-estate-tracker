@@ -55,15 +55,17 @@ export async function GET(req: NextRequest) {
       propertyId ? [propertyId] : []
     );
 
-    // Actual spend from finance transactions linked to each project
-    // (transactions.work_order_id), as a positive cost: refunds reduce it.
+    // Actual spend from finance transactions linked to each project (their
+    // transaction_allocations share for that project — a split counts only its
+    // share), as a positive cost: refunds reduce it.
     // Credited to the project's selected vendor, next to the quote figures.
     const projectIds = [...new Set(spendRows.map((r) => r.project_id))];
     const txnRows = projectIds.length
       ? await query<TxnRow>(
-          `SELECT work_order_id, date::text AS date, amount
-             FROM transactions
-            WHERE work_order_id = ANY($1::int[])`,
+          `SELECT a.work_order_id, t.date::text AS date, a.amount
+             FROM transaction_allocations a
+             JOIN transactions t ON t.id = a.transaction_id
+            WHERE a.work_order_id = ANY($1::int[])`,
           [projectIds]
         )
       : [];

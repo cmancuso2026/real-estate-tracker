@@ -1,9 +1,12 @@
-import { parseFileAuto } from '../parsers/index.js';
+import { parseFile, parseFileAuto, SOURCES } from '../parsers/index.js';
 import { buildHistoryIndex, categorizeWithHistory } from '../lib/categorize.js';
 import { recategorizeUncategorized } from '../lib/recategorize.js';
 import { dedupHash } from '../lib/dedup.js';
 import { loadRules, matchRule } from '../lib/merchantRules.js';
 import { canonicalName, loadTaxonomy } from '../lib/categories.js';
+import { unattributedQuery } from '../lib/attribution.js';
+import { syncRentQuietly } from '../lib/rentSync.js';
+import { reapplyAllocations } from '../lib/allocations.js';
 
 // Same limits the Express route enforced through multer.
 export const MAX_FILES = 20;
@@ -16,10 +19,20 @@ export const MAX_FILE_BYTES = 15 * 1024 * 1024; // 15 MB per file
 // are parsed, deduplicated across the whole batch AND against existing DB rows,
 // then inserted in a single DB transaction. The response is a combined summary
 // broken out by detected source.
-export async function processUpload(knex, uploadedFiles) {
+//
+// opts.sourceKey (optional, a SOURCES key such as 'amex_blue') parses every file
+// with that bank's parser instead of detecting it — detection can't tell Amex
+// Gold from Amex Blue (both files look the same), so the upload page lets you say.
+export async function processUpload(knex, uploadedFiles, opts = {}) {
   const files = uploadedFiles || [];
   if (!files.length) {
     const e = new Error('No files uploaded (form field "files")');
+    e.status = 400;
+    throw e;
+  }
+  const sourceKey = opts.sourceKey || null;
+  if (sourceKey && !SOURCES[sourceKey]) {
+    const e = new Error(`Unknown source '${sourceKey}'. Expected one of: ${Object.keys(SOURCES).join(', ')}`);
     e.status = 400;
     throw e;
   }
@@ -30,7 +43,9 @@ export async function processUpload(knex, uploadedFiles) {
   const fileErrors = []; // { filename, error }
   files.forEach((f) => {
     try {
-      const { source, transactions } = parseFileAuto(f.buffer, f.originalname);
+      const { source, transactions } = sourceKey
+        ? parseFile(f.buffer, f.originalname, sourceKey)
+        : parseFileAuto(f.buffer, f.originalname);
       parsed.push({ filename: f.originalname, source, transactions });
     } catch (err) {
       fileErrors.push({ filename: f.originalname, error: err.message });
@@ -78,8 +93,9 @@ export async function processUpload(knex, uploadedFiles) {
           confidence_score: confidence,
           raw_description: t.rawDescription,
           dedup_hash: dedupHash(t.date, t.rawDescription, t.amount),
-          ...(rule && rule.property_id ? { property_id: rule.property_id, work_order_id: rule.work_order_id } : {}),
         },
+        // a merchant rule with a property gives the row 100% to it (after insert)
+        ruleAttr: rule && rule.property_id ? { property_id: rule.property_id, work_order_id: rule.work_order_id || null } : null,
       });
     }
   });
@@ -119,19 +135,13 @@ export async function processUpload(knex, uploadedFiles) {
   }
 
   // Re-apply saved property/project attribution the same way, so it survives a
-  // row being deleted and imported again.
-  const attrRows = insertHashes.length
-    ? await knex('attribution_overrides').whereIn('dedup_hash', insertHashes).select('*')
-    : [];
-  const attrs = new Map(attrRows.map((o) => [o.dedup_hash, o]));
-  for (const e of toInsert) {
-    const o = attrs.get(e.row.dedup_hash);
-    if (o) {
-      e.row.property_id = o.property_id;
-      e.row.unit_id = o.unit_id;
-      e.row.work_order_id = o.work_order_id;
-    }
-  }
+  // row being deleted and imported again. That happens after the insert below
+  // (allocations need the new ids): a saved split wins over a merchant rule.
+  const savedAttr = new Set(
+    insertHashes.length
+      ? (await knex('attribution_overrides').whereIn('dedup_hash', insertHashes).select('dedup_hash')).map((o) => o.dedup_hash)
+      : [],
+  );
 
   // ── Per-file and per-source tallies ──────────────────────────────────────
   // processed = every parsed row; new = rows actually inserted; skipped is the
@@ -174,9 +184,17 @@ export async function processUpload(knex, uploadedFiles) {
     }
 
     if (toInsert.length) {
-      await trx('transactions').insert(
-        toInsert.map((e) => ({ ...e.row, upload_id: fileUploadId[e.fileIdx] })),
-      );
+      const inserted = await trx('transactions')
+        .insert(toInsert.map((e) => ({ ...e.row, upload_id: fileUploadId[e.fileIdx] })))
+        .returning(['id', 'dedup_hash', 'amount']);
+      await reapplyAllocations(trx, inserted.filter((r) => savedAttr.has(r.dedup_hash)));
+      const ruleByHash = new Map(toInsert.filter((e) => e.ruleAttr).map((e) => [e.row.dedup_hash, e.ruleAttr]));
+      const byRule = inserted.filter((r) => !savedAttr.has(r.dedup_hash) && ruleByHash.has(r.dedup_hash));
+      if (byRule.length) {
+        await trx('transaction_allocations').insert(
+          byRule.map((r) => ({ transaction_id: r.id, property_id: ruleByHash.get(r.dedup_hash).property_id, unit_id: null, work_order_id: ruleByHash.get(r.dedup_hash).work_order_id, amount: r.amount, percent: 100, input_mode: 'percent' })),
+        );
+      }
     }
   });
 
@@ -184,11 +202,31 @@ export async function processUpload(knex, uploadedFiles) {
   // added history may newly identify recurring merchants (e.g. a payroll
   // deposit) so "stuff like this" gets picked up without manual action.
   let recategorized = 0;
+  const lastRecategorizedIds = [];
   try {
-    ({ updated: recategorized } = await recategorizeUncategorized(knex));
+    ({ updated: recategorized } = await recategorizeUncategorized(knex, { changedIds: lastRecategorizedIds }));
   } catch (e) {
     // A failed re-sweep must not fail the upload itself.
     console.error('post-upload recategorize failed', e);
+  }
+
+  // Rent payments among the new rows (and rows the re-sweep just categorized)
+  // go to rent_collections; ones without a clear unit wait in "Rent needs a
+  // unit". Then count how many new rows now need a property.
+  const newIds = insertHashes.length
+    ? (await knex('transactions').whereIn('dedup_hash', insertHashes).select('id')).map((r) => r.id)
+    : [];
+  let rent = { matched: 0, already_recorded: 0, needs_unit: 0 };
+  let needsProperty = 0;
+  try {
+    const sync = await syncRentQuietly(knex, [...new Set([...newIds, ...lastRecategorizedIds])]);
+    if (sync) rent = { matched: sync.created + sync.updated + sync.relinked, already_recorded: sync.already_recorded, needs_unit: sync.unmatched.length };
+    if (newIds.length) {
+      const row = await unattributedQuery(knex).whereIn('t.id', newIds).count({ c: '*' }).first();
+      needsProperty = Number(row.c);
+    }
+  } catch (e) {
+    console.error('post-upload summary failed', e);
   }
 
   return {
@@ -199,6 +237,8 @@ export async function processUpload(knex, uploadedFiles) {
     new_rows: newRows,
     skipped,
     recategorized,
+    needs_property: needsProperty,
+    rent,
     by_source: Object.values(bySource),
     errors: fileErrors,
     upload_ids: uploadIds,

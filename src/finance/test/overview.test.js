@@ -146,11 +146,14 @@ test('overview service (pg-mem)', async (t) => {
         txn('2026-11-03', 'ZELLE 1205', 1850, '1205 Rent'),
         txn('2026-11-03', 'ZELLE 1207', 1800, '1207 Rent'),
         txn('2026-11-05', 'MTG 1205', -2210.44, '1205 PITI'),
-        txn('2026-11-10', 'PLUMBER', -400, 'Repairs', { property_id: p2 }),
+        txn('2026-11-10', 'PLUMBER', -400, 'Repairs'),
         txn('2026-11-12', 'PUBLIX', -120, 'Groceries', { category_group: 'Food' }),
         txn('2026-10-03', 'ZELLE 1205', 1850, '1205 Rent'),
         txn('2026-10-12', 'PUBLIX', -80, 'Groceries', { category_group: 'Food' }),
       ]);
+      // the plumber is attributed to 1205-1207 (100%)
+      const plumber = await knex('transactions').where({ description: 'PLUMBER' }).first('id');
+      await knex('transaction_allocations').insert({ transaction_id: plumber.id, property_id: p2, amount: -400, percent: 100, input_mode: 'percent' });
       await knex('upload_log').insert([
         { filename: 'boa-oct.csv', source: 'Bank of America', row_count: 3, new_rows: 3, skipped: 0 },
         { filename: 'boa-nov.csv', source: 'Bank of America', row_count: 6, new_rows: 5, skipped: 1 },
