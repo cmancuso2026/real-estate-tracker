@@ -4,6 +4,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { financeApi } from '@/components/finance/api';
 import { AttributionPicker } from '@/components/finance/AttributionPicker';
 import { RentNeedsUnit } from '@/components/finance/RentNeedsUnit';
+import { EMPTY_QUEUE_FILTERS, filterQueue, hasQueueFilters, type QueueFilters } from '@/lib/finance-ui/queueSearch';
 import { QUEUE_EVENT } from '@/components/NavLinks';
 import { SplitEditor, type SplitMode, type SplitRow } from '@/components/finance/SplitEditor';
 import { useFinance } from '@/components/finance/FinanceData';
@@ -32,6 +33,7 @@ export default function AttributionQueuePage() {
   const [queue, setQueue] = useState<Queue | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [category, setCategory] = useState('');
+  const [search, setSearch] = useState<QueueFilters>(EMPTY_QUEUE_FILTERS);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [picker, setPicker] = useState<number | null>(null);
   const [bulkProperty, setBulkProperty] = useState('');
@@ -52,10 +54,11 @@ export default function AttributionQueuePage() {
   }, [load]);
 
   const rows = useMemo(
-    () => (queue?.transactions ?? []).filter((t) => !category || t.category === category),
-    [queue, category],
+    () => filterQueue((queue?.transactions ?? []).filter((t) => !category || t.category === category), search),
+    [queue, category, search],
   );
-  useEffect(() => setSelected(new Set()), [category]);
+  useEffect(() => setSelected(new Set()), [category, search]);
+  const searching = hasQueueFilters(search);
   const selRows = rows.filter((t) => selected.has(t.id));
   const withSuggestion = selRows.filter((t) => t.suggestion);
   const nameOf = (id: number) => propertyOptions.find((p) => p.id === id)?.name ?? `Property ${id}`;
@@ -167,6 +170,47 @@ export default function AttributionQueuePage() {
                 {c.category} ({c.count})
               </button>
             ))}
+          </div>
+        )}
+        {queue && queue.count > 0 && (
+          <div className="flex flex-wrap items-end gap-2 border-t border-gray-100 pt-3" data-testid="queue-search">
+            <label className="flex min-w-[18rem] flex-1 flex-col gap-1 text-xs font-medium text-gray-500">
+              Search
+              <input
+                type="search"
+                aria-label="Search the queue"
+                placeholder="Description, amount (65 or 65.00) or date (2025-06, 6/12, Jun 12)"
+                className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-normal text-gray-900"
+                value={search.q}
+                onChange={(e) => setSearch({ ...search, q: e.target.value })}
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-medium text-gray-500">
+              From
+              <input type="date" aria-label="From date" className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm font-normal" value={search.from} onChange={(e) => setSearch({ ...search, from: e.target.value })} />
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-medium text-gray-500">
+              To
+              <input type="date" aria-label="To date" className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm font-normal" value={search.to} onChange={(e) => setSearch({ ...search, to: e.target.value })} />
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-medium text-gray-500">
+              Amount
+              <span className="flex items-center gap-1">
+                <input inputMode="decimal" aria-label="Minimum amount" placeholder="min" className="w-20 rounded-lg border border-gray-300 px-2 py-1.5 text-sm font-normal" value={search.min} onChange={(e) => setSearch({ ...search, min: e.target.value.replace(/[^0-9.]/g, '') })} />
+                <span className="text-gray-400">–</span>
+                <input inputMode="decimal" aria-label="Maximum amount" placeholder="max" className="w-20 rounded-lg border border-gray-300 px-2 py-1.5 text-sm font-normal" value={search.max} onChange={(e) => setSearch({ ...search, max: e.target.value.replace(/[^0-9.]/g, '') })} />
+              </span>
+            </label>
+            {searching && (
+              <button className={btnSecondary} onClick={() => setSearch(EMPTY_QUEUE_FILTERS)}>
+                Clear
+              </button>
+            )}
+            {searching && (
+              <span className="pb-1.5 text-sm text-gray-500" data-testid="queue-search-count">
+                {rows.length} match{rows.length === 1 ? '' : 'es'}
+              </span>
+            )}
           </div>
         )}
       </Card>

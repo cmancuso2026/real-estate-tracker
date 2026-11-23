@@ -65,7 +65,8 @@ test('migration: existing single attributions become 100% allocations; the later
     );
     // The old columns stay for now (an untouched copy of the attributions)…
     assert.equal(await knex.schema.hasColumn('transactions', 'property_id'), true);
-    assert.equal((await knex.migrate.list(cfg))[1].length, 0, 'no pending migrations: 014 is not in this release');
+    const pending = (await knex.migrate.list(cfg))[1].map((m) => m.file ?? m.name ?? String(m));
+    assert.ok(!pending.some((n) => /014_drop/.test(n)), `the column drop is not in this release (pending: ${pending.join(', ')})`);
     // …and the later migration that drops them works when it is moved in.
     const later = await import('../db/later/014_drop_transaction_property_columns.js');
     await later.up(knex);

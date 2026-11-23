@@ -113,3 +113,26 @@ test('sorting defaults, KPI totals', () => {
   assert.deepEqual(nextSort({ key: 'date', dir: 'desc' }, 'desc'), { key: 'desc', dir: 'asc' });
   assert.deepEqual(heroTotals(rows), { income: 4000, spend: 60, flow: 3940, paychecks: 1, expenseCount: 1, transfers: 0, transferCount: 0 });
 });
+
+test('categories: assigned shares sit under their property, income first, the rest stays in the category', () => {
+  const props2: PropertyGroup[] = [
+    { id: 7, name: '1205-1207 NE 117th St', units: ['1205', '1207'], categories: ['1205 Rent'] },
+    { id: 9, name: '1821-1825 NW 74th St', units: ['1821'], categories: [] },
+  ];
+  const alloc = (property_id: number, amount: number) => ({ property_id, unit_id: null, work_order_id: null, amount, percent: null, input_mode: 'amount' as const });
+  const rows = [
+    tx('2026-11-03', 'ZELLE 1205', 1850, '1205 Rent'),
+    tx('2026-11-04', 'PLUMBER', -300, 'Repairs', { allocations: [alloc(7, -300)], fullyAllocated: true }),
+    tx('2026-11-05', 'HOME DEPOT', -100, 'Repairs', { allocations: [alloc(7, -60), alloc(9, -20)] }), // $20 not assigned yet
+    tx('2026-11-06', 'HANDYMAN', -50, 'Repairs'),
+  ];
+  const t = buildCategoryTable(rows, rows, tax, props2, 'aggregate', '');
+  const inv = t.groups.find((g) => g.group === 'Investments')!;
+  assert.equal(inv.cells[0]!.v, 1400, 'group total unchanged by where shares sit');
+  const p7 = inv.props.find((p) => p.prop.id === 7)!;
+  assert.deepEqual(p7.cats.map((r) => [r.cat, r.side, r.cells[0]!.v]), [['1205 Rent', 'income', 1850], ['Repairs', 'expense', -360]]);
+  assert.equal(p7.cells[0]!.v, 1490);
+  const p9 = inv.props.find((p) => p.prop.id === 9)!;
+  assert.deepEqual(p9.cats.map((r) => [r.cat, r.cells[0]!.v]), [['Repairs', -20]]);
+  assert.deepEqual(inv.standalone.map((r) => [r.cat, r.cells[0]!.v]), [['Repairs', -70]], 'handyman + the unassigned $20');
+});

@@ -32,8 +32,8 @@ export const GROUPS: Section[] = [
     href: '/finance',
     paths: ['/finance'],
     links: [
-      { href: '/finance', label: 'Categories', exact: true },
-      { href: '/finance/overview', label: 'Overview' },
+      { href: '/finance', label: 'Overview', exact: true },
+      { href: '/finance/categories', label: 'Categories' },
       { href: '/finance/transactions', label: 'Transactions' },
       { href: '/finance/attribution', label: 'Needs Property', badge: true },
     ],
@@ -147,8 +147,8 @@ export function SiteHeader() {
           <Link
             href="/admin"
             aria-current={pathname.startsWith('/admin') ? 'page' : undefined}
-            className={`hidden rounded-lg px-3 py-1.5 text-sm font-medium sm:block ${
-              pathname.startsWith('/admin') ? 'bg-gray-100 text-gray-900' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'
+            className={`hidden items-center rounded-lg px-3 py-1.5 text-sm font-medium text-white shadow-sm sm:flex ${
+              pathname.startsWith('/admin') ? 'bg-black ring-2 ring-gray-300' : 'bg-gray-900 hover:bg-black'
             }`}
           >
             Admin
@@ -213,7 +213,7 @@ export function SiteHeader() {
             <Link href="/upload" className="flex-1 rounded-lg bg-blue-600 px-3 py-2 text-center text-sm font-medium text-white">
               Upload
             </Link>
-            <Link href="/admin" className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-center text-sm font-medium text-gray-700">
+            <Link href="/admin" className="flex-1 rounded-lg bg-gray-900 px-3 py-2 text-center text-sm font-medium text-white">
               Admin
             </Link>
           </div>
