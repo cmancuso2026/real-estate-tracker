@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "chart.js": "4.4.1",
+    "chartjs-chart-sankey": "0.14.0",
     "chartjs-plugin-datalabels": "2.2.0",
     "next": "15.5.19",
     "pg": "^8.13.1",
