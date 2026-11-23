@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { getOverview } from '@finance/services/overview.js';
 import { financeDb } from '@/lib/finance';
+import { InfoTip } from '@/components/finance/InfoTip';
 
 export const dynamic = 'force-dynamic';
 
@@ -145,7 +146,10 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
             ] as const
           ).map(([label, key, m, y, cls]) => (
             <Card key={key}>
-              <Label>{label}</Label>
+              <Label>
+                {label}
+                <InfoTip text={f.definitions[key === 'cashflow' ? 'cash_flow' : key]} testId={`def-${key}`} />
+              </Label>
               <div className={`mt-1 text-3xl font-bold tabular ${cls || tone(m)}`} data-testid={`fin-${key}-month`}>
                 {money(m)}
               </div>

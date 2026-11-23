@@ -3,6 +3,7 @@ import { MONTH_NAMES } from './format';
 import { topNotes } from './period';
 import type { Taxonomy } from './taxonomy';
 import type { Txn } from './types';
+import { DEFAULT_METRICS_CTX, classifyTxn, type MetricsCtx } from './metrics';
 
 export { PROP_PREFIX };
 
@@ -66,6 +67,7 @@ export function buildChart(
   grp: string,
   cat: string,
   gran: Granularity,
+  ctx: MetricsCtx = DEFAULT_METRICS_CTX,
 ): ChartModel | null {
   const isProp = cat.startsWith(PROP_PREFIX);
 
@@ -99,8 +101,19 @@ export function buildChart(
   } else {
     const incB: Record<string, number> = {};
     const expB: Record<string, number> = {};
+    // Everything (no group / category picked): the shared income / spending
+    // definition, so each bar matches the KPI cards and the landing page. A
+    // single category or a property roll-up shows its own money in and out.
+    const shared = !isProp && !cat;
     rows.forEach((t) => {
       const key = getBucketKey(t.date, gran);
+      if (shared) {
+        const c = classifyTxn(t, ctx);
+        if (c.kind === 'transfer') return;
+        incB[key] = (incB[key] || 0) + c.income;
+        expB[key] = (expB[key] || 0) + c.spending;
+        return;
+      }
       if (t.amt > 0) incB[key] = (incB[key] || 0) + t.amt;
       else expB[key] = (expB[key] || 0) + Math.abs(t.amt);
     });

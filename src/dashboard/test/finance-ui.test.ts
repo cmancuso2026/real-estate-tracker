@@ -111,5 +111,5 @@ test('sorting defaults, KPI totals', () => {
   const rows = [tx('2026-11-01', 'PUBLIX', -60, 'Groceries'), tx('2026-11-15', 'PAYROLL', 4000, 'Paycheck')];
   assert.deepEqual(nextSort({ key: 'date', dir: 'desc' }, 'amt'), { key: 'amt', dir: 'desc' });
   assert.deepEqual(nextSort({ key: 'date', dir: 'desc' }, 'desc'), { key: 'desc', dir: 'asc' });
-  assert.deepEqual(heroTotals(rows), { income: 4000, spend: 60, flow: 3940, paychecks: 1, expenseCount: 1 });
+  assert.deepEqual(heroTotals(rows), { income: 4000, spend: 60, flow: 3940, paychecks: 1, expenseCount: 1, transfers: 0, transferCount: 0 });
 });

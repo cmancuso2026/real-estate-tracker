@@ -7,11 +7,13 @@
 //   scheduled rent   the latest lease's monthly rent for each occupied unit
 //   rent this month  rent_collections rows due in the month (rental units)
 //   expiring soon    lease end / policy expiration within the next 60 days
-//   finance figures  as on /finance: income = positive amounts, spending =
-//                    negative amounts, cash flow = income − spending
+//   finance figures  the shared definition in lib/metrics.js (same as /finance and
+//                    /api/finance/summary): transfers between your accounts left out,
+//                    refunds netted against spending
 import { mergedTaxonomy } from '../lib/categoryStore.js';
 import { unattributedCount } from '../lib/attribution.js';
 import { propertyCashFlow } from '../lib/cashflow.js';
+import { DEFINITIONS, financeTotals, loadMetricsContext, spendingByGroup } from '../lib/metrics.js';
 import { withAllocations } from '../lib/allocations.js';
 import { isoDate } from './_query.js';
 
@@ -26,29 +28,10 @@ function monthBounds(month) {
   return { start: `${month}-01`, end: `${month}-${pad(last)}`, ytdStart: `${y}-01-01` };
 }
 
-function totals(rows) {
-  let income = 0;
-  let spending = 0;
-  for (const t of rows) {
-    const a = Number(t.amount);
-    if (a > 0) income += a;
-    else spending += -a;
-  }
-  return { income: r2(income), spending: r2(spending), cash_flow: r2(income - spending), count: rows.length };
-}
-
-function topGroups(rows, catToGroup, n = 5) {
-  const by = {};
-  for (const t of rows) {
-    const a = Number(t.amount);
-    if (a >= 0) continue;
-    const g = catToGroup[t.category] || 'Other';
-    by[g] = (by[g] || 0) - a;
-  }
-  return Object.entries(by)
-    .map(([group, spending]) => ({ group, spending: r2(spending) }))
-    .sort((a, b) => b.spending - a.spending)
-    .slice(0, n);
+/** The four numbers the landing page shows, from the shared definition (lib/metrics.js). */
+function totals(rows, ctx) {
+  const t = financeTotals(rows, ctx);
+  return { income: t.income, spending: t.spending, cash_flow: t.cash_flow, count: t.count };
 }
 
 /**
@@ -82,13 +65,15 @@ export async function getOverview(knex, opts = {}) {
   ]);
 
   // ── Personal finance ────────────────────────────────────────────────────
+  const mctx = await loadMetricsContext(knex);
   const monthRows = ytdRows.filter((t) => isoDate(t.date) >= start);
   const lastBySource = new Map();
   for (const u of uploads) if (!lastBySource.has(u.source)) lastBySource.set(u.source, u);
   const finance = {
-    month: totals(monthRows),
-    ytd: totals(ytdRows),
-    top_groups: { month: topGroups(monthRows, tax.cat_to_group), ytd: topGroups(ytdRows, tax.cat_to_group) },
+    month: totals(monthRows, mctx),
+    ytd: totals(ytdRows, mctx),
+    definitions: DEFINITIONS,
+    top_groups: { month: spendingByGroup(monthRows, mctx, 5), ytd: spendingByGroup(ytdRows, mctx, 5) },
     latest_uploads: sourceSpan
       .map((s) => {
         const u = lastBySource.get(s.source);

@@ -6,7 +6,7 @@ One app for personal finances, the rental properties you own, and the ones you m
 
 ## What it does
 
-- **Overview (`/`)** — this month and year-to-date for personal finance (income, spending, cash flow, top spending groups, latest data per bank) next to the real-estate picture (properties, units, occupancy, rent roll, rent collected vs outstanding, leases and insurance ending within 60 days), plus actual cash flow per property.
+- **Overview (`/`)** — this month and year-to-date for personal finance (income, spending and cash flow as defined below, top spending groups, latest data per bank) next to the real-estate picture (properties, units, occupancy, rent roll, rent collected vs outstanding, leases and insurance ending within 60 days), plus actual cash flow per property.
 - **Finances (`/finance/…`)** — upload Bank of America, Amex Gold/Blue, SoFi and Capital One exports (CSV or XLSX; the bank is detected from the headers). Transactions are categorized automatically, deduplicated across overlapping statements, and shown on the Overview, Spending (categories × months) and Transactions pages, with one set of filters shared by every page.
 - **Property attribution** — spending in categories that need a property (Repairs, Lawn Care, Home Depot by default; set per category in Admin) is tied to an owned property, and optionally a unit and a project. A **Needs Property** queue with suggestions and bulk tools clears the backlog; the property page shows repairs and spend, the Projects tab shows actual spend against the quote, and the Vendors page shows actual spend next to quotes.
 - **Properties (`/properties`, `/vendors`)** — tenants, leases, rent collection (from bank uploads + manual entry), projects with vendor quotes, vendors, escrow and insurance. Claude parses lease, quote, escrow and insurance PDFs and answers questions via a Slack bot.
@@ -142,6 +142,17 @@ A transaction's property attribution lives in `transaction_allocations`: one row
 - A unit or project must belong to the row's property.
 - Splits survive re-uploads: like category overrides, they are remembered by the bank row's hash.
 - Roll-ups use each property's share: per-property cash flow on the Overview, a property's Repairs and spend tab, project actual spend, and vendor spend.
+
+## How income, spending and cash flow are counted
+
+One definition, in `src/finance/lib/metrics.js`, used by the landing page, the /finance cards and chart, and `GET /api/finance/summary` (the browser loads the same rules from `GET /api/finance/metrics`). Each card has an (i) with the same wording.
+
+- **Transfers are left out.** Categories in the Financials group (Amex, Capital One, Venmo) are card payments and moves between your own accounts. Counting them would add a card payment once as spending (out of checking) and once as income (the credit on the card).
+- **Income** is money in to an income category: the W2 Income group, any category mapped to a property as rent (Admin, Property mapping), and uncategorized deposits.
+- **Spending** is everything else, net of refunds (a refund in Groceries reduces Groceries). Money out of an income category, such as taxes owed, is spending. Mortgage / PITI and property costs count as spending.
+- **Cash flow** is income minus spending, which equals the sum of every amount except transfers.
+
+The landing page shows one calendar month and the year to date; /finance opens on the current month and the two before it. For the same months they show the same numbers (`src/dashboard/test/metrics-parity.test.ts`). The group names are constants in `metrics.js` (`TRANSFER_GROUPS`, `INCOME_GROUPS`): if you rename the Financials or W2 Income group in Admin, update them there.
 
 ## How rent is recorded
 
