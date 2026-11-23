@@ -3,6 +3,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { financeApi } from '@/components/finance/api';
 import { AttributionPicker } from '@/components/finance/AttributionPicker';
+import { RentNeedsUnit } from '@/components/finance/RentNeedsUnit';
 import { useFinance } from '@/components/finance/FinanceData';
 import { Card, btnPrimary, btnSecondary, selectCls } from '@/components/finance/ui';
 import { fmt, shortDate } from '@/lib/finance-ui/format';
@@ -130,6 +131,8 @@ export default function AttributionQueuePage() {
           </div>
         )}
       </Card>
+
+      <RentNeedsUnit />
 
       {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
       {notice && (

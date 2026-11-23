@@ -4,6 +4,8 @@ import { recategorizeUncategorized } from '../lib/recategorize.js';
 import { dedupHash } from '../lib/dedup.js';
 import { loadRules, matchRule } from '../lib/merchantRules.js';
 import { canonicalName, loadTaxonomy } from '../lib/categories.js';
+import { unattributedQuery } from '../lib/attribution.js';
+import { syncRentQuietly } from '../lib/rentSync.js';
 
 // Same limits the Express route enforced through multer.
 export const MAX_FILES = 20;
@@ -184,11 +186,31 @@ export async function processUpload(knex, uploadedFiles) {
   // added history may newly identify recurring merchants (e.g. a payroll
   // deposit) so "stuff like this" gets picked up without manual action.
   let recategorized = 0;
+  const lastRecategorizedIds = [];
   try {
-    ({ updated: recategorized } = await recategorizeUncategorized(knex));
+    ({ updated: recategorized } = await recategorizeUncategorized(knex, { changedIds: lastRecategorizedIds }));
   } catch (e) {
     // A failed re-sweep must not fail the upload itself.
     console.error('post-upload recategorize failed', e);
+  }
+
+  // Rent payments among the new rows (and rows the re-sweep just categorized)
+  // go to rent_collections; ones without a clear unit wait in "Rent needs a
+  // unit". Then count how many new rows now need a property.
+  const newIds = insertHashes.length
+    ? (await knex('transactions').whereIn('dedup_hash', insertHashes).select('id')).map((r) => r.id)
+    : [];
+  let rent = { matched: 0, already_recorded: 0, needs_unit: 0 };
+  let needsProperty = 0;
+  try {
+    const sync = await syncRentQuietly(knex, [...new Set([...newIds, ...lastRecategorizedIds])]);
+    if (sync) rent = { matched: sync.created + sync.updated + sync.relinked, already_recorded: sync.already_recorded, needs_unit: sync.unmatched.length };
+    if (newIds.length) {
+      const row = await unattributedQuery(knex).whereIn('t.id', newIds).count({ c: '*' }).first();
+      needsProperty = Number(row.c);
+    }
+  } catch (e) {
+    console.error('post-upload summary failed', e);
   }
 
   return {
@@ -199,6 +221,8 @@ export async function processUpload(knex, uploadedFiles) {
     new_rows: newRows,
     skipped,
     recategorized,
+    needs_property: needsProperty,
+    rent,
     by_source: Object.values(bySource),
     errors: fileErrors,
     upload_ids: uploadIds,

@@ -478,7 +478,7 @@ function RentTab({ id, units, rent, onRefresh, unitFilter, setUnitFilter }: {
         <h2 className="font-semibold text-gray-700">Rent Collection</h2>
         <div className="flex gap-2">
           <Link href={`/properties/${id}/rent/new`} className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700">+ Add Payment</Link>
-          <Link href="/rent" className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50">Import CSV</Link>
+          <Link href="/upload" className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50">Upload bank statement</Link>
           <button onClick={exportCsv} className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50">Export CSV</button>
         </div>
       </div>

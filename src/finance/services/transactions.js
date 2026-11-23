@@ -2,6 +2,7 @@ import { applyFilters, isoDate } from './_query.js';
 import { resolveGroup } from '../lib/categoryStore.js';
 import { recategorizeUncategorized } from '../lib/recategorize.js';
 import { applyAttribution, assertProjectTagAllowed, requiresProperty, validateAttribution } from '../lib/attribution.js';
+import { syncRentQuietly } from '../lib/rentSync.js';
 
 export function serialize(row) {
   return {
@@ -90,6 +91,7 @@ export async function bulkCategory(knex, body) {
     }
   });
 
+  await syncRentQuietly(knex, rows.map((r) => r.id));
   return { success: true, updated: rows.length, category, category_group: categoryGroup };
 }
 
@@ -116,7 +118,9 @@ export async function bulkReview(knex, body) {
 // overrides (is_manual) are never touched. The bank's raw category/Type column
 // isn't stored per-row, so the rule fallback runs description-only here.
 export async function recategorizeTransactions(knex) {
-  const { scanned, updated } = await recategorizeUncategorized(knex);
+  const changedIds = [];
+  const { scanned, updated } = await recategorizeUncategorized(knex, { changedIds });
+  await syncRentQuietly(knex, changedIds);
   return { success: true, scanned, updated };
 }
 
@@ -213,6 +217,7 @@ export async function setCategory(knex, params, body) {
   }
 
   if (attr) await knex.transaction((trx) => applyAttribution(trx, [existing], attr));
+  await syncRentQuietly(knex, [id]);
 
   const updated = await knex('transactions').where({ id }).first();
   return serialize(updated);

@@ -60,14 +60,25 @@ export async function createTrackerStubs(knex) {
     t.text('start_date').notNullable();
     t.text('end_date').notNullable();
     t.integer('rent_amount').notNullable();
+    t.integer('late_fee_amount');
+    t.integer('late_fee_grace_days');
   });
   await knex.schema.createTable('rent_collections', (t) => {
     t.increments('id').primary();
     t.integer('unit_id').notNullable();
     t.text('due_date').notNullable();
     t.integer('amount_due').notNullable();
+    t.integer('lease_id');
     t.text('paid_date');
     t.integer('amount_paid');
+    t.boolean('is_partial').notNullable().defaultTo(knex.raw('false'));
+    t.boolean('is_late').notNullable().defaultTo(knex.raw('false'));
+    t.boolean('late_fee_applicable').notNullable().defaultTo(knex.raw('false'));
+    t.text('payment_status').notNullable().defaultTo('outstanding');
+    t.text('source').notNullable().defaultTo('manual');
+    t.text('import_batch_id');
+    t.text('notes');
+    t.text('updated_at');
   });
   await knex.schema.createTable('insurance_policies', (t) => {
     t.increments('id').primary();

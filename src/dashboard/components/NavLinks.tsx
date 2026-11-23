@@ -32,7 +32,6 @@ const GROUPS: { label: string; links: NavLink[] }[] = [
     label: 'Properties',
     links: [
       { href: '/properties', label: 'My Properties' },
-      { href: '/rent', label: 'Import Rent' },
       { href: '/vendors', label: 'Vendors' },
     ],
   },

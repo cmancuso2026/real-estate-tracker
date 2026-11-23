@@ -7,6 +7,7 @@ import { writeAudit, listAudit } from '../lib/audit.js';
 import * as cats from '../lib/categories.js';
 import { listPropertyCategoryMap, ROLES } from '../lib/propertyMap.js';
 import { buildSuggestionContext, suggestFor } from '../lib/suggest.js';
+import { refreshLinkedRent } from '../lib/rentSync.js';
 
 function httpError(status, message) {
   const e = new Error(message);
@@ -70,7 +71,9 @@ const OPS = {
 export async function categoryOp(knex, body) {
   const fn = OPS[body && body.op];
   if (!fn) throw httpError(400, `Unknown op. Expected one of: ${Object.keys(OPS).join(', ')}`);
-  return fn(knex, body, { dryRun: dry(body) });
+  const out = await fn(knex, body, { dryRun: dry(body) });
+  if (!dry(body)) await refreshLinkedRent(knex); // a renamed/merged rent category
+  return out;
 }
 
 // PUT /api/admin/category-settings/:category — { requires_property?,
@@ -117,6 +120,12 @@ export async function getPropertyMap(knex) {
 // PUT /api/admin/property-map — { category, property_id (null = not mapped),
 // role, confirmed } or { confirm_all: true }.
 export async function updatePropertyMap(knex, body) {
+  const out = await savePropertyMap(knex, body);
+  await refreshLinkedRent(knex); // an unmapped rent category stops being rent
+  return out;
+}
+
+async function savePropertyMap(knex, body) {
   if (body && body.confirm_all) {
     const n = await knex('property_category_map').whereNotNull('property_id').where('confirmed', false).update({ confirmed: true });
     await writeAudit(knex, 'mapping.confirm_all', `Confirmed ${n} property mapping(s)`, null, { confirmed: n });

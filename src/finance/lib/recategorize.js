@@ -21,7 +21,7 @@ import { canonicalName, loadTaxonomy } from './categories.js';
  * @param {{ dryRun?: boolean }} [opts]  dryRun: report what would change, write nothing
  * @returns {Promise<{scanned: number, updated: number, changes?: object[]}>}
  */
-async function recategorizeUncategorized(knex, { dryRun = false } = {}) {
+async function recategorizeUncategorized(knex, { dryRun = false, changedIds = null } = {}) {
   const historyRows = await knex('transactions')
     .whereNot('category', 'Uncategorized')
     .select('description', 'category', 'category_group', 'is_manual');
@@ -69,6 +69,7 @@ async function recategorizeUncategorized(knex, { dryRun = false } = {}) {
   await knex.transaction(async (trx) => {
     for (const r of results) {
       if (r.category !== 'Uncategorized') {
+        if (changedIds) changedIds.push(r.t.id);
         await trx('transactions').where({ id: r.t.id }).update({
           category: r.category,
           category_group: r.group,

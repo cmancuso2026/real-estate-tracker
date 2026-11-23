@@ -30,7 +30,8 @@
     "v2:alerts": "tsx src/scripts/v2-alerts.ts",
     "seed:properties": "tsx src/scripts/seed-properties.ts",
     "test": "tsx --tsconfig src/dashboard/tsconfig.json --test 'src/finance/test/*.test.js' 'src/dashboard/test/*.test.ts'",
-    "finance:fix-amex": "node src/finance/scripts/fix_amex_payments.js"
+    "finance:fix-amex": "node src/finance/scripts/fix_amex_payments.js",
+    "rent:backfill": "node src/finance/scripts/rent_backfill.js"
   },
   "engines": {
     "node": ">=20"

@@ -10,6 +10,7 @@ import { buildHistoryIndex, categorize, categorizeWithHistory } from './categori
 import { validateAttribution } from './attribution.js';
 import { writeAudit } from './audit.js';
 import { canonicalName, loadTaxonomy } from './categories.js';
+import { syncRentQuietly } from './rentSync.js';
 
 function httpError(status, message) {
   const e = new Error(message);
@@ -158,6 +159,7 @@ export async function applyRuleToExisting(knex, id, { dryRun = false } = {}) {
     }
     await writeAudit(trx, 'rule.apply', plan.summary, { rule_id: rule.id }, plan.changes);
   });
+  await syncRentQuietly(knex, recat.map((t) => t.id));
   return { dry_run: false, ...plan };
 }
 

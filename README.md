@@ -9,7 +9,7 @@ One app for personal finances, the rental properties you own, and the ones you m
 - **Overview (`/`)** — this month and year-to-date for personal finance (income, spending, cash flow, top spending groups, latest data per bank) next to the real-estate picture (properties, units, occupancy, rent roll, rent collected vs outstanding, leases and insurance ending within 60 days), plus actual cash flow per property.
 - **Finances (`/finance/…`)** — upload Bank of America, Amex Gold/Blue, SoFi and Capital One exports (CSV or XLSX; the bank is detected from the headers). Transactions are categorized automatically, deduplicated across overlapping statements, and shown on the Overview, Spending (categories × months) and Transactions pages, with one set of filters shared by every page.
 - **Property attribution** — spending in categories that need a property (Repairs, Lawn Care, Home Depot by default; set per category in Admin) is tied to an owned property, and optionally a unit and a project. A **Needs Property** queue with suggestions and bulk tools clears the backlog; the property page shows repairs and spend, the Projects tab shows actual spend against the quote, and the Vendors page shows actual spend next to quotes.
-- **Properties (`/properties`, `/rent`, `/vendors`)** — tenants, leases, rent collection (BofA CSV import + manual entry), projects with vendor quotes, vendors, escrow and insurance. Claude parses lease, quote, escrow and insurance PDFs and answers questions via a Slack bot.
+- **Properties (`/properties`, `/vendors`)** — tenants, leases, rent collection (from bank uploads + manual entry), projects with vendor quotes, vendors, escrow and insurance. Claude parses lease, quote, escrow and insurance PDFs and answers questions via a Slack bot.
 - **Investing (`/tracker`, `/grade`)** — pulls for-sale listings and rental comps, grades each property A–F with a weighted investment model, and sends alerts.
 - **Admin (`/admin`)** — categories and groups (add, rename, move, merge, archive, reorder; per-category property rules), property mapping, merchant rules, attribution, investor profile, and a change log. Every destructive or bulk action shows how many rows will change and waits for you to confirm.
 
@@ -133,6 +133,15 @@ For each uploaded transaction, the first of these that applies wins:
 
 Renamed or merged categories keep working: their old names point to the new category. "Admin → Merchant rules → Test a description" shows which step wins for any description.
 
+## How rent is recorded
+
+A transaction is a rent payment when it is money in and its category is mapped to a property as rent (Admin → Property mapping, role "income"). Whenever an upload, a category change, a merchant rule or a re-categorization produces one, it is written to `rent_collections` (`source = 'finance_upload'`, linked by `transaction_id`). The unit is found with the rules the old Import Rent page used (`src/finance/lib/rentMatch.js`), in this order: the property's only unit; the tenant's name in the description ("Zelle payment from …"); a category naming the unit ("1207 Rent"); the amount equal to exactly one unit's lease rent. The rent month, late flag and late fee come from the lease in force on the payment date (last 5 days of a month count toward the next month).
+
+- Payments without a clear unit wait under **Needs Property → Rent needs a unit**; picking one records it and later syncs keep your pick.
+- Rows you entered by hand or with the old CSV import are never changed. A transaction they already cover (same unit, paid date and amount; or same unit, rent month and amount paid within 7 days) creates nothing.
+- Recategorizing a payment away from rent removes its row; deleting the transaction unlinks it, and uploading the same bank row again links it back.
+- Past transactions: `npm run rent:backfill` previews (created / already recorded / need a unit); `npm run rent:backfill -- --apply` writes it. Safe to run again.
+
 ---
 
 ## Scoring model (investing)
@@ -177,5 +186,4 @@ Tracker timestamps are TEXT in UTC `YYYY-MM-DD HH:MM:SS`.
 
 ## Later (not built yet)
 
-- **One upload for rent and finances.** `/rent` imports Bank of America CSVs for rent collections, and the finance upload parses Bank of America CSVs too. Eventually one upload should feed both.
 - **Splitting a transaction across properties.** A `transaction_allocations` table (transaction, property, share) so one Home Depot receipt can be divided between properties instead of assigned to one.
