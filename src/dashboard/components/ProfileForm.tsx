@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useFormStatus } from 'react-dom';
 import type { InvestorProfile } from '@/lib/profile';
 import { PROFILE_PROPERTY_TYPES, formatThousands } from '@/lib/format';
-import { saveProfileAction } from '@/app/settings/actions';
+import { saveProfileAction } from '@/app/admin/investor-profile/actions';
 
 const INPUT =
   'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm tabular ' +

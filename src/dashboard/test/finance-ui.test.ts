@@ -14,7 +14,7 @@ import { heroTotals, nextSort } from '../lib/finance-ui/transactions';
 import type { PropertyGroup, Txn } from '../lib/finance-ui/types';
 
 const tax = buildTaxonomy({
-  Food: ['Groceries', 'Eating Out'],
+  Food: ['Eating Out', 'Groceries'],
   Investments: ['1205 Rent', '1207 Rent', 'Repairs'],
   Living: ['Shopping'],
   'W2 Income': ['Paycheck'],
@@ -42,9 +42,12 @@ test('default period: current year; current + prior two months, wrapping past Ja
   assert.deepEqual(defaultMonthSelection(['5', '6'], jan), ['5', '6']); // none present → all
 });
 
-test('taxonomy is sorted A→Z; unknown categories fall into Other', () => {
-  assert.deepEqual(Object.keys(tax.groups), ['Food', 'Investments', 'Living', 'Other', 'W2 Income']);
-  assert.deepEqual(tax.groups.Food, ['Eating Out', 'Groceries']);
+test('taxonomy keeps the API order; archived categories keep their group', () => {
+  const t2 = buildTaxonomy({ Food: ['Groceries', 'Eating Out'], Other: ['Uncategorized'] }, { Gym: 'Living', Groceries: 'Food' });
+  assert.deepEqual(Object.keys(t2.groups), ['Food', 'Other']);
+  assert.deepEqual(t2.groups.Food, ['Groceries', 'Eating Out']); // Admin order, not re-sorted
+  assert.equal(t2.catToGroup.Gym, 'Living'); // archived (not in groups) still resolves
+  assert.deepEqual(t2.allSubcats, ['Eating Out', 'Groceries', 'Uncategorized']);
 });
 
 test('mapped categories roll up to their property', () => {

@@ -15,7 +15,7 @@ const PERSONAL_LINKS = [
 const TRACKER_LINKS = [
   { href: '/tracker', label: 'Tracker' },
   { href: '/grade', label: 'Grade a Property' },
-  { href: '/settings', label: 'Investor Profile' },
+  { href: '/admin/investor-profile', label: 'Investor Profile' },
 ];
 
 export function NavLinks() {
@@ -63,6 +63,15 @@ export function NavLinks() {
           </Link>
         ))}
       </div>
+
+      <Link
+        href="/admin"
+        className={`ml-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+          isActive('/admin') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'
+        }`}
+      >
+        Admin
+      </Link>
 
       <div className="ml-2">
         <ThemeToggle />

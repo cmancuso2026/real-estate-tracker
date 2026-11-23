@@ -8,15 +8,17 @@ export interface Taxonomy {
   allSubcats: string[];
 }
 
-/** Same as the old page's rebuildTaxonomy(): sort everything alphabetically. */
-export function buildTaxonomy(raw: Groups): Taxonomy {
+/**
+ * Groups and categories in the order Admin sets (A→Z until you reorder — the
+ * order the old page always used). `catToGroup` comes from the API so archived
+ * categories, which are hidden from `groups`, still show their group.
+ */
+export function buildTaxonomy(raw: Groups, apiCatToGroup: Record<string, string> = {}): Taxonomy {
   const groups: Groups = {};
-  Object.keys(raw)
-    .sort((a, b) => a.localeCompare(b))
-    .forEach((g) => {
-      groups[g] = [...raw[g]!].sort((a, b) => a.localeCompare(b));
-    });
-  const catToGroup: Record<string, string> = {};
+  Object.keys(raw).forEach((g) => {
+    groups[g] = [...raw[g]!];
+  });
+  const catToGroup: Record<string, string> = { ...apiCatToGroup };
   Object.entries(groups).forEach(([g, cats]) => cats.forEach((c) => (catToGroup[c] = g)));
   const allSubcats = Object.values(groups)
     .flat()

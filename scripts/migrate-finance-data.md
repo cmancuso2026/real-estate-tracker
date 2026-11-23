@@ -198,7 +198,8 @@ Or restore the full Step 1 backup of the real-estate DB.
 ## Afterwards
 
 - Redeploy the web service, or run `npm run db:migrate` with
-  `DATABASE_URL="$NEW_DB_URL"`. Each run proposes property mappings
+  `DATABASE_URL="$NEW_DB_URL"`. Each run adds any copied custom categories
+  to the Admin category list (`categories`), and proposes property mappings
   (`property_category_map`) for per-property categories it hasn't seen yet,
   such as a custom "1821 Rent" that came over with the copy. They show up as
   unconfirmed on the Overview until you confirm them in Admin.

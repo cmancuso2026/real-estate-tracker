@@ -39,6 +39,6 @@ export async function saveProfileAction(formData: FormData): Promise<void> {
 
   // The profile changes what both pages display, so revalidate both.
   revalidatePath('/tracker');
-  revalidatePath('/settings');
-  redirect('/settings?saved=1');
+  revalidatePath('/admin/investor-profile');
+  redirect('/admin/investor-profile?saved=1');
 }

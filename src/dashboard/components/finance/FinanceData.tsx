@@ -78,6 +78,7 @@ export function FinanceDataProvider({ children }: { children: React.ReactNode })
   const [error, setError] = useState<string | null>(null);
   const [txns, setTxns] = useState<Txn[]>([]);
   const [groups, setGroups] = useState<Groups>({});
+  const [catToGroupApi, setCatToGroupApi] = useState<Record<string, string>>({});
   const [props, setProps] = useState<PropertyGroup[]>([]);
   const [selYears, setSelYearsState] = useState<Set<string>>(new Set());
   const [selMonths, setSelMonthsState] = useState<Set<string>>(new Set());
@@ -97,7 +98,7 @@ export function FinanceDataProvider({ children }: { children: React.ReactNode })
     setError(null);
     try {
       const [cats, list, pg, cs] = await Promise.all([
-        financeApi.get<{ groups: Groups }>('/api/finance/categories'),
+        financeApi.get<{ groups: Groups; cat_to_group: Record<string, string> }>('/api/finance/categories'),
         financeApi.get<{ transactions: ApiTxn[] }>('/api/finance/transactions?limit=100000'),
         financeApi
           .get<{ properties: PropertyGroup[] }>('/api/finance/property-groups')
@@ -108,6 +109,7 @@ export function FinanceDataProvider({ children }: { children: React.ReactNode })
       setSettingsList(cs.settings || []);
       const loaded = (list.transactions || []).map(mapTxn);
       setGroups(cats.groups || {});
+      setCatToGroupApi(cats.cat_to_group || {});
       setProps(pg.properties || []);
       setTxns(loaded);
       // Like the old loader: every (re)load resets the period to the defaults.
@@ -136,7 +138,7 @@ export function FinanceDataProvider({ children }: { children: React.ReactNode })
     void reload();
   }, [reload]);
 
-  const tax = useMemo(() => buildTaxonomy(groups), [groups]);
+  const tax = useMemo(() => buildTaxonomy(groups, catToGroupApi), [groups, catToGroupApi]);
   const years = useMemo(() => yearsInData(txns), [txns]);
   const months = useMemo(() => monthsInData(txns), [txns]);
   const periodTxns = useMemo(() => filterByPeriod(txns, selYears, selMonths, tax), [txns, selYears, selMonths, tax]);

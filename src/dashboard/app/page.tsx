@@ -121,14 +121,14 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
             </Link>
           )}
           {o.mappings.unconfirmed > 0 && (
-            <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm" data-testid="overview-mappings">
+            <Link href="/admin/property-mapping" className="block rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm hover:bg-blue-100" data-testid="overview-mappings">
               <strong className="text-blue-900">
                 {o.mappings.unconfirmed} of {o.mappings.total} property category mappings are unconfirmed.
               </strong>
               <span className="block text-blue-900/70">
-                Rent and PITI categories were matched to properties by street number. Confirm them in Admin → Property mapping (Phase 7).
+                Rent and PITI categories were matched to properties by street number. Review and confirm them in Admin →
               </span>
-            </div>
+            </Link>
           )}
         </div>
       )}

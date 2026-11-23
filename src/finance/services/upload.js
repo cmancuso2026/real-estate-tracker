@@ -2,6 +2,8 @@ import { parseFileAuto } from '../parsers/index.js';
 import { buildHistoryIndex, categorizeWithHistory } from '../lib/categorize.js';
 import { recategorizeUncategorized } from '../lib/recategorize.js';
 import { dedupHash } from '../lib/dedup.js';
+import { loadRules, matchRule } from '../lib/merchantRules.js';
+import { canonicalName, loadTaxonomy } from '../lib/categories.js';
 
 // Same limits the Express route enforced through multer.
 export const MAX_FILES = 20;
@@ -42,18 +44,28 @@ export async function processUpload(knex, uploadedFiles) {
     .whereNot('category', 'Uncategorized')
     .select('description', 'category', 'category_group', 'is_manual');
   const index = buildHistoryIndex(historyRows);
+  // Your merchant rules run before the history vote and built-in rules; names
+  // that were renamed or merged in Admin map to today's category.
+  const [rules, tax] = await Promise.all([loadRules(knex), loadTaxonomy(knex)]);
 
   // Categorize + hash every parsed row, tagging it with which file it came
   // from (fileIdx) so we can attribute it to the right upload_log row later.
   const enriched = [];
   parsed.forEach((p, fileIdx) => {
     for (const t of p.transactions) {
-      const { category, group, confidence } = categorizeWithHistory(
+      let { category, group, confidence } = categorizeWithHistory(
         t.description,
         t.rawCategory,
         p.source,
         index,
       );
+      const rule = matchRule(rules, t.description);
+      if (rule) {
+        category = rule.category;
+        confidence = null;
+      }
+      category = canonicalName(tax, category);
+      group = tax.byName.get(category)?.group ?? group;
       enriched.push({
         fileIdx,
         row: {
@@ -66,6 +78,7 @@ export async function processUpload(knex, uploadedFiles) {
           confidence_score: confidence,
           raw_description: t.rawDescription,
           dedup_hash: dedupHash(t.date, t.rawDescription, t.amount),
+          ...(rule && rule.property_id ? { property_id: rule.property_id, work_order_id: rule.work_order_id } : {}),
         },
       });
     }

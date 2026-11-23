@@ -56,7 +56,7 @@ export default async function TrackerPage() {
             · {properties.length} of {allGraded.length} graded
           </span>
           <Link
-            href="/settings"
+            href="/admin/investor-profile"
             className="ml-auto font-semibold text-blue-700 hover:underline dark:text-blue-300"
           >
             Edit
@@ -87,7 +87,7 @@ export default async function TrackerPage() {
           <p className="mt-1 text-sm">
             All {allGraded.length} graded {allGraded.length === 1 ? 'property is' : 'properties are'}{' '}
             outside your buy-box. Try loosening your{' '}
-            <Link href="/settings" className="font-semibold text-blue-600 hover:underline dark:text-blue-400">
+            <Link href="/admin/investor-profile" className="font-semibold text-blue-600 hover:underline dark:text-blue-400">
               Investor Profile
             </Link>
             .

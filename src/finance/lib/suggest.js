@@ -2,8 +2,7 @@
 // for a transaction. Suggestions are never saved automatically — the UI pre-fills
 // them and you confirm. Sources, highest priority first:
 //
-//   1. rule     — an enabled merchant rule with a property (Phase 7 adds rules;
-//                 until then this step finds nothing)
+//   1. rule     — an enabled merchant rule with a property (Admin → Merchant rules)
 //   2. vendor   — the description names a vendor → that vendor's open project
 //                 (most recent), else the property of its most recent project
 //   3. address  — the description contains a street number of an owned property
@@ -15,6 +14,7 @@
 // buildSuggestionContext() loads everything once, so the queue can score many
 // rows with one set of queries.
 import { merchantKey } from './merchantKey.js';
+import { compileRules } from './merchantRules.js';
 
 const OPEN = new Set(['received', 'open']);
 const DIRS = new Set(['N', 'S', 'E', 'W', 'NE', 'NW', 'SE', 'SW']);
@@ -53,7 +53,7 @@ export function mentionsVendor(desc, vendorName) {
 }
 
 export async function buildSuggestionContext(knex) {
-  const [properties, units, vendors, workOrders, quotes, settings, history] = await Promise.all([
+  const [properties, units, vendors, workOrders, quotes, settings, history, ruleRows] = await Promise.all([
     knex('owned_properties').select('id', 'address').orderBy('id'),
     knex('units').select('id', 'property_id', 'unit_label'),
     knex('vendors').select('id', 'name'),
@@ -64,6 +64,7 @@ export async function buildSuggestionContext(knex) {
       .whereNotNull('o.property_id')
       .select('o.description', 'o.property_id', 'o.work_order_id', 'o.unit_id', 'o.updated_at')
       .orderBy('o.updated_at', 'desc'),
+    knex('merchant_rules').whereNotNull('property_id').select('*'),
   ]);
   const unitsByProp = new Map();
   for (const u of units) {
@@ -95,7 +96,7 @@ export async function buildSuggestionContext(knex) {
     const k = merchantKey(h.description || '');
     if (k && !lastByMerchant.has(k)) lastByMerchant.set(k, h); // newest first
   }
-  return { properties, addr, vendorList, defaults, lastByMerchant, rules: [] };
+  return { properties, addr, vendorList, defaults, lastByMerchant, rules: compileRules(ruleRows) };
 }
 
 const projectLabel = (w) => w.project_name || w.description || `Project #${w.id}`;
@@ -115,7 +116,7 @@ export function suggestFor(ctx, txn) {
   };
   const addrOf = (id) => ctx.properties.find((p) => p.id === id)?.address || `property ${id}`;
 
-  // 1. merchant rules (Phase 7)
+  // 1. merchant rules
   for (const r of ctx.rules) {
     if (r.property_id && r.matches(txn.description)) {
       push({ property_id: r.property_id, work_order_id: r.work_order_id || null, source: 'rule', reason: `Merchant rule “${r.pattern}”` });

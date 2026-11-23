@@ -1,35 +1,38 @@
-// Bridges the static taxonomy (lib/taxonomy.js) with user-defined categories
-// stored in the `custom_categories` table. Everything that needs the *full*
-// set of categories (the categories API, transaction category validation) goes
-// through here so custom categories are honored everywhere.
-import { GROUPS, groupFor } from './taxonomy.js';
+// The full taxonomy for the API and validation, read from the categories /
+// category_groups tables (Phase 7; lib/taxonomy.js is now only their seed).
+// mergedTaxonomy keeps its original response shape — { groups, cat_to_group } —
+// so nothing downstream changes:
+//   groups        group → active categories, in their admin order (archived
+//                 ones are hidden from dropdowns)
+//   cat_to_group  every category, archived included, so history still shows
+//                 the right group
+import { GROUPS } from './taxonomy.js';
+import { loadTaxonomy } from './categories.js';
 
+// Kept for compatibility (the built-in seed set).
 const BASE_GROUP_NAMES = Object.keys(GROUPS);
 const BASE_CATS = new Set(Object.values(GROUPS).flat());
 
-// Return { groups, cat_to_group } = built-in taxonomy with custom categories
-// merged into their groups.
 async function mergedTaxonomy(knex) {
+  const tax = await loadTaxonomy(knex);
   const groups = {};
-  for (const [g, cats] of Object.entries(GROUPS)) groups[g] = [...cats];
-
-  const customs = await knex('custom_categories').select('name', 'category_group').orderBy('name');
-  for (const c of customs) {
-    if (!groups[c.category_group]) groups[c.category_group] = [];
-    if (!groups[c.category_group].includes(c.name)) groups[c.category_group].push(c.name);
-  }
-
   const cat_to_group = {};
-  for (const [g, cats] of Object.entries(groups)) for (const c of cats) cat_to_group[c] = g;
+  for (const g of tax.groups) {
+    groups[g.name] = g.categories.filter((c) => !c.archived).map((c) => c.name);
+    for (const c of g.categories) cat_to_group[c.name] = g.name;
+  }
   return { groups, cat_to_group };
 }
 
-// Resolve a category name to its group, checking built-in then custom.
-// Returns null if the category is unknown (i.e. invalid).
+// Resolve a category name to its group. Returns null if the category is
+// unknown or archived (i.e. it can't be assigned).
 async function resolveGroup(knex, category) {
-  if (BASE_CATS.has(category)) return groupFor(category);
-  const c = await knex('custom_categories').where({ name: category }).first();
-  return c ? c.category_group : null;
+  const c = await knex('categories as c')
+    .join('category_groups as g', 'g.id', 'c.group_id')
+    .where('c.name', category)
+    .where('c.archived', false)
+    .first('g.name as group');
+  return c ? c.group : null;
 }
 
 export { mergedTaxonomy, resolveGroup, BASE_GROUP_NAMES, BASE_CATS };

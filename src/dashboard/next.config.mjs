@@ -8,6 +8,10 @@ const nextConfig = {
   // The finance logic lives outside this app in src/finance (shared with the
   // tests and db:migrate); allow importing it via the @finance/* alias.
   experimental: { externalDir: true },
+  // The investor profile moved into the Admin portal (Phase 7).
+  async redirects() {
+    return [{ source: '/settings', destination: '/admin/investor-profile', permanent: true }];
+  },
   // This app has its own lockfile separate from the tracker root; pin the
   // tracing root here so Next doesn't warn about multiple lockfiles.
   outputFileTracingRoot: import.meta.dirname,
