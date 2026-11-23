@@ -17,7 +17,7 @@ interface NavLink {
   badge?: boolean;
 }
 
-const GROUPS: { label: string; links: NavLink[] }[] = [
+export const GROUPS: { label: string; links: NavLink[] }[] = [
   {
     label: 'Finances',
     links: [

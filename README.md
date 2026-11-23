@@ -116,9 +116,12 @@ npm run typecheck                                   # tracker (root)
 (cd src/dashboard && npx tsc --noEmit -p .)         # app
 npm test                                            # finance + app tests (node --test via tsx, pg-mem)
 npm run build                                       # production build
+SMOKE_DATABASE_URL=postgresql://localhost/hq_smoke_test npm test   # also runs the route smoke test
 ```
 
 The tests need no database: integration tests run the real migrations against an in-memory Postgres (pg-mem) and call the real Next.js route handlers.
+
+**Route smoke test** (`src/dashboard/test/smoke.test.ts`, also `npm run test:smoke`): builds the app if the build is stale, starts it with Basic Auth on, and requests every header nav and Admin sidebar page, the property and listing detail pages, and every GET endpoint under `/api/finance` and `/api/admin` (found by walking the app folder, so new endpoints are checked automatically); anything but 200 fails. It needs a throwaway Postgres in `SMOKE_DATABASE_URL`: the database is wiped, migrated and seeded (demo listings, the three properties, a tenant and lease, a project, two bank files uploaded through the API). It refuses any database whose name doesn't contain "smoke" or "test", so it can't touch production. Without `SMOKE_DATABASE_URL` it is skipped with a message.
 
 ---
 
