@@ -47,23 +47,25 @@ test('landing page, summary API and /finance agree for the same month', async ()
       row('2026-11-10', 'PLUMBER', -300, 'Repairs', 'Investments'),
       row('2026-11-12', 'IRS', -50, 'Taxes', 'W2 Income'), // money out of an income category is spending
       row('2026-11-14', 'MYSTERY DEPOSIT', 40, 'Uncategorized', 'Other'), // uncategorized deposits are income
-      row('2026-11-30', 'VENMO TRANSFER', -75, 'Venmo', 'Financials'),
+      row('2026-11-30', 'VENMO PAYMENT', -75, 'Venmo', 'Other'), // Venmo counts as spending (017)
       row('2026-10-15', 'PUBLIX', -80, 'Groceries', 'Food', 'Amex Gold'), // October: outside the month
     ]);
 
-    const expected = { income: 6090, spending: 430, cash_flow: 5660 };
+    const venmo = await knex('categories as c').join('category_groups as g', 'g.id', 'c.group_id').where('c.name', 'Venmo').first('g.name as group');
+    assert.equal(venmo.group, 'Other', '017 moved Venmo out of Financials');
+    const expected = { income: 6090, spending: 505, cash_flow: 5585 };
 
     // Landing page
     const o = await getOverview(knex, { month: '2026-11', today: '2026-11-23' });
     assert.deepEqual({ income: o.finance.month.income, spending: o.finance.month.spending, cash_flow: o.finance.month.cash_flow }, expected);
-    assert.equal(o.finance.month.count, 7, '10 November rows, the three transfers left out');
-    assert.deepEqual(o.finance.top_groups.month, [{ group: 'Investments', spending: 300 }, { group: 'Food', spending: 80 }, { group: 'W2 Income', spending: 50 }]);
+    assert.equal(o.finance.month.count, 8, '10 November rows, the two card-payment rows left out');
+    assert.deepEqual(o.finance.top_groups.month, [{ group: 'Investments', spending: 300 }, { group: 'Food', spending: 80 }, { group: 'Other', spending: 75 }, { group: 'W2 Income', spending: 50 }]);
 
     // Summary API
     const s = await getSummary(knex, { year: '2026', months: '11' });
     assert.deepEqual({ income: s.income, spending: s.spending, cash_flow: s.cash_flow }, expected);
-    assert.deepEqual(s.by_month['2026-11'], { income: 6090, spending: 430 });
-    assert.equal(s.transfers, -75);
+    assert.deepEqual(s.by_month['2026-11'], { income: 6090, spending: 505 });
+    assert.equal(s.transfers, 0, 'the Amex payment out and its credit on the card net to zero');
 
     // /finance: the browser's rows, taxonomy and definition, November selected
     const cats = await getCategories(knex);
@@ -74,12 +76,12 @@ test('landing page, summary API and /finance agree for the same month', async ()
     const nov = (transactions as ApiTxn[]).map(mapTxn).filter((t) => t.date.startsWith('2026-11'));
     const hero = heroTotals(nov, ctx);
     assert.deepEqual({ income: hero.income, spending: hero.spend, cash_flow: hero.flow }, expected);
-    assert.equal(hero.transferCount, 3);
+    assert.equal(hero.transferCount, 2);
 
     // …and the chart's November bars
     const model = buildChart(nov, tax, '', '', 'monthly', ctx)!;
     const i = model.keys.indexOf('2026-11');
-    assert.deepEqual([model.series[0]!.data[i], model.series[1]!.data[i]], [6090, 430]);
+    assert.deepEqual([model.series[0]!.data[i], model.series[1]!.data[i]], [6090, 505]);
   } finally {
     await knex.destroy();
   }
