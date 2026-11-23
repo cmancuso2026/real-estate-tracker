@@ -38,7 +38,7 @@ export async function saveProfileAction(formData: FormData): Promise<void> {
   await saveProfile(profile);
 
   // The profile changes what both pages display, so revalidate both.
-  revalidatePath('/');
+  revalidatePath('/tracker');
   revalidatePath('/settings');
   redirect('/settings?saved=1');
 }

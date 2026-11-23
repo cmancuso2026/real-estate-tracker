@@ -20,7 +20,7 @@ function profileChips(p: InvestorProfile): string[] {
   return chips;
 }
 
-export default async function HomePage() {
+export default async function TrackerPage() {
   const profile = await getProfile();
   const active = isProfileActive(profile);
 

@@ -32,7 +32,7 @@ export default async function PropertyPage({
   return (
     <div className="space-y-6">
       <Link
-        href="/"
+        href="/tracker"
         className="inline-block text-sm text-blue-600 hover:underline dark:text-blue-400"
       >
         ← Back to all properties

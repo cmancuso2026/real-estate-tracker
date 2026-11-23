@@ -13,7 +13,7 @@ const PERSONAL_LINKS = [
 ];
 
 const TRACKER_LINKS = [
-  { href: '/', label: 'Tracker', exact: true },
+  { href: '/tracker', label: 'Tracker' },
   { href: '/grade', label: 'Grade a Property' },
   { href: '/settings', label: 'Investor Profile' },
 ];
@@ -54,7 +54,7 @@ export function NavLinks() {
             key={link.href}
             href={link.href}
             className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-              isActive(link.href, link.exact)
+              isActive(link.href)
                 ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-white'
                 : 'text-gray-600 hover:bg-gray-200 dark:text-gray-400 dark:hover:bg-gray-700/60'
             }`}

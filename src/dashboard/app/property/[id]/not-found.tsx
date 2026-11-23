@@ -7,7 +7,7 @@ export default function NotFound() {
       <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
         This listing has no grade, or doesn&apos;t exist.
       </p>
-      <Link href="/" className="mt-4 inline-block text-sm text-blue-600 hover:underline dark:text-blue-400">
+      <Link href="/tracker" className="mt-4 inline-block text-sm text-blue-600 hover:underline dark:text-blue-400">
         ← Back to all properties
       </Link>
     </div>
