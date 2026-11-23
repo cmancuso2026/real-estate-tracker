@@ -12,8 +12,25 @@ export async function writeAudit(trx, action, summary, before, after) {
   await trx('admin_audit').insert({
     action,
     summary,
-    before: before == null ? null : JSON.stringify(before),
-    after: after == null ? null : JSON.stringify(after),
+    before: before == null ? null : safeJson(before),
+    after: after == null ? null : safeJson(after),
+  });
+}
+
+/**
+ * JSON for the change log that never throws: SQL expressions such as
+ * knex.fn.now() (which hold the connection pool, a circular structure on real
+ * Postgres) are written as "now()", and any other circular reference is dropped.
+ */
+export function safeJson(value) {
+  const seen = new WeakSet();
+  return JSON.stringify(value, (_k, v) => {
+    if (v && typeof v === 'object') {
+      if (v.isRawInstance || (typeof v.toSQL === 'function' && v.client)) return 'now()';
+      if (seen.has(v)) return undefined;
+      seen.add(v);
+    }
+    return v;
   });
 }
 

@@ -114,7 +114,9 @@ export async function getPropertyMap(knex) {
   const unmapped = [...tax.byName.values()]
     .filter((c) => !c.archived && looksPerProperty(c.name) && mappedProps.get(c.name) == null)
     .map((c) => ({ category: c.name, group: c.group, dismissed: mappedProps.has(c.name) }));
-  return { mappings: rows, unmapped, properties: props, roles: ROLES };
+  // every active category, for "Map any category" (e.g. a loan like Figure Lending)
+  const categories = [...tax.byName.values()].filter((c) => !c.archived).map((c) => c.name).sort((a, b) => a.localeCompare(b));
+  return { mappings: rows, unmapped, properties: props, roles: ROLES, categories };
 }
 
 // PUT /api/admin/property-map — { category, property_id (null = not mapped),
@@ -143,7 +145,8 @@ async function savePropertyMap(knex, body) {
   const row = { category, property_id, role, confirmed: body.confirmed === undefined ? true : !!body.confirmed, updated_at: knex.fn.now() };
   await knex.transaction(async (trx) => {
     await trx('property_category_map').insert(row).onConflict('category').merge();
-    await writeAudit(trx, 'mapping.update', `${category} → ${property_id == null ? 'not mapped' : `property ${property_id}`} (${role})`, before, row);
+    const { updated_at: _now, ...logged } = row; // the change log records the values, not the SQL now()
+    await writeAudit(trx, 'mapping.update', `${category} → ${property_id == null ? 'not mapped' : `property ${property_id}`} (${role})`, before, logged);
   });
   return { success: true, mapping: await knex('property_category_map').where({ category }).first() };
 }

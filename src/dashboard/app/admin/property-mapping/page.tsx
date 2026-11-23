@@ -21,9 +21,10 @@ interface Data {
   unmapped: Unmapped[];
   properties: { id: number; address: string }[];
   roles: string[];
+  categories: string[];
 }
 
-const ROLE_LABEL: Record<string, string> = { income: 'Rent / income', piti: 'PITI / mortgage', expense: 'Expense' };
+const ROLE_LABEL: Record<string, string> = { income: 'Rent / income', piti: 'PITI / mortgage / loan', expense: 'Expense' };
 const input = 'rounded-lg border border-gray-300 bg-white px-2 py-1 text-sm';
 const btn = 'rounded-lg border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40';
 
@@ -31,6 +32,7 @@ export default function AdminPropertyMappingPage() {
   const [data, setData] = useState<Data | null>(null);
   const [drafts, setDrafts] = useState<Record<string, { property_id: string; role: string }>>({});
   const [error, setError] = useState<string | null>(null);
+  const [any, setAny] = useState({ category: '', property_id: '', role: 'expense' });
   const { ask, dialog, showError } = useConfirm();
 
   const load = useCallback(async () => {
@@ -73,6 +75,51 @@ export default function AdminPropertyMappingPage() {
         </p>
       </div>
       {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+
+      {data && (
+        <section className="rounded-xl border border-gray-200 bg-white p-4" data-testid="map-any">
+          <h3 className="font-semibold">Map any category to a property</h3>
+          <p className="mt-0.5 text-sm text-gray-500">
+            For categories without a street number in the name, like a loan (Figure Lending) or an HOA. Its transactions then sit
+            under that property on the Categories page and count in its cash flow.
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <select aria-label="Any category" className={input} value={any.category} onChange={(e) => setAny({ ...any, category: e.target.value })}>
+              <option value="">Choose category…</option>
+              {data.categories.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+            <select aria-label="Any property" className={input} value={any.property_id} onChange={(e) => setAny({ ...any, property_id: e.target.value })}>
+              <option value="">Choose property…</option>
+              {data.properties.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.address}
+                </option>
+              ))}
+            </select>
+            <select aria-label="Any role" className={input} value={any.role} onChange={(e) => setAny({ ...any, role: e.target.value })}>
+              {data.roles.map((r) => (
+                <option key={r} value={r}>
+                  {ROLE_LABEL[r] ?? r}
+                </option>
+              ))}
+            </select>
+            <button
+              className={btn}
+              disabled={!any.category || !any.property_id}
+              onClick={async () => {
+                await save(any.category, { property_id: any.property_id, role: any.role });
+                setAny({ category: '', property_id: '', role: 'expense' });
+              }}
+            >
+              Map
+            </button>
+          </div>
+        </section>
+      )}
 
       {data && data.unmapped.length > 0 && (
         <section className="rounded-xl border border-amber-200 bg-amber-50 p-4" data-testid="unmapped">

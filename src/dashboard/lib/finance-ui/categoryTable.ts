@@ -21,6 +21,8 @@ export interface Cell {
 export interface CatRow {
   cat: string;
   cells: Cell[];
+  /** Inside a property: 'income' rows are listed first, then 'expense'. */
+  side?: 'income' | 'expense';
 }
 
 export interface PropBlock {
@@ -45,6 +47,7 @@ export interface CategoryTable {
 }
 
 const ymOf = (t: Txn) => t.date.slice(0, 7);
+const catOf = (k: string) => (k.includes('::') ? k.slice(k.indexOf('::') + 2) : k);
 export function ymLabel(ym: string): string {
   const [y, m] = ym.split('-');
   return MON_SHORT[parseInt(m!, 10)] + ' ' + y;
@@ -63,6 +66,27 @@ export function compareOptions(txns: Txn[]): { value: string; label: string }[] 
     ...years.map((y) => ({ value: y, label: `${y} (full year)` })),
     ...yms.map((ym) => ({ value: ym, label: ymLabel(ym) })),
   ];
+}
+
+/**
+ * Where an amount lands in the table: a property's block or the group's own
+ * rows. A category mapped to a property (property_category_map, "1205 Rent")
+ * goes to that property in full. Otherwise each share the transaction was
+ * assigned to a property (transaction_allocations — e.g. Lawn Care, or a split)
+ * goes to that property, and whatever isn't assigned stays in the category's
+ * own row. Keys: 'cat' or '<propertyId>::cat'.
+ */
+const SEP = '::';
+const keyOf = (pid: number | null, cat: string) => (pid == null ? cat : `${pid}${SEP}${cat}`);
+function sharesOf(t: Txn, props: PropertyGroup[]): [string, number][] {
+  const mapped = propertyOfCat(t.cat, props);
+  if (mapped) return [[keyOf(mapped.id, t.cat), t.amt]];
+  const allocs = t.allocations ?? [];
+  if (!allocs.length) return [[t.cat, t.amt]];
+  const out: [string, number][] = allocs.map((a) => [keyOf(a.property_id, t.cat), a.amount]);
+  const rest = Math.round((t.amt - allocs.reduce((sum, a) => sum + a.amount, 0)) * 100) / 100;
+  if (Math.abs(rest) >= 0.01) out.push([t.cat, rest]);
+  return out;
 }
 
 interface DataCol extends Col {
@@ -88,7 +112,7 @@ export function buildCategoryTable(
 ): CategoryTable {
   const mkBycat = (rs: Txn[]) => {
     const m: Record<string, number> = {};
-    rs.forEach((t) => (m[t.cat] = (m[t.cat] || 0) + t.amt));
+    rs.forEach((t) => sharesOf(t, props).forEach(([k, v]) => (m[k] = (m[k] || 0) + v)));
     return m;
   };
   const curBycat = mkBycat(rows);
@@ -120,7 +144,7 @@ export function buildCategoryTable(
     if (!c.rows) return;
     c.notedByCat = {};
     c.rows.forEach((t) => {
-      if (t.note && t.note.trim()) (c.notedByCat![t.cat] = c.notedByCat![t.cat] || []).push(t);
+      if (t.note && t.note.trim()) for (const [k] of sharesOf(t, props)) (c.notedByCat![k] = c.notedByCat![k] || []).push(t);
     });
   });
   const cellNote = (c: DataCol, cat: string) => (c.notedByCat ? noteTitle(topNotes(c.notedByCat[cat] || [])) : '');
@@ -131,42 +155,60 @@ export function buildCategoryTable(
   const totals = cols.map(() => 0);
   const groups: GroupBlock[] = [];
 
+  // Every key that has a value somewhere, so property blocks can be found per group.
+  const allKeys = new Set<string>();
+  cols.forEach((c) => c.bycat && Object.keys(c.bycat).forEach((k) => allKeys.add(k)));
+  const propById = new Map(props.map((p) => [p.id, p]));
+
   Object.entries(tax.groups).forEach(([grp, cats]) => {
-    const liveCats = cats.filter(anyVal);
-    if (!liveCats.length) return;
-    const grpTotals = cols.map((c) => cats.reduce((s, cat) => s + colVal(c, cat), 0));
+    const inGroup = new Set(cats);
+    const keys = [...allKeys].filter((k) => inGroup.has(k.includes(SEP) ? k.slice(k.indexOf(SEP) + SEP.length) : k));
+    const liveKeys = keys.filter(anyVal);
+    if (!liveKeys.length) return;
+    const grpTotals = cols.map((c) => keys.reduce((s, k) => s + colVal(c, k), 0));
     grpTotals.forEach((v, i) => (totals[i]! += v));
 
-    const propOrder: PropertyGroup[] = [];
-    const propCats = new Map<number, string[]>();
+    const propKeys = new Map<number, string[]>();
     const standaloneCats: string[] = [];
-    liveCats.forEach((cat) => {
-      const p = propertyOfCat(cat, props);
-      if (p) {
-        if (!propCats.has(p.id)) {
-          propCats.set(p.id, []);
-          propOrder.push(p);
-        }
-        propCats.get(p.id)!.push(cat);
-      } else standaloneCats.push(cat);
-    });
+    // categories in their taxonomy order, then each property's keys in that order
+    const order = new Map(cats.map((c, i) => [c, i]));
+    liveKeys
+      .sort((x, y) => (order.get(catOf(x)) ?? 0) - (order.get(catOf(y)) ?? 0))
+      .forEach((k) => {
+        if (!k.includes(SEP)) return void standaloneCats.push(k);
+        const pid = Number(k.slice(0, k.indexOf(SEP)));
+        if (!propKeys.has(pid)) propKeys.set(pid, []);
+        propKeys.get(pid)!.push(k);
+      });
     // Properties in their declared order (as the old PROPERTIES map did).
-    propOrder.sort((a, b) => props.indexOf(a) - props.indexOf(b));
+    const propOrder = [...propKeys.keys()]
+      .map((id) => propById.get(id) ?? { id, name: `Property ${id}`, units: [], categories: [] })
+      .sort((x, y) => props.findIndex((p) => p.id === x.id) - props.findIndex((p) => p.id === y.id));
 
-    const catRow = (cat: string): CatRow => ({
-      cat,
-      cells: cols.map((c) => ({ v: colVal(c, cat), note: cellNote(c, cat) })),
+    const catRow = (k: string): CatRow => ({
+      cat: catOf(k),
+      cells: cols.map((c) => ({ v: colVal(c, k), note: cellNote(c, k) })),
     });
+    // Inside a property: money in (rent) first, then expenses.
+    const totalIdx = cols.length - 1 - (compare ? 2 : 0);
+    const propRows = (ks: string[]) => {
+      const rowsP = ks.map((k) => {
+        const r = catRow(k);
+        const net = r.cells[Math.max(totalIdx, 0)]?.v ?? 0;
+        return { ...r, side: (net > 0 ? 'income' : 'expense') as 'income' | 'expense' };
+      });
+      return [...rowsP.filter((r) => r.side === 'income'), ...rowsP.filter((r) => r.side === 'expense')];
+    };
 
     groups.push({
       group: grp,
-      cells: grpTotals.map((v, i) => ({ v, note: grpNote(cols[i]!, cats) })),
+      cells: grpTotals.map((v, i) => ({ v, note: grpNote(cols[i]!, keys) })),
       props: propOrder.map((p) => {
-        const pcats = propCats.get(p.id)!;
+        const pk = propKeys.get(p.id)!;
         return {
           prop: p,
-          cells: cols.map((c) => ({ v: pcats.reduce((s, cat) => s + colVal(c, cat), 0), note: grpNote(c, pcats) })),
-          cats: pcats.map(catRow),
+          cells: cols.map((c) => ({ v: pk.reduce((s, k) => s + colVal(c, k), 0), note: grpNote(c, pk) })),
+          cats: propRows(pk),
         };
       }),
       standalone: standaloneCats.map(catRow),
