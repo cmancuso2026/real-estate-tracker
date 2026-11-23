@@ -143,7 +143,7 @@ test('smoke: every nav/admin page and finance/admin GET endpoint returns 200', {
       '/upload',
       '/admin',
       ...ADMIN_SECTIONS.map((s) => s.href),
-      '/finance/spending',
+      '/finance/overview',
       `/properties/${propertyId}`,
       `/property/${listingId}`,
     ];

@@ -56,6 +56,42 @@ export async function setAllocations(knex, params, body) {
   return loadSerialized(knex, id);
 }
 
+// PUT /api/finance/transactions/allocations — the same split for many
+// transactions: { ids: number[], mode, rows: [{ property_id, unit_id?,
+// work_order_id?, value }] }. Percentages apply to each transaction's own
+// amount; dollar amounts must add up to every selected transaction's amount
+// (so they work when the amounts are the same). All or nothing: if any
+// transaction can't take the split, nothing is saved and the 400 names it.
+// → { success, updated }
+export async function bulkAllocations(knex, body) {
+  let { ids } = body || {};
+  if (!Array.isArray(ids) || ids.length === 0) throw httpError(400, 'Body must include a non-empty "ids" array');
+  ids = [...new Set(ids.map(Number).filter((n) => Number.isInteger(n)))];
+  const mode = body?.mode;
+  const rows = Array.isArray(body?.rows) ? body.rows : null;
+  if (!rows || !rows.length) throw httpError(400, 'Body must include a non-empty rows array');
+  if (!MODES.includes(mode)) throw httpError(400, `mode must be one of: ${MODES.join(', ')}`);
+  const txns = await knex('transactions').whereIn('id', ids).select(ROW_FIELDS);
+  if (txns.length !== ids.length) throw httpError(404, 'Some transactions were not found');
+  const plan = [];
+  for (const t of txns) {
+    let allocs;
+    try {
+      allocs = computeAllocations(t.amount, mode, rows);
+    } catch (e) {
+      throw httpError(400, `${t.description} (${Number(t.amount).toFixed(2)}): ${e.message}`);
+    }
+    plan.push([t, allocs]);
+  }
+  await validateRows(knex, plan[0][1]);
+  for (const a of plan[0][1]) await assertProjectTagAllowed(knex, txns.map((t) => t.category), a.work_order_id);
+  const spec = { mode, rows: rows.map((r) => ({ property_id: r.property_id, unit_id: r.unit_id ?? null, work_order_id: r.work_order_id ?? null, value: Number(r.value) })) };
+  await knex.transaction(async (trx) => {
+    for (const [t, allocs] of plan) await saveAllocations(trx, t, allocs, spec);
+  });
+  return { success: true, updated: plan.length };
+}
+
 // PATCH /api/finance/transactions/attribution — { ids: number[], property_id, work_order_id?, unit_id? }.
 export async function bulkAttribution(knex, body) {
   let { ids } = body || {};
