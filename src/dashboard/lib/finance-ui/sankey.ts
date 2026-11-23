@@ -112,3 +112,86 @@ export function buildSankey(rows: Txn[], tax: Taxonomy, ctx: MetricsCtx): Sankey
   }
   return { flows, labels, columns, income, spending, cashFlow: r2(income - spending) };
 }
+
+/** "PUBLIX #1234 MIAMI" → "PUBLIX": a readable merchant label for the drill-down. */
+export function merchantLabel(desc: string): string {
+  const words = desc
+    .toUpperCase()
+    .replace(/[#*]\S*/g, ' ')
+    .replace(/\d+/g, ' ')
+    .replace(/[^A-Z&' ]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 3);
+  return words.length ? words.join(' ') : desc.slice(0, 24);
+}
+
+/**
+ * One spending group up close: group → each of its categories (none folded)
+ * → the biggest merchants in each (top 5, the rest as "Other"). Same
+ * definition as the cards: refunds net out, transfers are left out.
+ */
+export function buildGroupSankey(rows: Txn[], tax: Taxonomy, ctx: MetricsCtx, group: string): SankeyModel | null {
+  const byCat = new Map<string, Map<string, number>>();
+  let spending = 0;
+  for (const t of rows) {
+    if (groupOf(tax, t.cat) !== group) continue;
+    const c = classifyTxn(t, ctx);
+    if (c.kind === 'transfer' || !c.spending) continue;
+    spending += c.spending;
+    const m = byCat.get(t.cat) ?? new Map<string, number>();
+    const label = merchantLabel(t.desc);
+    m.set(label, (m.get(label) ?? 0) + c.spending);
+    byCat.set(t.cat, m);
+  }
+  spending = r2(spending);
+  if (spending <= 0) return null;
+  const gk = `grp:${group}`;
+  const flows: SankeyFlow[] = [];
+  const labels: Record<string, string> = { [gk]: group };
+  const columns: Record<string, number> = { [gk]: 0 };
+  const cats = [...byCat.entries()]
+    .map(([cat, m]) => [cat, r2([...m.values()].reduce((s, v) => s + v, 0)), m] as const)
+    .filter(([, v]) => v > 0)
+    .sort((a, b) => b[1] - a[1]);
+  for (const [cat, total, m] of cats) {
+    const ck = `cat:${cat}`;
+    labels[ck] = cat;
+    columns[ck] = 1;
+    flows.push({ from: gk, to: ck, flow: total });
+    const merchants = [...m.entries()].filter(([, v]) => r2(v) > 0).sort((a, b) => b[1] - a[1]);
+    const top = merchants.slice(0, 5);
+    const rest = r2(merchants.slice(5).reduce((s, [, v]) => s + v, 0));
+    // what the merchants add up to can exceed the category net when a refund
+    // came from elsewhere; scale so the flows still balance
+    const sum = r2(top.reduce((s, [, v]) => s + v, 0) + rest);
+    const k = sum > 0 ? total / sum : 1;
+    for (const [mname, v] of top) {
+      const mk = `m:${cat}:${mname}`;
+      labels[mk] = mname;
+      columns[mk] = 2;
+      flows.push({ from: ck, to: mk, flow: r2(v * k) });
+    }
+    if (rest > 0) {
+      const ok = `m:${cat}:__other`;
+      labels[ok] = `Other ${cat} (${merchants.length - 5})`;
+      columns[ok] = 2;
+      flows.push({ from: ck, to: ok, flow: r2(rest * k) });
+    }
+  }
+  return { flows, labels, columns, income: 0, spending, cashFlow: -spending };
+}
+
+/** Transfers left out of the picture, per category: how many and how much went out / came in. */
+export function transfersLeftOut(rows: Txn[], ctx: MetricsCtx) {
+  const by = new Map<string, { cat: string; count: number; out: number; in: number }>();
+  for (const t of rows) {
+    if (classifyTxn(t, ctx).kind !== 'transfer') continue;
+    const e = by.get(t.cat) ?? { cat: t.cat, count: 0, out: 0, in: 0 };
+    e.count += 1;
+    if (t.amt < 0) e.out = r2(e.out - t.amt);
+    else e.in = r2(e.in + t.amt);
+    by.set(t.cat, e);
+  }
+  return [...by.values()].sort((a, b) => b.out + b.in - (a.out + a.in));
+}

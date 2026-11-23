@@ -25,13 +25,28 @@ function colorFor(key: string, groupIndex: Map<string, number>, parentOf: Map<st
   return g ? GROUP_COLORS[(groupIndex.get(g) ?? 0) % GROUP_COLORS.length]! : RED;
 }
 
-/** Income → Total Income → spending groups → categories, with $ and % of income in tooltips. */
-export function SankeyChart({ model }: { model: SankeyModel }) {
-  const groups = model.flows.filter((f) => f.from === TOTAL && f.to.startsWith('grp:')).map((f) => f.to);
+/**
+ * Income → Total Income → spending groups → categories, with $ and % of income
+ * in tooltips. Click a group (or any flow into it) to zoom into that group
+ * (onPickGroup). A zoomed model (group → categories → merchants) colours each
+ * category and shows % of the group's spending.
+ */
+export function SankeyChart({ model, onPickGroup }: { model: SankeyModel; onPickGroup?: (group: string) => void }) {
+  const zoomed = !(TOTAL in model.labels);
+  const groups = zoomed
+    ? model.flows.filter((f) => f.from.startsWith('grp:')).map((f) => f.to) // categories get the colours
+    : model.flows.filter((f) => f.from === TOTAL && f.to.startsWith('grp:')).map((f) => f.to);
   const groupIndex = new Map(groups.map((g, i) => [g, i]));
-  const parentOf = new Map(model.flows.filter((f) => f.from.startsWith('grp:')).map((f) => [f.to, f.from]));
-  const color = (k: string) => colorFor(k, groupIndex, parentOf);
-  const pctOfIncome = (v: number) => (model.income > 0 ? `${((v / model.income) * 100).toFixed(1)}% of income` : 'no income in this period');
+  const parentOf = new Map(model.flows.filter((f) => (zoomed ? f.from.startsWith('cat:') : f.from.startsWith('grp:'))).map((f) => [f.to, f.from]));
+  const color = (k: string) => (zoomed && k.startsWith('grp:') ? BLUE : colorFor(k, groupIndex, parentOf));
+  const pctOfIncome = (v: number) =>
+    zoomed
+      ? `${((v / model.spending) * 100).toFixed(1)}% of ${Object.values(model.labels)[0]} spending`
+      : model.income > 0
+        ? `${((v / model.income) * 100).toFixed(1)}% of income`
+        : 'no income in this period';
+  const groupOfFlow = (f: { from: string; to: string }) =>
+    [f.to, f.from].map((k) => (k.startsWith('grp:') ? k.slice(4) : k.startsWith('more:') ? k.slice(5) : null)).find(Boolean) ?? null;
 
   const data = {
     datasets: [
@@ -57,6 +72,15 @@ export function SankeyChart({ model }: { model: SankeyModel }) {
     responsive: true,
     maintainAspectRatio: false,
     animation: false,
+    onClick: (_e: unknown, els: { index: number }[]) => {
+      if (zoomed || !onPickGroup || !els.length) return;
+      const g = groupOfFlow(model.flows[els[0]!.index]!);
+      if (g) onPickGroup(g);
+    },
+    onHover: (e: { native?: { target?: HTMLElement } }, els: unknown[]) => {
+      const el = e.native?.target;
+      if (el) el.style.cursor = !zoomed && onPickGroup && els.length ? 'pointer' : 'default';
+    },
     plugins: {
       legend: { display: false },
       datalabels: { display: false },

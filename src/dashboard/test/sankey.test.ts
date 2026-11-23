@@ -48,3 +48,19 @@ test('sankey: spending above income shows a Shortfall feeding Total Income', () 
   assert.equal(m.flows.some((f) => f.to === SAVED), false);
   assert.equal(buildSankey([tx(2000, 'Amex')], tax, ctx), null, 'only transfers → nothing to draw');
 });
+
+test('sankey zoom: one group → its categories → biggest merchants; transfers listed separately', async () => {
+  const { buildGroupSankey, transfersLeftOut, merchantLabel } = await import('../lib/finance-ui/sankey');
+  const row = (amt: number, cat: string, desc: string): Txn => ({ ...tx(amt, cat), desc });
+  const rows = [
+    row(-100, 'Groceries', 'PUBLIX #1234 MIAMI'), row(-50, 'Groceries', 'PUBLIX #99 MIAMI'), row(20, 'Groceries', 'PUBLIX REFUND'),
+    row(-60, 'Eating Out', 'CHIPOTLE 2231'), row(-2000, 'Amex', 'AMEX PAYMENT'), row(2000, 'Amex', 'PAYMENT THANK YOU'), row(-1500, 'Repairs', 'PLUMBER'),
+  ];
+  assert.equal(merchantLabel('PUBLIX #1234 MIAMI'), 'PUBLIX MIAMI');
+  const m = buildGroupSankey(rows, tax, ctx, 'Food')!;
+  assert.equal(m.spending, 190, 'same net as the cards: 150 + 60 − 20 refund');
+  assert.deepEqual(m.flows.filter((f) => f.from === 'grp:Food').map((f) => [f.to, f.flow]), [['cat:Groceries', 130], ['cat:Eating Out', 60]]);
+  const groceryMerchants = m.flows.filter((f) => f.from === 'cat:Groceries');
+  assert.equal(sum(groceryMerchants.map((f) => f.flow)), 130, 'merchant flows balance their category');
+  assert.deepEqual(transfersLeftOut(rows, ctx), [{ cat: 'Amex', count: 2, out: 2000, in: 2000 }]);
+});

@@ -15,8 +15,10 @@ const NO_FILTERS = ['/finance/attribution'];
 
 /** The global filters: every value here applies to every finance page. */
 function FilterBar() {
-  const { years, months, selYears, selMonths, setSelYears, setSelMonths, tax, props, filters, setFilters, clearFilters, propertyOptions } =
-    useFinance();
+  const {
+    years, months, selYears, selMonths, setSelYears, setSelMonths, tax, props, filters, setFilters, clearFilters, propertyOptions,
+    excludeInvestments, setExcludeInvestments,
+  } = useFinance();
   const linkedProperty = filters.linkedPropertyId ? propertyOptions.find((p) => p.id === filters.linkedPropertyId) : null;
   const linkedProject = filters.linkedProjectId
     ? propertyOptions.flatMap((p) => p.projects).find((w) => w.id === filters.linkedProjectId)
@@ -85,6 +87,21 @@ function FilterBar() {
         onChange={(e) => setFilters({ search: e.target.value })}
         className="w-44 rounded-lg border border-gray-300 px-2.5 py-1 text-sm"
       />
+      <label
+        className={`flex cursor-pointer select-none items-center gap-1.5 rounded-lg border px-2.5 py-1 text-sm ${
+          excludeInvestments ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+        }`}
+        title="Leave out rent, mortgage / PITI, property costs and anything assigned to a property"
+      >
+        <input
+          type="checkbox"
+          aria-label="Exclude investments"
+          className="h-3.5 w-3.5 accent-white"
+          checked={excludeInvestments}
+          onChange={(e) => setExcludeInvestments(e.target.checked)}
+        />
+        Exclude investments
+      </label>
       {filters.linkedPropertyId && (
         <button
           onClick={() => setFilters({ linkedPropertyId: null })}

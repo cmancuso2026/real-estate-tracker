@@ -12,6 +12,7 @@ import {
 } from '@/lib/finance-ui/categoryTable';
 import { fmt } from '@/lib/finance-ui/format';
 import { GROUP_ICON } from '@/lib/finance-ui/taxonomy';
+import { merchantLabel } from '@/lib/finance-ui/sankey';
 
 const colBg: Record<ColClass, string> = {
   '': '',
@@ -42,6 +43,8 @@ export default function FinanceSpendingPage() {
   // Groups and properties start collapsed (as on the old page).
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
   const [openProps, setOpenProps] = useState<Set<number>>(new Set());
+  // Category rows you clicked open to see their merchants ('<propertyId|>::<cat>').
+  const [openCats, setOpenCats] = useState<Set<string>>(new Set());
 
   const table = useMemo(
     () => buildCategoryTable(filteredTxns, comparePool, tax, props, view, compare),
@@ -51,6 +54,56 @@ export default function FinanceSpendingPage() {
   useEffect(() => {
     if (compare && !options.some((o) => o.value === compare)) setCompare('');
   }, [options, compare]);
+
+  /** Merchants behind one row for the selected period: largest first. */
+  const merchantsOf = (cat: string, propertyId: number | null) => {
+    const m = new Map<string, { total: number; count: number }>();
+    for (const t of filteredTxns) {
+      if (t.cat !== cat) continue;
+      let amt = t.amt;
+      if (propertyId != null) {
+        const mapped = props.find((p) => p.id === propertyId)?.categories.includes(cat);
+        const share = t.allocations.filter((a) => a.property_id === propertyId).reduce((s, a) => s + a.amount, 0);
+        if (!mapped && !share) continue;
+        if (!mapped) amt = share;
+      } else if (props.some((p) => p.categories.includes(cat))) {
+        continue;
+      } else if (t.allocations.length) {
+        amt = t.amt - t.allocations.reduce((s, a) => s + a.amount, 0); // the part not assigned to a property
+        if (Math.abs(amt) < 0.005) continue;
+      }
+      const k = merchantLabel(t.desc);
+      const e = m.get(k) ?? { total: 0, count: 0 };
+      e.total += amt;
+      e.count += 1;
+      m.set(k, e);
+    }
+    return [...m.entries()].sort((a, b) => Math.abs(b[1].total) - Math.abs(a[1].total));
+  };
+  const catKey = (cat: string, pid: number | null) => `${pid ?? ''}::${cat}`;
+  const drillRow = (cat: string, pid: number | null, indent: string) => {
+    const list = merchantsOf(cat, pid);
+    return (
+      <tr className="bg-gray-50/60" data-testid="merchant-drill">
+        <td colSpan={table.cols.length + 1} className={`py-2 ${indent} pr-4`}>
+          {list.length === 0 ? (
+            <span className="text-xs text-gray-400">No transactions in the selected period.</span>
+          ) : (
+            <div className="grid max-w-2xl grid-cols-[1fr_auto_auto] gap-x-6 gap-y-0.5 text-xs">
+              {list.slice(0, 15).map(([name, e]) => (
+                <FragmentRows key={name}>
+                  <span className="truncate text-gray-700">{name}</span>
+                  <span className="text-right text-gray-400">{e.count}×</span>
+                  <span className={`text-right tabular ${e.total < 0 ? 'text-red-600' : 'text-green-700'}`}>{fmt(e.total)}</span>
+                </FragmentRows>
+              ))}
+              {list.length > 15 && <span className="col-span-3 text-gray-400">…and {list.length - 15} more</span>}
+            </div>
+          )}
+        </td>
+      </tr>
+    );
+  };
 
   const groupNames = Object.keys(tax.groups);
   const allCollapsed = groupNames.length > 0 && groupNames.every((g) => !openGroups.has(g));
@@ -145,7 +198,12 @@ export default function FinanceSpendingPage() {
                             </tr>
                             {pOpen &&
                               p.cats.map((r, i) => (
-                                <tr key={r.cat} className="border-t border-gray-50" data-testid={`prop-row-${p.prop.id}`}>
+                                <FragmentRows key={r.cat}>
+                                <tr
+                                  className="cursor-pointer border-t border-gray-50 hover:bg-gray-50"
+                                  data-testid={`prop-row-${p.prop.id}`}
+                                  onClick={() => setOpenCats((s) => toggle(s, catKey(r.cat, p.prop.id)))}
+                                >
                                   <td className="py-1.5 pl-16 pr-4 text-gray-700">
                                     {r.side && r.side !== p.cats[i - 1]?.side && (
                                       <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-wider text-gray-400">
@@ -158,19 +216,35 @@ export default function FinanceSpendingPage() {
                                     <AmountCell key={i} cell={c} cls={table.cols[i]!.cls} />
                                   ))}
                                 </tr>
+                                {openCats.has(catKey(r.cat, p.prop.id)) && drillRow(r.cat, p.prop.id, 'pl-24')}
+                                </FragmentRows>
                               ))}
                           </FragmentRows>
                         );
                       })}
                     {open &&
-                      g.standalone.map((r) => (
-                        <tr key={r.cat} className="border-t border-gray-50">
-                          <td className="py-1.5 pl-12 pr-4 text-gray-700">{r.cat}</td>
-                          {r.cells.map((c, i) => (
-                            <AmountCell key={i} cell={c} cls={table.cols[i]!.cls} />
-                          ))}
-                        </tr>
-                      ))}
+                      g.standalone.map((r) => {
+                        const k = catKey(r.cat, null);
+                        const cOpen = openCats.has(k);
+                        return (
+                          <FragmentRows key={r.cat}>
+                            <tr
+                              className="cursor-pointer border-t border-gray-50 hover:bg-gray-50"
+                              onClick={() => setOpenCats((s) => toggle(s, k))}
+                              data-testid="cat-row"
+                            >
+                              <td className="py-1.5 pl-12 pr-4 text-gray-700">
+                                <span className="mr-1.5 inline-block w-3 text-gray-300">{cOpen ? '▾' : '▸'}</span>
+                                {r.cat}
+                              </td>
+                              {r.cells.map((c, i) => (
+                                <AmountCell key={i} cell={c} cls={table.cols[i]!.cls} />
+                              ))}
+                            </tr>
+                            {cOpen && drillRow(r.cat, null, 'pl-20')}
+                          </FragmentRows>
+                        );
+                      })}
                   </FragmentRows>
                 );
               })}

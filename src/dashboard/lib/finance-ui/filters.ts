@@ -57,3 +57,23 @@ export function applyGlobalFilters(
     return true;
   });
 }
+
+/** The group that holds rent, mortgage / PITI and property costs. */
+export const INVESTMENTS_GROUP = 'Investments';
+
+/**
+ * "Exclude investments": leave out everything to do with the rental
+ * properties — the Investments group (rent, PITI, repairs, lawn care…), any
+ * category mapped to a property (e.g. a loan like Figure Lending), and any
+ * transaction you assigned to a property, whatever its category. What remains
+ * is personal spending and income.
+ */
+export function isInvestmentRelated(t: Txn, tax: Taxonomy, props: PropertyGroup[]): boolean {
+  if (groupOf(tax, t.cat) === INVESTMENTS_GROUP) return true;
+  if (propertyOfCat(t.cat, props)) return true;
+  return (t.allocations ?? []).length > 0;
+}
+
+export function withoutInvestments(rows: Txn[], tax: Taxonomy, props: PropertyGroup[]): Txn[] {
+  return rows.filter((t) => !isInvestmentRelated(t, tax, props));
+}

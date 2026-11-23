@@ -13,7 +13,7 @@ import {
   type PropertyOption,
   type Txn,
 } from '@/lib/finance-ui/types';
-import { applyGlobalFilters, EMPTY_FILTERS, type GlobalFilters } from '@/lib/finance-ui/filters';
+import { applyGlobalFilters, EMPTY_FILTERS, withoutInvestments, type GlobalFilters } from '@/lib/finance-ui/filters';
 import {
   defaultMonthSelection,
   defaultYearSelection,
@@ -22,6 +22,8 @@ import {
   yearsInData,
 } from '@/lib/finance-ui/period';
 import { DEFINITIONS, metricsContext, type MetricsCtx } from '@/lib/finance-ui/metrics';
+
+const EXCLUDE_KEY = 'mancuso.finance.excludeInvestments';
 
 /**
  * One shared copy of the finance data for every /finance page, like the old
@@ -48,6 +50,9 @@ interface FinanceData {
   clearFilters: () => void;
   /** Rows in the selected years × months with the global filters applied: what every view shows. */
   filteredTxns: Txn[];
+  /** Leave out rent, PITI, property costs and anything assigned to a property (remembered per browser). */
+  excludeInvestments: boolean;
+  setExcludeInvestments: (v: boolean) => void;
   /** All years/months with the global filters applied (for "Compare to"). */
   comparePool: Txn[];
   /** Rows in the selected years × months, before the other filters. */
@@ -89,6 +94,22 @@ export function FinanceDataProvider({ children }: { children: React.ReactNode })
   const [selYears, setSelYearsState] = useState<Set<string>>(new Set());
   const [selMonths, setSelMonthsState] = useState<Set<string>>(new Set());
   const [filters, setFiltersState] = useState<GlobalFilters>(EMPTY_FILTERS);
+  const [excludeInvestments, setExcludeState] = useState(false);
+  useEffect(() => {
+    try {
+      setExcludeState(window.localStorage.getItem(EXCLUDE_KEY) === '1');
+    } catch {
+      /* not remembered */
+    }
+  }, []);
+  const setExcludeInvestments = useCallback((v: boolean) => {
+    setExcludeState(v);
+    try {
+      window.localStorage.setItem(EXCLUDE_KEY, v ? '1' : '0');
+    } catch {
+      /* still applies, just not remembered */
+    }
+  }, []);
   const [settingsList, setSettingsList] = useState<CategorySetting[]>([]);
   const [propertyOptions, setPropertyOptions] = useState<PropertyOption[]>([]);
 
@@ -151,7 +172,10 @@ export function FinanceDataProvider({ children }: { children: React.ReactNode })
   const years = useMemo(() => yearsInData(txns), [txns]);
   const months = useMemo(() => monthsInData(txns), [txns]);
   const periodTxns = useMemo(() => filterByPeriod(txns, selYears, selMonths, tax), [txns, selYears, selMonths, tax]);
-  const comparePool = useMemo(() => applyGlobalFilters(txns, filters, tax, props), [txns, filters, tax, props]);
+  const comparePool = useMemo(
+    () => applyGlobalFilters(excludeInvestments ? withoutInvestments(txns, tax, props) : txns, filters, tax, props),
+    [txns, filters, tax, props, excludeInvestments],
+  );
   const filteredTxns = useMemo(
     () => filterByPeriod(comparePool, selYears, selMonths, tax),
     [comparePool, selYears, selMonths, tax],
@@ -191,6 +215,8 @@ export function FinanceDataProvider({ children }: { children: React.ReactNode })
     setFilters: (patch) => setFiltersState((f) => ({ ...f, ...patch })),
     clearFilters: () => setFiltersState(EMPTY_FILTERS),
     filteredTxns,
+    excludeInvestments,
+    setExcludeInvestments,
     comparePool,
     periodTxns,
     patchTxns,

@@ -10,10 +10,11 @@ import { fmt } from '@/lib/finance-ui/format';
 import { heroTotals } from '@/lib/finance-ui/transactions';
 import { InfoTip } from '@/components/finance/InfoTip';
 import { SankeyChart } from '@/components/finance/SankeyChart';
-import { buildSankey } from '@/lib/finance-ui/sankey';
+import { buildGroupSankey, buildSankey, transfersLeftOut } from '@/lib/finance-ui/sankey';
 
 type ChartView = 'bar' | 'sankey';
-const VIEW_KEY = 'mancuso.finance.overviewChart';
+// v2: earlier saved choices are ignored so everyone starts on Sankey once.
+const VIEW_KEY = 'mancuso.finance.overviewChart.v2';
 
 export default function FinanceOverviewPage() {
   const { filteredTxns, tax, filters, unattributedCount, metricsCtx, definitions } = useFinance();
@@ -47,7 +48,19 @@ export default function FinanceOverviewPage() {
     () => buildChart(filteredTxns, tax, filters.group, filters.category, gran, metricsCtx),
     [filteredTxns, tax, filters.group, filters.category, gran, metricsCtx],
   );
-  const sankey = useMemo(() => (view === 'sankey' ? buildSankey(filteredTxns, tax, metricsCtx) : null), [view, filteredTxns, tax, metricsCtx]);
+  const [focus, setFocus] = useState(''); // a spending group to zoom into
+  const sankey = useMemo(
+    () => (view !== 'sankey' ? null : focus ? buildGroupSankey(filteredTxns, tax, metricsCtx, focus) : buildSankey(filteredTxns, tax, metricsCtx)),
+    [view, focus, filteredTxns, tax, metricsCtx],
+  );
+  const transfers = useMemo(() => (view === 'sankey' ? transfersLeftOut(filteredTxns, metricsCtx) : []), [view, filteredTxns, metricsCtx]);
+  const spendGroups = useMemo(
+    () => (view === 'sankey' ? (buildSankey(filteredTxns, tax, metricsCtx)?.flows ?? []).filter((f) => f.from === 'total' && f.to.startsWith('grp:')).map((f) => f.to.slice(4)) : []),
+    [view, filteredTxns, tax, metricsCtx],
+  );
+  useEffect(() => {
+    if (focus && spendGroups.length && !spendGroups.includes(focus)) setFocus('');
+  }, [focus, spendGroups]);
 
   return (
     <div className="space-y-5">
@@ -152,6 +165,30 @@ export default function FinanceOverviewPage() {
           </>
           )}
         </div>
+        {view === 'sankey' && (
+          <div className="mb-2 flex flex-wrap items-center gap-2 text-sm" data-testid="sankey-focus">
+            {focus ? (
+              <>
+                <button className="rounded-lg border border-gray-300 px-2.5 py-1 text-xs font-medium hover:bg-gray-50" onClick={() => setFocus('')}>
+                  ← All money
+                </button>
+                <span className="text-gray-600">
+                  <strong>{focus}</strong>: each category and its biggest merchants
+                </span>
+              </>
+            ) : (
+              <span className="text-gray-500">Click a group (or pick one) to see its categories and merchants:</span>
+            )}
+            <select aria-label="Zoom into group" className={selectCls} value={focus} onChange={(e) => setFocus(e.target.value)}>
+              <option value="">All groups</option>
+              {spendGroups.map((g) => (
+                <option key={g} value={g}>
+                  {g}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         {view === 'sankey' ? (
           <div
             className="relative h-[32rem]"
@@ -159,7 +196,7 @@ export default function FinanceOverviewPage() {
             data-flows={sankey ? JSON.stringify({ income: sankey.income, spending: sankey.spending, flows: sankey.flows }) : ''}
           >
             {sankey ? (
-              <SankeyChart model={sankey} />
+              <SankeyChart model={sankey} onPickGroup={setFocus} />
             ) : (
               <div className="flex h-full items-center justify-center text-sm text-gray-400">No income or spending in this period.</div>
             )}
@@ -173,6 +210,21 @@ export default function FinanceOverviewPage() {
         >
           {model && <FinanceChart model={model} kind={kind} stack={stack} />}
         </div>
+        )}
+        {view === 'sankey' && transfers.length > 0 && (
+          <p className="mt-3 border-t border-gray-100 pt-2 text-xs text-gray-500" data-testid="transfers-note">
+            <strong className="font-medium text-gray-700">Not shown: transfers between your own accounts</strong> —{' '}
+            {transfers.map((t, i) => (
+              <span key={t.cat}>
+                {i > 0 && ', '}
+                {t.cat} ({t.count}: {t.out > 0 && `$${Math.round(t.out).toLocaleString()} out`}
+                {t.out > 0 && t.in > 0 && ' / '}
+                {t.in > 0 && `$${Math.round(t.in).toLocaleString()} in`})
+              </span>
+            ))}
+            . Paying a credit card from checking, or moving money to Venmo, isn&apos;t new spending: the purchases themselves
+            are already counted. That&apos;s the Financials group; it&apos;s left out of income, spending and cash flow.
+          </p>
         )}
       </Card>
     </div>
