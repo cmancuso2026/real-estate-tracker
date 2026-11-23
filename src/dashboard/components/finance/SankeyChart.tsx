@@ -55,8 +55,16 @@ export function SankeyChart({ model, onPickGroup }: { model: SankeyModel; onPick
         data: model.flows,
         labels: model.labels,
         column: model.columns,
-        colorFrom: (c: { dataset: { data: unknown[] }; dataIndex: number }) => color((c.dataset.data[c.dataIndex] as { from: string }).from),
-        colorTo: (c: { dataset: { data: unknown[] }; dataIndex: number }) => color((c.dataset.data[c.dataIndex] as { to: string }).to),
+        // Chart.js can ask for an index from the previous picture while it switches
+        // (e.g. right after a click zooms in), so a missing flow gets a neutral colour.
+        colorFrom: (c: { dataset: { data: unknown[] }; dataIndex: number }) => {
+          const f = c.dataset.data[c.dataIndex] as { from?: string } | undefined;
+          return f?.from ? color(f.from) : '#ced4da';
+        },
+        colorTo: (c: { dataset: { data: unknown[] }; dataIndex: number }) => {
+          const f = c.dataset.data[c.dataIndex] as { to?: string } | undefined;
+          return f?.to ? color(f.to) : '#ced4da';
+        },
         colorMode: 'gradient' as const,
         borderWidth: 0,
         nodeWidth: 12,
@@ -74,8 +82,10 @@ export function SankeyChart({ model, onPickGroup }: { model: SankeyModel; onPick
     animation: false,
     onClick: (_e: unknown, els: { index: number }[]) => {
       if (zoomed || !onPickGroup || !els.length) return;
-      const g = groupOfFlow(model.flows[els[0]!.index]!);
-      if (g) onPickGroup(g);
+      const f = model.flows[els[0]!.index];
+      const g = f ? groupOfFlow(f) : null;
+      // let Chart.js finish handling this click before the picture changes
+      if (g) setTimeout(() => onPickGroup(g), 0);
     },
     onHover: (e: { native?: { target?: HTMLElement } }, els: unknown[]) => {
       const el = e.native?.target;
@@ -94,7 +104,8 @@ export function SankeyChart({ model, onPickGroup }: { model: SankeyModel; onPick
         callbacks: {
           title: () => '',
           label: (c: { raw: unknown }) => {
-            const f = c.raw as { from: string; to: string; flow: number };
+            const f = c.raw as { from: string; to: string; flow: number } | undefined;
+            if (!f) return '';
             return `${model.labels[f.from]} → ${model.labels[f.to]}: ${money(f.flow)} (${pctOfIncome(f.flow)})`;
           },
         },

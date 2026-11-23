@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { OverviewTab } from '@/components/OverviewTab';
 import { ProjectsTab } from '@/components/ProjectsTab';
 import { PropertySpendTab } from '@/components/PropertySpendTab';
+import { DOC_TYPES, takePendingDoc } from '@/lib/pendingDoc';
 
 type Tab = 'overview' | 'tenants' | 'rent' | 'leases' | 'projects' | 'spend' | 'escrow' | 'insurance';
 
@@ -61,6 +62,50 @@ function ToggleChip({ label, active, onClick, color='blue' }: { label: string; a
 }
 function Input({ label, value, onChange, type='text', placeholder='' }: { label: string; value: string; onChange:(v:string)=>void; type?: string; placeholder?: string }) {
   return <div><label className="mb-1 block text-xs font-medium text-gray-500">{label}</label><input type={type} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" /></div>;
+}
+
+
+// ── Lease history grouped by tenant ─────────────────────────────────────────
+// Leases for the same tenant on the same unit read as one stay: one card with
+// the dates covered, the number of leases and the rent over time, then one
+// compact row per lease (newest first), details on demand.
+const fmtMonth = (d: string) => {
+  const [y, m] = d.split('-');
+  return `${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(m) - 1] ?? m} ${y}`;
+};
+function gapBetween(prevEnd: string, nextStart: string): string | null {
+  const a = new Date(prevEnd + 'T00:00:00Z'); a.setUTCDate(a.getUTCDate() + 1);
+  const b = new Date(nextStart + 'T00:00:00Z');
+  if (!(b > a) || Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return null;
+  const days = Math.round((b.getTime() - a.getTime()) / 86400000);
+  if (days < 20) return null; // a few days between leases isn't a gap
+  const end = new Date(b); end.setUTCDate(end.getUTCDate() - 1);
+  return `${fmtMonth(a.toISOString().slice(0, 10))} – ${fmtMonth(end.toISOString().slice(0, 10))}`;
+}
+function leaseGroups(list: Lease[]) {
+  const today = new Date().toISOString().slice(0, 10);
+  const by = new Map<string, Lease[]>();
+  for (const l of list) {
+    const k = `${l.unit_label}|${(l.tenant_name ?? '').trim().toLowerCase()}`;
+    if (!by.has(k)) by.set(k, []);
+    by.get(k)!.push(l);
+  }
+  return [...by.entries()]
+    .map(([key, ls]) => {
+      const leases = [...ls].sort((a, b) => b.start_date.localeCompare(a.start_date));
+      const from = leases[leases.length - 1]!.start_date;
+      const to = leases.reduce((m, l) => (l.end_date > m ? l.end_date : m), leases[0]!.end_date);
+      const months = Math.max(1, Math.round((Date.parse(to) - Date.parse(from)) / (30.44 * 86400000)));
+      const y = Math.floor(months / 12), mo = months % 12;
+      const years = y ? `${y} yr${y === 1 ? '' : 's'}${mo ? ` ${mo} mo` : ''}` : `${mo} mo`;
+      const rentPath = [...leases].reverse().map((l) => l.rent_amount).filter((r, i, a) => i === 0 || r !== a[i - 1]);
+      return {
+        key, leases, from, to, years, rentPath,
+        tenant: leases[0]!.tenant_name, unit: leases[0]!.unit_label,
+        current: leases.some((l) => l.start_date <= today && today <= l.end_date),
+      };
+    })
+    .sort((a, b) => Number(b.current) - Number(a.current) || b.to.localeCompare(a.to));
 }
 
 const TABS: {id:Tab;label:string}[] = [{id:'overview',label:'Overview'},{id:'tenants',label:'Tenants'},{id:'rent',label:'Rent'},{id:'leases',label:'Leases'},{id:'projects',label:'Projects'},{id:'spend',label:'Repairs & spend'},{id:'escrow',label:'Escrow'},{id:'insurance',label:'Insurance'}];
@@ -630,6 +675,7 @@ export default function PropertyDetailPage() {
   const [rentUnitFilter, setRentUnitFilter] = useState<string>('all');
   const [editTenantForm, setEditTenantForm] = useState({first_name:"",last_name:"",email:"",phone:"",notes:""});
   const [loading, setLoading] = useState(true);
+  const [openLeaseIds, setOpenLeaseIds] = useState<Set<number>>(new Set());
   const [uploadingLease, setUploadingLease] = useState(false);
   const [uploadingEscrow, setUploadingEscrow] = useState(false);
   const [uploadingInsurance, setUploadingInsurance] = useState(false);
@@ -728,6 +774,56 @@ export default function PropertyDetailPage() {
     if (!res.ok) { setUploadError('Upload failed: ' + (data.error ?? 'unknown')); return null; }
     return data.extracted;
   }
+
+  // One handler per document type, used by each tab's "Upload … PDF" button and
+  // by a PDF handed over from Upload → Property documents.
+  async function handleLeaseFile(file: File) {
+    const extracted = await uploadPdf(file, 'lease', setUploadingLease);
+    if (extracted) {
+      setLeaseExtracted(extracted);
+      setLeaseTenantFirst(extracted.tenant_first_name ?? '');
+      setLeaseTenantLast(extracted.tenant_last_name ?? '');
+      setLeaseTenantMode('new');
+      setLeaseSelectedTenant(''); setLeaseSelectedUnit('');
+    }
+  }
+  async function handleEscrowFile(file: File) {
+    const extracted = await uploadPdf(file, 'escrow', setUploadingEscrow);
+    if (extracted) { setEscrowExtracted(extracted); setEscrowLender(''); }
+  }
+  async function handleInsuranceFile(file: File) {
+    const extracted = await uploadPdf(file, 'insurance', setUploadingInsurance);
+    if (extracted) setInsuranceExtracted(extracted);
+  }
+  async function handlePitiFile(file: File) {
+    setUploadingPiti(true);
+    const form = new FormData();
+    form.append('file', file);
+    form.append('property_id', id);
+    try {
+      const res = await fetch('/api/v2/piti', { method: 'POST', body: form });
+      if (res.ok) { const d = await res.json(); setPitiExtracted(d.extracted); }
+      else alert('Failed to parse mortgage statement');
+    } catch { alert('Upload error'); }
+    finally { setUploadingPiti(false); }
+  }
+
+  // A PDF dropped on Upload → Property documents for this property: open its
+  // tab and run the same reader, so the usual review screen appears.
+  const pendingTaken = useRef(false);
+  useEffect(() => {
+    if (loading || pendingTaken.current) return;
+    pendingTaken.current = true;
+    const doc = takePendingDoc(Number(id));
+    if (!doc) return;
+    const tabFor = DOC_TYPES.find((d) => d.type === doc.type)?.tab as Tab | undefined;
+    if (tabFor) switchTab(tabFor);
+    if (doc.type === 'lease') void handleLeaseFile(doc.file);
+    else if (doc.type === 'escrow') void handleEscrowFile(doc.file);
+    else if (doc.type === 'insurance') void handleInsuranceFile(doc.file);
+    else if (doc.type === 'mortgage') void handlePitiFile(doc.file);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
 
   async function confirmLease() {
     if (!leaseExtracted || leaseSaving) return;
@@ -1004,14 +1100,7 @@ export default function PropertyDetailPage() {
                 <input type="file" accept=".pdf" className="hidden" disabled={uploadingLease} onClick={e=>{(e.target as HTMLInputElement).value='';}} onChange={async e=>{
                   const file=e.target.files?.[0];if(!file||uploadingLease)return;
                   e.target.value='';
-                  const extracted=await uploadPdf(file,'lease',setUploadingLease);
-                  if(extracted){
-                    setLeaseExtracted(extracted);
-                    setLeaseTenantFirst(extracted.tenant_first_name??'');
-                    setLeaseTenantLast(extracted.tenant_last_name??'');
-                    setLeaseTenantMode('new');
-                    setLeaseSelectedTenant(''); setLeaseSelectedUnit('');
-                  }
+                  await handleLeaseFile(file);
                 }} />
               </label>
               <Link href={`/properties/${id}/leases/new`} className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700">+ Add Manually</Link>
@@ -1061,10 +1150,34 @@ export default function PropertyDetailPage() {
           <div className="space-y-3">
             {leases.length===0&&!leaseExtracted
               ?<div className="rounded-xl border border-dashed border-gray-300 p-8 text-center text-gray-400">No leases yet. Upload a PDF or add manually.</div>
-              :(leaseUnitFilter==='all'?leases:leases.filter(l=>l.unit_label===leaseUnitFilter)).map(l=>(
-                <div key={l.id} className="rounded-xl border border-gray-200">
-                  {editingLease?.id===l.id ? (
-                    // EDIT MODE
+              :leaseGroups(leaseUnitFilter==='all'?leases:leases.filter(l=>l.unit_label===leaseUnitFilter)).map(g=>(
+                <div key={g.key} className="overflow-hidden rounded-xl border border-gray-200 bg-white" data-testid="lease-group">
+                  {/* One tenant on one unit: how long, and rent over time */}
+                  <div className="flex flex-wrap items-start justify-between gap-3 border-b border-gray-100 bg-gray-50/60 px-4 py-3">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-semibold">{g.tenant}</span>
+                        <span className="text-sm text-gray-500">Unit {g.unit}</span>
+                        {g.current&&<span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">Current</span>}
+                      </div>
+                      <div className="mt-0.5 text-sm text-gray-500">
+                        {fmtMonth(g.from)} – {fmtMonth(g.to)} · {g.leases.length} lease{g.leases.length===1?'':'s'} · {g.years}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-lg font-semibold tabular">{fmt$(g.leases[0]!.rent_amount)}<span className="text-sm font-normal text-gray-500">/mo</span></div>
+                      {g.rentPath.length>1&&<div className="text-xs text-gray-500 tabular" title="Rent over time, oldest first">{g.rentPath.map(fmt$).join(' → ')}</div>}
+                    </div>
+                  </div>
+                  <div className="divide-y divide-gray-100">
+                    {g.leases.map((l,k)=>{
+                      const older=g.leases[k+1];
+                      const gap=older?gapBetween(older.end_date,l.start_date):null;
+                      const open=openLeaseIds.has(l.id);
+                      return (
+                        <div key={l.id}>
+                          {editingLease?.id===l.id ? (
+                            // EDIT MODE
                     <div className="p-5 space-y-4">
                       <div className="flex items-center justify-between">
                         <h3 className="font-semibold">Editing — {l.tenant_name} · Unit {l.unit_label}</h3>
@@ -1088,33 +1201,34 @@ export default function PropertyDetailPage() {
                         {editSaving?'Saving…':'Save Changes'}
                       </button>
                     </div>
-                  ) : (
-                    // VIEW MODE
-                    <div className="p-4">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <span className="font-medium">{l.tenant_name}</span>
-                          <span className="ml-2 text-sm text-gray-500">· Unit {l.unit_label}</span>
-                          {l.extracted_by_ai&&<span className="ml-2 rounded-full bg-purple-100 px-2 py-0.5 text-xs text-purple-700">AI parsed</span>}
+                          ) : (
+                            <div className="px-4 py-2.5">
+                              <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
+                                <span className="w-44 whitespace-nowrap font-medium text-gray-800" title={`${l.start_date} → ${l.end_date}`}>{fmtMonth(l.start_date)} – {fmtMonth(l.end_date)}</span>
+                                <span className="w-24 tabular">{fmt$(l.rent_amount)}/mo</span>
+                                <span className="w-32 text-gray-500">{l.security_deposit?`Deposit ${fmt$(l.security_deposit)}`:'No deposit listed'}</span>
+                                <span className="text-gray-500">{l.late_fee_amount?`Late fee ${fmt$(l.late_fee_amount)}${l.late_fee_grace_days?` after ${l.late_fee_grace_days} days`:''}`:''}</span>
+                                {l.extracted_by_ai&&<span className="rounded-full bg-purple-50 px-2 py-0.5 text-[11px] text-purple-600">AI parsed</span>}
+                                <span className="ml-auto flex items-center gap-3">
+                                  <button onClick={()=>setOpenLeaseIds(s=>{const n=new Set(s);if(n.has(l.id))n.delete(l.id);else n.add(l.id);return n;})} className="text-xs font-medium text-gray-500 hover:text-gray-900" data-testid="lease-details-toggle">{open?'Hide details':'Details'}</button>
+                                  <button onClick={()=>startEditLease(l)} className="text-xs text-blue-600 hover:underline">Edit</button>
+                                  <button onClick={()=>deleteLease(l.id)} disabled={deletingLeaseId===l.id} className="text-xs text-red-400 hover:text-red-600 disabled:opacity-50">{deletingLeaseId===l.id?'Deleting…':'Delete'}</button>
+                                </span>
+                              </div>
+                              {open&&(
+                                <div className="mt-2 flex flex-wrap gap-3">
+                                  {l.utilities_landlord&&JSON.parse(l.utilities_landlord).length>0&&<Tags label="Landlord pays" items={JSON.parse(l.utilities_landlord)} />}
+                                  {l.utilities_tenant&&JSON.parse(l.utilities_tenant).length>0&&<Tags label="Tenant pays" items={JSON.parse(l.utilities_tenant)} color="green" />}
+                                  {l.equipment_included&&JSON.parse(l.equipment_included).length>0&&<Tags label="Included" items={JSON.parse(l.equipment_included)} color="purple" />}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          {gap&&<div className="bg-amber-50/60 px-4 py-1 text-xs text-amber-700">No lease on file for {gap}</div>}
                         </div>
-                        <div className="flex items-center gap-3">
-                          <span className="text-sm font-medium tabular">{fmt$(l.rent_amount)}/mo</span>
-                          <button onClick={()=>startEditLease(l)} className="text-xs text-blue-600 hover:underline">Edit</button>
-                          <button onClick={()=>deleteLease(l.id)} disabled={deletingLeaseId===l.id} className="text-xs text-red-400 hover:text-red-600 disabled:opacity-50">{deletingLeaseId===l.id?'Deleting…':'Delete'}</button>
-                        </div>
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-4 text-sm text-gray-500">
-                        <span>{l.start_date} → {l.end_date}</span>
-                        {l.security_deposit&&<span>Deposit: {fmt$(l.security_deposit)}</span>}
-                        {l.late_fee_amount&&<span>Late fee: {fmt$(l.late_fee_amount)}</span>}
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-3">
-                        {l.utilities_landlord&&JSON.parse(l.utilities_landlord).length>0&&<Tags label="Landlord pays" items={JSON.parse(l.utilities_landlord)} />}
-                        {l.utilities_tenant&&JSON.parse(l.utilities_tenant).length>0&&<Tags label="Tenant pays" items={JSON.parse(l.utilities_tenant)} color="green" />}
-                        {l.equipment_included&&JSON.parse(l.equipment_included).length>0&&<Tags label="Included" items={JSON.parse(l.equipment_included)} color="purple" />}
-                      </div>
-                    </div>
-                  )}
+                      );
+                    })}
+                  </div>
                 </div>
               ))}
           </div>
@@ -1227,7 +1341,7 @@ export default function PropertyDetailPage() {
             <h2 className="font-semibold text-gray-700">Escrow</h2>
             <label className={`cursor-pointer rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 ${uploadingEscrow?'opacity-50':''}`}>
               {uploadingEscrow?'Parsing…':'Upload Escrow Statement'}
-              <input type="file" accept=".pdf" className="hidden" disabled={uploadingEscrow} onChange={async e=>{const file=e.target.files?.[0];if(!file||uploadingEscrow)return;const extracted=await uploadPdf(file,'escrow',setUploadingEscrow);if(extracted){setEscrowExtracted(extracted);setEscrowLender('');}e.target.value='';}} />
+              <input type="file" accept=".pdf" className="hidden" disabled={uploadingEscrow} onChange={async e=>{const file=e.target.files?.[0];if(!file||uploadingEscrow)return;await handleEscrowFile(file);e.target.value='';}} />
             </label>
           </div>
           {escrowExtracted&&(
@@ -1361,16 +1475,8 @@ export default function PropertyDetailPage() {
                 <input type="file" accept=".pdf" className="hidden" disabled={uploadingPiti} onChange={async e => {
                   const file = e.target.files?.[0];
                   if (!file || uploadingPiti) return;
-                  setUploadingPiti(true);
-                  const form = new FormData();
-                  form.append('file', file);
-                  form.append('property_id', id);
-                  try {
-                    const res = await fetch('/api/v2/piti', { method: 'POST', body: form });
-                    if (res.ok) { const d = await res.json(); setPitiExtracted(d.extracted); }
-                    else alert('Failed to parse mortgage statement');
-                  } catch { alert('Upload error'); }
-                  finally { setUploadingPiti(false); e.target.value = ''; }
+                  await handlePitiFile(file);
+                  e.target.value = '';
                 }} />
               </label>
             </div>
@@ -1471,7 +1577,7 @@ export default function PropertyDetailPage() {
             <h2 className="font-semibold text-gray-700">Insurance Policies</h2>
             <label className={`cursor-pointer rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 ${uploadingInsurance?'opacity-50':''}`}>
               {uploadingInsurance?'Parsing…':'Upload Policy PDF'}
-              <input type="file" accept=".pdf" className="hidden" disabled={uploadingInsurance} onChange={async e=>{const file=e.target.files?.[0];if(!file||uploadingInsurance)return;const extracted=await uploadPdf(file,'insurance',setUploadingInsurance);if(extracted)setInsuranceExtracted(extracted);e.target.value='';}} />
+              <input type="file" accept=".pdf" className="hidden" disabled={uploadingInsurance} onChange={async e=>{const file=e.target.files?.[0];if(!file||uploadingInsurance)return;await handleInsuranceFile(file);e.target.value='';}} />
             </label>
           </div>
 
