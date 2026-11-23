@@ -31,7 +31,7 @@ async function recategorizeUncategorized(knex, { dryRun = false, changedIds = nu
   const targets = await knex('transactions')
     .where('category', 'Uncategorized')
     .andWhere('is_manual', false)
-    .select('id', 'date', 'description', 'source', 'property_id');
+    .select('id', 'date', 'description', 'source', 'amount');
 
   const results = targets.map((t) => {
     let { category, group, confidence } = categorizeWithHistory(
@@ -66,6 +66,14 @@ async function recategorizeUncategorized(knex, { dryRun = false, changedIds = nu
     };
   }
 
+  // A rule with a property gives a row 100% to it, unless it already has allocations.
+  const ruleRows = results.filter((r) => r.category !== 'Uncategorized' && r.rule && r.rule.property_id);
+  const hasAlloc = new Set(
+    ruleRows.length
+      ? (await knex('transaction_allocations').whereIn('transaction_id', ruleRows.map((r) => r.t.id)).distinct('transaction_id')).map((a) => Number(a.transaction_id))
+      : [],
+  );
+
   await knex.transaction(async (trx) => {
     for (const r of results) {
       if (r.category !== 'Uncategorized') {
@@ -75,10 +83,10 @@ async function recategorizeUncategorized(knex, { dryRun = false, changedIds = nu
           category_group: r.group,
           is_manual: false,
           confidence_score: r.confidence,
-          ...(r.rule && r.rule.property_id && r.t.property_id == null
-            ? { property_id: r.rule.property_id, work_order_id: r.rule.work_order_id }
-            : {}),
         });
+        if (r.rule && r.rule.property_id && !hasAlloc.has(Number(r.t.id)) && Number(r.t.amount) !== 0) {
+          await trx('transaction_allocations').insert({ transaction_id: r.t.id, property_id: r.rule.property_id, unit_id: null, work_order_id: r.rule.work_order_id || null, amount: r.t.amount, percent: 100, input_mode: 'percent' });
+        }
       } else if (r.confidence != null) {
         // Still uncategorized, but record how close the vote was.
         await trx('transactions').where({ id: r.t.id }).update({ confidence_score: r.confidence });

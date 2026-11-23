@@ -133,6 +133,16 @@ For each uploaded transaction, the first of these that applies wins:
 
 Renamed or merged categories keep working: their old names point to the new category. "Admin → Merchant rules → Test a description" shows which step wins for any description.
 
+## Splitting a transaction across properties
+
+A transaction's property attribution lives in `transaction_allocations`: one row per property (with an optional unit and project) and an amount with the transaction's sign. Picking one property saves a single 100% row. **Split** (in the property picker on Transactions and Needs Property) divides it by percentages or by dollar amounts:
+
+- Percentages must total 100% and dollar amounts must total the transaction. Amounts are rounded to cents and the last row takes the remainder, so the rows always add up exactly. Save stays disabled until they balance, and the API (`PUT /api/finance/transactions/:id/allocations`) rejects anything else with a 400.
+- A transaction counts as attributed only when it is fully allocated. A partly allocated row stays in Needs Property and shows how much is unallocated.
+- A unit or project must belong to the row's property.
+- Splits survive re-uploads: like category overrides, they are remembered by the bank row's hash.
+- Roll-ups use each property's share: per-property cash flow on the Overview, a property's Repairs and spend tab, project actual spend, and vendor spend.
+
 ## How rent is recorded
 
 A transaction is a rent payment when it is money in and its category is mapped to a property as rent (Admin → Property mapping, role "income"). Whenever an upload, a category change, a merchant rule or a re-categorization produces one, it is written to `rent_collections` (`source = 'finance_upload'`, linked by `transaction_id`). The unit is found with the rules the old Import Rent page used (`src/finance/lib/rentMatch.js`), in this order: the property's only unit; the tenant's name in the description ("Zelle payment from …"); a category naming the unit ("1207 Rent"); the amount equal to exactly one unit's lease rent. The rent month, late flag and late fee come from the lease in force on the payment date (last 5 days of a month count toward the next month).
@@ -172,12 +182,13 @@ Tracker timestamps are TEXT in UTC `YYYY-MM-DD HH:MM:SS`.
 ### Finance (`src/finance/db/migrations`)
 | Table | Purpose |
 |---|---|
-| `transactions` | One row per bank transaction (expenses negative), with `property_id` / `unit_id` / `work_order_id` attribution |
+| `transactions` | One row per bank transaction (expenses negative); property attribution is in `transaction_allocations` |
 | `category_overrides`, `attribution_overrides` | Your category and property edits, keyed by dedup hash so they survive re-uploads |
 | `upload_log` | One row per uploaded file |
 | `category_groups`, `categories`, `category_aliases` | The category list (seeded from `lib/taxonomy.js`); aliases keep renamed/merged names working |
 | `custom_categories` | Categories added in the old finance app (kept as a seed source) |
 | `category_settings` | Per category: requires a property, allows project tags, default property |
+| `transaction_allocations` | A transaction's share per property (and unit / project); see Splitting above |
 | `property_category_map` | Per-property categories ("1205 Rent") → property and role (rent / PITI / expense) |
 | `merchant_rules` | Your categorization rules |
 | `admin_audit` | Change log of Admin actions |
@@ -186,4 +197,4 @@ Tracker timestamps are TEXT in UTC `YYYY-MM-DD HH:MM:SS`.
 
 ## Later (not built yet)
 
-- **Splitting a transaction across properties.** A `transaction_allocations` table (transaction, property, share) so one Home Depot receipt can be divided between properties instead of assigned to one.
+- **Split templates on merchant rules.** A merchant rule with a property gives matching transactions 100% to that property. A rule can't yet carry a split (for example Home Depot 50/50 between two properties); splits are made per transaction.

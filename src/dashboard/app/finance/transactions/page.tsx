@@ -17,7 +17,7 @@ import {
   type SortKey,
   type SortState,
 } from '@/lib/finance-ui/transactions';
-import type { ApiTxn } from '@/lib/finance-ui/types';
+import type { ApiTxn, PropertyOption, Txn } from '@/lib/finance-ui/types';
 
 const COLUMNS: { key: SortKey; label: string; right?: boolean }[] = [
   { key: 'date', label: 'Date' },
@@ -69,7 +69,7 @@ export default function FinanceTransactionsPage() {
     // A category that requires a property can't be saved without one: open the
     // picker; the category is saved together with the property there.
     const t = txns.find((x) => x.id === id);
-    if (t && !t.propertyId && requiresProperty(next)) {
+    if (t && !t.fullyAllocated && requiresProperty(next)) {
       setPicker({ id, category: next });
       return;
     }
@@ -280,9 +280,8 @@ export default function FinanceTransactionsPage() {
                     <td className="px-3 py-1.5 text-xs">
                       <PropertyCell
                         t={t}
-                        needs={!t.propertyId && requiresProperty(t.cat)}
-                        name={propertyOptions.find((p) => p.id === t.propertyId)?.name}
-                        project={propertyOptions.flatMap((p) => p.projects).find((w) => w.id === t.workOrderId)?.name}
+                        needs={!t.fullyAllocated && requiresProperty(t.cat)}
+                        options={propertyOptions}
                         onEdit={() => setPicker({ id: t.id })}
                       />
                     </td>
@@ -354,16 +353,45 @@ export default function FinanceTransactionsPage() {
 function PropertyCell({
   t,
   needs,
-  name,
-  project,
+  options,
   onEdit,
 }: {
-  t: { propertyId: number | null };
+  t: Txn;
   needs: boolean;
-  name?: string;
-  project?: string;
+  options: PropertyOption[];
   onEdit: () => void;
 }) {
+  const nameOf = (id: number) => options.find((p) => p.id === id)?.name ?? `Property ${id}`;
+  const projectOf = (id: number | null) => (id == null ? null : options.flatMap((p) => p.projects).find((w) => w.id === id)?.name ?? null);
+  const unitOf = (pid: number, id: number | null) => (id == null ? null : options.find((p) => p.id === pid)?.units.find((u) => u.id === id)?.label ?? null);
+  const partial = t.allocations.length > 0 && !t.fullyAllocated;
+  if (t.allocations.length > 1 || partial) {
+    const lines = t.allocations.map((a) => {
+      const extra = [unitOf(a.property_id, a.unit_id) && `unit ${unitOf(a.property_id, a.unit_id)}`, projectOf(a.work_order_id)].filter(Boolean).join(', ');
+      return `${nameOf(a.property_id)}${extra ? ` (${extra})` : ''}: ${fmt(a.amount)}${a.percent != null ? ` · ${a.percent}%` : ''}`;
+    });
+    if (partial && t.unallocated != null) lines.push(`Unallocated: ${fmt(t.unallocated)}`);
+    return (
+      <details className="group" data-testid="split-badge">
+        <summary className="cursor-pointer list-none" title={lines.join('\n')}>
+          <span className={`rounded-full px-2 py-0.5 font-semibold ${partial ? 'bg-orange-100 text-orange-700' : 'bg-indigo-100 text-indigo-700'}`}>
+            Split ×{t.allocations.length}
+            {partial && t.unallocated != null && ` · ${fmt(Math.abs(t.unallocated))} unallocated`}
+          </span>
+        </summary>
+        <ul className="mt-1 space-y-0.5 text-[11px] text-gray-600">
+          {lines.map((l) => (
+            <li key={l}>{l}</li>
+          ))}
+          <li>
+            <button onClick={onEdit} className="font-medium text-blue-600 hover:underline">
+              Edit split
+            </button>
+          </li>
+        </ul>
+      </details>
+    );
+  }
   if (needs) {
     return (
       <button onClick={onEdit} className="rounded-full bg-orange-100 px-2 py-0.5 font-semibold text-orange-700 hover:bg-orange-200">
@@ -378,9 +406,10 @@ function PropertyCell({
       </button>
     );
   }
+  const project = projectOf(t.workOrderId);
   return (
     <button onClick={onEdit} className="text-left hover:underline" title="Change property">
-      <span className="text-gray-700">{name ?? `Property ${t.propertyId}`}</span>
+      <span className="text-gray-700">{nameOf(t.propertyId)}</span>
       {project && <span className="ml-1 rounded bg-purple-100 px-1.5 py-0.5 text-[10px] text-purple-700">{project}</span>}
     </button>
   );

@@ -4,8 +4,9 @@ import { useEffect, useState } from 'react';
 import { financeApi } from './api';
 import { useFinance } from './FinanceData';
 import { btnPrimary, btnSecondary, selectCls } from './ui';
+import { SplitEditor, initialSplit, type SplitMode, type SplitRow } from './SplitEditor';
 import { fmt } from '@/lib/finance-ui/format';
-import type { ApiTxn, Txn } from '@/lib/finance-ui/types';
+import { attributionOf, type ApiTxn, type Txn } from '@/lib/finance-ui/types';
 
 interface Suggestion {
   property_id: number;
@@ -23,7 +24,8 @@ const NEW_PROJECT = 'new';
  *   changes the category and the attribution together (the category can't be
  *   saved without a property).
  * - otherwise: edit the transaction's attribution.
- * The best suggestion is pre-filled but nothing is saved until Save.
+ * The best suggestion is pre-filled but nothing is saved until Save. "Split"
+ * opens the split editor to divide the amount across several properties.
  */
 export function AttributionPicker({
   txn,
@@ -44,6 +46,8 @@ export function AttributionPicker({
   const [suggestion, setSuggestion] = useState<Suggestion | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const isSplit = txn.allocations.length > 1 || (txn.allocations.length > 0 && !txn.fullyAllocated);
+  const [splitting, setSplitting] = useState(isSplit);
 
   // Pre-fill the best suggestion when the row has no attribution yet.
   useEffect(() => {
@@ -54,7 +58,7 @@ export function AttributionPicker({
         if (!alive || !suggestions.length) return;
         const s = suggestions[0]!;
         setSuggestion(s);
-        if (!txn.propertyId) {
+        if (!txn.propertyId && txn.allocations.length === 0) {
           setPropertyId(String(s.property_id));
           setUnitId(s.unit_id ? String(s.unit_id) : '');
           setProjectId(s.work_order_id ? String(s.work_order_id) : '');
@@ -94,13 +98,7 @@ export function AttributionPicker({
         updated = r.transaction;
         await reloadPropertyOptions();
       }
-      patchTxns([txn.id], {
-        cat: updated.category,
-        manual: updated.is_manual,
-        propertyId: updated.property_id,
-        unitId: updated.unit_id,
-        workOrderId: updated.work_order_id,
-      });
+      patchTxns([txn.id], { cat: updated.category, manual: updated.is_manual, ...attributionOf(updated) });
       onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -114,7 +112,48 @@ export function AttributionPicker({
     setError(null);
     try {
       const updated = await financeApi.patch<ApiTxn>(`/api/finance/transactions/${txn.id}/attribution`, { property_id: null });
-      patchTxns([txn.id], { propertyId: updated.property_id, unitId: updated.unit_id, workOrderId: updated.work_order_id });
+      patchTxns([txn.id], attributionOf(updated));
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Save a split: the allocations first, then (if one is pending) the category,
+  // which a required category only accepts once the row is fully allocated.
+  async function saveSplit(mode: SplitMode, rows: SplitRow[]) {
+    setBusy(true);
+    setError(null);
+    try {
+      let updated = await financeApi.put<ApiTxn>(`/api/finance/transactions/${txn.id}/allocations`, {
+        mode,
+        rows: rows.map((r) => ({
+          property_id: Number(r.property_id),
+          unit_id: r.unit_id ? Number(r.unit_id) : null,
+          work_order_id: r.work_order_id ? Number(r.work_order_id) : null,
+          value: Number(r.value),
+        })),
+      });
+      if (category !== undefined && category !== txn.cat) {
+        updated = await financeApi.put<ApiTxn>(`/api/finance/transactions/${txn.id}/category`, { category });
+      }
+      patchTxns([txn.id], { cat: updated.category, manual: updated.is_manual, ...attributionOf(updated) });
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function clearSplit() {
+    setBusy(true);
+    setError(null);
+    try {
+      const updated = await financeApi.put<ApiTxn>(`/api/finance/transactions/${txn.id}/allocations`, { rows: [] });
+      patchTxns([txn.id], attributionOf(updated));
       onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -146,6 +185,18 @@ export function AttributionPicker({
           💡 Suggested: {suggestion.reason}
         </div>
       )}
+      {splitting ? (
+        <SplitEditor
+          txn={txn}
+          properties={propertyOptions}
+          projectsOn={projectsOn}
+          initial={initialSplit(txn, { property_id: propertyId, unit_id: unitId, work_order_id: projectId === NEW_PROJECT ? '' : projectId })}
+          busy={busy}
+          onSave={(mode, rows) => void saveSplit(mode, rows)}
+          onCancel={onCancel}
+          onSingle={() => setSplitting(false)}
+        />
+      ) : (
       <div className="flex flex-wrap items-center gap-2">
         <select
           aria-label="Property"
@@ -191,13 +242,22 @@ export function AttributionPicker({
         <button className={btnSecondary} disabled={busy} onClick={onCancel}>
           Cancel
         </button>
+        <button type="button" className={btnSecondary} disabled={busy} onClick={() => setSplitting(true)} data-testid="split-button">
+          Split
+        </button>
         {category === undefined && txn.propertyId && !required && (
           <button className="text-xs text-red-600 hover:underline" disabled={busy} onClick={() => void clear()}>
             Remove property
           </button>
         )}
       </div>
-      {projectId === NEW_PROJECT && (
+      )}
+      {splitting && category === undefined && txn.allocations.length > 0 && !required && (
+        <button className="text-xs text-red-600 hover:underline" disabled={busy} onClick={() => void clearSplit()}>
+          Remove all properties
+        </button>
+      )}
+      {!splitting && projectId === NEW_PROJECT && (
         <div className="text-xs text-gray-600">
           Creates an open project named “{txn.desc}” with a starting cost of ${Math.round(Math.abs(txn.amt)).toLocaleString()}, and links
           this transaction to it.

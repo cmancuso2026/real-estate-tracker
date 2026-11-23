@@ -7,7 +7,7 @@ import { RentNeedsUnit } from '@/components/finance/RentNeedsUnit';
 import { useFinance } from '@/components/finance/FinanceData';
 import { Card, btnPrimary, btnSecondary, selectCls } from '@/components/finance/ui';
 import { fmt, shortDate } from '@/lib/finance-ui/format';
-import { mapTxn, type ApiTxn } from '@/lib/finance-ui/types';
+import { mapTxn, singleAllocation, type ApiTxn } from '@/lib/finance-ui/types';
 
 interface Suggestion {
   property_id: number;
@@ -25,7 +25,7 @@ interface Queue {
 
 /** The Needs-property queue: unattributed transactions, newest first, with bulk tools. */
 export default function AttributionQueuePage() {
-  const { propertyOptions, patchTxns, allowProjectTag } = useFinance();
+  const { propertyOptions, patchTxns, allowProjectTag, txns } = useFinance();
   const [queue, setQueue] = useState<Queue | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [category, setCategory] = useState('');
@@ -74,7 +74,10 @@ export default function AttributionQueuePage() {
       for (const g of groups) {
         const r = await financeApi.patch<{ updated: number }>('/api/finance/transactions/attribution', g);
         n += r.updated;
-        patchTxns(g.ids, { propertyId: g.property_id, workOrderId: g.work_order_id, unitId: g.unit_id });
+        for (const id of g.ids) {
+          const amt = txns.find((x) => x.id === id)?.amt ?? 0;
+          patchTxns([id], singleAllocation(amt, g.property_id, g.unit_id, g.work_order_id));
+        }
       }
       setNotice(`Assigned ${n} transaction${n === 1 ? '' : 's'}.`);
       setSelected(new Set());
@@ -247,6 +250,11 @@ export default function AttributionQueuePage() {
                       <td className="whitespace-nowrap px-3 py-1.5 text-gray-600">{t.category}</td>
                       <td className={`whitespace-nowrap px-3 py-1.5 text-right tabular ${t.amount < 0 ? 'text-red-600' : 'text-green-700'}`}>
                         {fmt(t.amount)}
+                        {t.unallocated != null && t.unallocated !== 0 && (
+                          <div className="text-[11px] font-medium text-orange-600" data-testid="unallocated">
+                            {fmt(Math.abs(t.unallocated))} unallocated
+                          </div>
+                        )}
                       </td>
                       <td className="px-3 py-1.5 text-xs">
                         {t.suggestion ? (

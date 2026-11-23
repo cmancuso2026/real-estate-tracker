@@ -24,7 +24,7 @@ const props: PropertyGroup[] = [{ id: 7, name: '1205-1207 NE 117th St', units: [
 let nextId = 1;
 const tx = (date: string, desc: string, amt: number, cat: string, extra: Partial<Txn> = {}): Txn => ({
   id: nextId++, date, desc, src: 'Amex Gold', amt, cat, manual: false, cleared: false, note: '',
-  propertyId: null, workOrderId: null, unitId: null, ...extra,
+  propertyId: null, workOrderId: null, unitId: null, allocations: [], fullyAllocated: false, unallocated: null, ...extra,
 });
 
 test('money formatting matches the old page', () => {

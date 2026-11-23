@@ -2,7 +2,7 @@
 // actions take { dry_run: true } first (returns what would change, with row
 // counts) and run for real only when called again without it. Every real
 // change is written to admin_audit.
-import { getCategorySetting, setCategorySetting, unattributedQuery } from '../lib/attribution.js';
+import { getCategorySetting, notAllocatedCount, setCategorySetting, unattributedQuery } from '../lib/attribution.js';
 import { writeAudit, listAudit } from '../lib/audit.js';
 import * as cats from '../lib/categories.js';
 import { listPropertyCategoryMap, ROLES } from '../lib/propertyMap.js';
@@ -86,7 +86,7 @@ export async function updateCategorySettings(knex, category, body) {
   const patch = {};
   for (const k of ['requires_property', 'allow_project_tag', 'default_property_id']) if (body && k in body) patch[k] = body[k];
   const unattributed = Number(
-    (await knex('transactions').where({ category }).whereNull('property_id').count({ c: '*' }).first()).c,
+    await notAllocatedCount(knex, category),
   );
   const turningOn = patch.requires_property === true && !before.requires_property;
   const turningOff = patch.requires_property === false && before.requires_property;

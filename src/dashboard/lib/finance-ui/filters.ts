@@ -1,7 +1,7 @@
 import { propertyOfCat } from './period';
 import type { Taxonomy } from './taxonomy';
 import { groupOf } from './taxonomy';
-import type { PropertyGroup, Txn } from './types';
+import { touchesProject, touchesProperty, type PropertyGroup, type Txn } from './types';
 
 /** Value of the Category filter that selects a property's roll-up instead of one category. */
 export const PROP_PREFIX = 'prop:';
@@ -45,8 +45,8 @@ export function applyGlobalFilters(
       if (String(propertyOfCat(t.cat, props)?.id) !== propId) return false;
     } else if (f.category && t.cat !== f.category) return false;
     if (f.source && t.src !== f.source) return false;
-    if (f.linkedPropertyId && t.propertyId !== f.linkedPropertyId) return false;
-    if (f.linkedProjectId && t.workOrderId !== f.linkedProjectId) return false;
+    if (f.linkedPropertyId && !touchesProperty(t, f.linkedPropertyId)) return false;
+    if (f.linkedProjectId && !touchesProject(t, f.linkedProjectId)) return false;
     if (
       search &&
       !t.desc.toLowerCase().includes(search) &&

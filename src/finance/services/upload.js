@@ -6,6 +6,7 @@ import { loadRules, matchRule } from '../lib/merchantRules.js';
 import { canonicalName, loadTaxonomy } from '../lib/categories.js';
 import { unattributedQuery } from '../lib/attribution.js';
 import { syncRentQuietly } from '../lib/rentSync.js';
+import { reapplyAllocations } from '../lib/allocations.js';
 
 // Same limits the Express route enforced through multer.
 export const MAX_FILES = 20;
@@ -92,8 +93,9 @@ export async function processUpload(knex, uploadedFiles, opts = {}) {
           confidence_score: confidence,
           raw_description: t.rawDescription,
           dedup_hash: dedupHash(t.date, t.rawDescription, t.amount),
-          ...(rule && rule.property_id ? { property_id: rule.property_id, work_order_id: rule.work_order_id } : {}),
         },
+        // a merchant rule with a property gives the row 100% to it (after insert)
+        ruleAttr: rule && rule.property_id ? { property_id: rule.property_id, work_order_id: rule.work_order_id || null } : null,
       });
     }
   });
@@ -133,19 +135,13 @@ export async function processUpload(knex, uploadedFiles, opts = {}) {
   }
 
   // Re-apply saved property/project attribution the same way, so it survives a
-  // row being deleted and imported again.
-  const attrRows = insertHashes.length
-    ? await knex('attribution_overrides').whereIn('dedup_hash', insertHashes).select('*')
-    : [];
-  const attrs = new Map(attrRows.map((o) => [o.dedup_hash, o]));
-  for (const e of toInsert) {
-    const o = attrs.get(e.row.dedup_hash);
-    if (o) {
-      e.row.property_id = o.property_id;
-      e.row.unit_id = o.unit_id;
-      e.row.work_order_id = o.work_order_id;
-    }
-  }
+  // row being deleted and imported again. That happens after the insert below
+  // (allocations need the new ids): a saved split wins over a merchant rule.
+  const savedAttr = new Set(
+    insertHashes.length
+      ? (await knex('attribution_overrides').whereIn('dedup_hash', insertHashes).select('dedup_hash')).map((o) => o.dedup_hash)
+      : [],
+  );
 
   // ── Per-file and per-source tallies ──────────────────────────────────────
   // processed = every parsed row; new = rows actually inserted; skipped is the
@@ -188,9 +184,17 @@ export async function processUpload(knex, uploadedFiles, opts = {}) {
     }
 
     if (toInsert.length) {
-      await trx('transactions').insert(
-        toInsert.map((e) => ({ ...e.row, upload_id: fileUploadId[e.fileIdx] })),
-      );
+      const inserted = await trx('transactions')
+        .insert(toInsert.map((e) => ({ ...e.row, upload_id: fileUploadId[e.fileIdx] })))
+        .returning(['id', 'dedup_hash', 'amount']);
+      await reapplyAllocations(trx, inserted.filter((r) => savedAttr.has(r.dedup_hash)));
+      const ruleByHash = new Map(toInsert.filter((e) => e.ruleAttr).map((e) => [e.row.dedup_hash, e.ruleAttr]));
+      const byRule = inserted.filter((r) => !savedAttr.has(r.dedup_hash) && ruleByHash.has(r.dedup_hash));
+      if (byRule.length) {
+        await trx('transaction_allocations').insert(
+          byRule.map((r) => ({ transaction_id: r.id, property_id: ruleByHash.get(r.dedup_hash).property_id, unit_id: null, work_order_id: ruleByHash.get(r.dedup_hash).work_order_id, amount: r.amount, percent: 100, input_mode: 'percent' })),
+        );
+      }
     }
   });
 

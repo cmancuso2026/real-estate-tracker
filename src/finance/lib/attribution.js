@@ -3,10 +3,13 @@
 // — nothing about which categories need a property is hardcoded in code.
 //
 // A transaction is "unattributed" (in the Needs-property queue) when its
-// category requires a property and it has none. The queue is computed, never
+// category requires a property and its allocations (lib/allocations.js) don't
+// add up to its amount — none at all, or a partial split. The queue is computed, never
 // stored, so turning requires_property on immediately queues that category's
 // existing unattributed rows, and turning it off removes them while keeping
 // any attribution already saved.
+
+import { computeAllocations, saveAllocations, singleSpec } from './allocations.js';
 
 /** Defaults for a category with no category_settings row. */
 export const DEFAULT_SETTING = Object.freeze({
@@ -76,7 +79,7 @@ export async function setCategorySetting(knex, category, patch = {}) {
   };
   await knex('category_settings').insert(row).onConflict('category').merge();
   const queued = next.requires_property
-    ? Number((await knex('transactions').where({ category }).whereNull('property_id').count({ c: '*' }).first()).c)
+    ? await notAllocatedCount(knex, category)
     : 0;
   return { setting: await getCategorySetting(knex, category), queued };
 }
@@ -134,42 +137,54 @@ export async function assertProjectTagAllowed(knex, categories, workOrderId) {
 }
 
 /**
- * Save an attribution on transactions and persist it by dedup_hash, so it is
- * re-applied if the same row is imported again (same pattern as
- * category_overrides). `rows` need id, dedup_hash and description.
+ * Give each transaction 100% to one property (or clear it when
+ * attr.property_id is null), saved in transaction_allocations and remembered
+ * by dedup_hash for re-uploads. `rows` need id, amount, dedup_hash, description.
  */
 export async function applyAttribution(trx, rows, attr) {
   if (!rows.length) return 0;
-  await trx('transactions')
-    .whereIn('id', rows.map((r) => r.id))
-    .update({ property_id: attr.property_id, unit_id: attr.unit_id, work_order_id: attr.work_order_id });
   for (const r of rows) {
-    if (!r.dedup_hash) continue;
-    await trx('attribution_overrides')
-      .insert({
-        dedup_hash: r.dedup_hash,
-        description: r.description,
-        property_id: attr.property_id,
-        unit_id: attr.unit_id,
-        work_order_id: attr.work_order_id,
-        updated_at: trx.fn.now(),
-      })
-      .onConflict('dedup_hash')
-      .merge();
+    if (attr.property_id == null) {
+      await saveAllocations(trx, r, [], null);
+      continue;
+    }
+    const spec = singleSpec(attr);
+    await saveAllocations(trx, r, computeAllocations(r.amount, spec.mode, spec.rows), spec);
   }
   return rows.length;
 }
 
-/** Query builder for unattributed transactions (requires a property, has none). */
+/** Sum of allocations per transaction (subquery to join on t.id). */
+export function allocatedSubquery(knex) {
+  return knex('transaction_allocations').select('transaction_id').sum({ allocated: 'amount' }).groupBy('transaction_id').as('a');
+}
+
+/**
+ * Query builder for unattributed transactions: the category requires a
+ * property and the allocations don't add up to the amount (none, or a partial
+ * split). Selects can use a.allocated (null when nothing is allocated).
+ */
 export function unattributedQuery(knex) {
   return knex('transactions as t')
     .join('category_settings as s', 's.category', 't.category')
+    .leftJoin(allocatedSubquery(knex), 'a.transaction_id', 't.id')
     .where('s.requires_property', true)
-    .whereNull('t.property_id');
+    .where((q) => q.whereNull('a.allocated').orWhereRaw('a.allocated <> t.amount'));
 }
 
 /** How many transactions are waiting for a property. */
 export async function unattributedCount(knex) {
   const row = await unattributedQuery(knex).count({ c: '*' }).first();
+  return Number(row.c);
+}
+
+/** Transactions of a category not fully allocated (whatever its rules say). */
+export async function notAllocatedCount(knex, category) {
+  const row = await knex('transactions as t')
+    .leftJoin(allocatedSubquery(knex), 'a.transaction_id', 't.id')
+    .where('t.category', category)
+    .where((q) => q.whereNull('a.allocated').orWhereRaw('a.allocated <> t.amount'))
+    .count({ c: '*' })
+    .first();
   return Number(row.c);
 }

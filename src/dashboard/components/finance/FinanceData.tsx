@@ -153,7 +153,7 @@ export function FinanceDataProvider({ children }: { children: React.ReactNode })
   const requiresProperty = useCallback((c: string) => !!settings.get(c)?.requires_property, [settings]);
   const allowProjectTag = useCallback((c: string) => settings.get(c)?.allow_project_tag ?? true, [settings]);
   const unattributedCount = useMemo(
-    () => txns.filter((t) => !t.propertyId && requiresProperty(t.cat)).length,
+    () => txns.filter((t) => !t.fullyAllocated && requiresProperty(t.cat)).length,
     [txns, requiresProperty],
   );
 

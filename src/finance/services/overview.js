@@ -12,6 +12,7 @@
 import { mergedTaxonomy } from '../lib/categoryStore.js';
 import { unattributedCount } from '../lib/attribution.js';
 import { propertyCashFlow } from '../lib/cashflow.js';
+import { withAllocations } from '../lib/allocations.js';
 import { isoDate } from './_query.js';
 
 const r2 = (n) => Math.round(n * 100) / 100;
@@ -66,7 +67,7 @@ export async function getOverview(knex, opts = {}) {
   const [ytdRows, tax, uploads, sourceSpan, props, units, tenants, leases, rent, policies, mappings, queue] = await Promise.all([
     knex('transactions')
       .whereBetween('date', [ytdStart, end])
-      .select('date', 'amount', 'category', 'property_id'),
+      .select('id', 'date', 'amount', 'category'),
     mergedTaxonomy(knex),
     knex('upload_log').select('id', 'filename', 'source', 'row_count', 'new_rows', 'skipped', 'uploaded_at').orderBy('id', 'desc'),
     knex('transactions').select('source').max({ last: 'date' }).count({ n: '*' }).groupBy('source'),
@@ -154,7 +155,7 @@ export async function getOverview(knex, opts = {}) {
   };
 
   // ── Per property ────────────────────────────────────────────────────────
-  const flow = propertyCashFlow(ytdRows, mappings, { month });
+  const flow = propertyCashFlow(await withAllocations(knex, ytdRows), mappings, { month });
   const zero = { rent: 0, piti: 0, expenses: 0, net: 0, count: 0 };
   const propertiesTable = props.map((p) => {
     const pu = units.filter((u) => u.property_id === p.id);
