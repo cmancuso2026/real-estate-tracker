@@ -11,7 +11,7 @@ export default async function GradePage() {
     <>
       <div className="mb-5">
         <h1 className="text-2xl font-bold">Grade a Property</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400">
+        <p className="text-sm text-gray-500">
           Enter a property&apos;s details to run the full investment scoring engine — using rental
           comps and for-sale listings already tracked in that zip — and get an A–F grade with a
           full breakdown.

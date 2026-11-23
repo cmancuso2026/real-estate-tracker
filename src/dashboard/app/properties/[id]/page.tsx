@@ -52,15 +52,15 @@ const EQUIPMENT = ['refrigerator','stove','dishwasher','washer','dryer','HVAC','
 
 function fmt$(n: number | null | undefined) { return n == null ? '—' : '$' + Math.abs(n).toLocaleString(); }
 function Tags({ label, items, color='blue' }: { label: string; items: string[]; color?: string }) {
-  const cls = color === 'green' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : color === 'purple' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300';
+  const cls = color === 'green' ? 'bg-green-100 text-green-700' : color === 'purple' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700';
   return <div><p className="text-xs text-gray-500 mb-1">{label}</p>{items.length===0?<span className="italic text-gray-400 text-sm">None</span>:<div className="flex flex-wrap gap-1">{items.map(i=><span key={i} className={`rounded-full px-2 py-0.5 text-xs ${cls}`}>{i}</span>)}</div>}</div>;
 }
 function ToggleChip({ label, active, onClick, color='blue' }: { label: string; active: boolean; onClick: ()=>void; color?: string }) {
   const on = color==='green' ? 'bg-green-600 text-white' : color==='purple' ? 'bg-purple-600 text-white' : 'bg-blue-600 text-white';
-  return <button type="button" onClick={onClick} className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${active ? on : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400'}`}>{label}</button>;
+  return <button type="button" onClick={onClick} className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${active ? on : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>{label}</button>;
 }
 function Input({ label, value, onChange, type='text', placeholder='' }: { label: string; value: string; onChange:(v:string)=>void; type?: string; placeholder?: string }) {
-  return <div><label className="mb-1 block text-xs font-medium text-gray-500">{label}</label><input type={type} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800" /></div>;
+  return <div><label className="mb-1 block text-xs font-medium text-gray-500">{label}</label><input type={type} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" /></div>;
 }
 
 const TABS: {id:Tab;label:string}[] = [{id:'overview',label:'Overview'},{id:'tenants',label:'Tenants'},{id:'rent',label:'Rent'},{id:'leases',label:'Leases'},{id:'projects',label:'Projects'},{id:'spend',label:'Repairs & spend'},{id:'escrow',label:'Escrow'},{id:'insurance',label:'Insurance'}];
@@ -96,11 +96,11 @@ function LeaseForm({
     <div className="space-y-4">
       {/* Tenant assignment */}
       {showTenantFields && (
-        <div className="rounded-lg bg-gray-50 p-4 dark:bg-gray-800/50">
-          <p className="mb-2 text-xs font-medium text-gray-600 dark:text-gray-400">Tenant</p>
+        <div className="rounded-lg bg-gray-50 p-4">
+          <p className="mb-2 text-xs font-medium text-gray-600">Tenant</p>
           <div className="mb-3 flex gap-2">
-            <button onClick={()=>setTenantMode('new')} className={`rounded-full px-3 py-1 text-xs font-medium ${tenantMode==='new'?'bg-blue-600 text-white':'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-400'}`}>New tenant</button>
-            <button onClick={()=>setTenantMode('existing')} className={`rounded-full px-3 py-1 text-xs font-medium ${tenantMode==='existing'?'bg-blue-600 text-white':'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-400'}`}>Existing tenant</button>
+            <button onClick={()=>setTenantMode('new')} className={`rounded-full px-3 py-1 text-xs font-medium ${tenantMode==='new'?'bg-blue-600 text-white':'bg-gray-200 text-gray-600'}`}>New tenant</button>
+            <button onClick={()=>setTenantMode('existing')} className={`rounded-full px-3 py-1 text-xs font-medium ${tenantMode==='existing'?'bg-blue-600 text-white':'bg-gray-200 text-gray-600'}`}>Existing tenant</button>
           </div>
           {tenantMode==='new' ? (
             <div className="grid grid-cols-2 gap-3">
@@ -108,7 +108,7 @@ function LeaseForm({
               <Input label="Last Name *" value={tenantLastName} onChange={setTenantLastName} />
             </div>
           ) : (
-            <select value={selectedTenantId} onChange={e=>setSelectedTenantId(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800">
+            <select value={selectedTenantId} onChange={e=>setSelectedTenantId(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
               <option value="">Select existing tenant…</option>
               {existingTenants.map(t=><option key={t.id} value={t.id}>{t.first_name} {t.last_name} (Unit {t.unit_label})</option>)}
             </select>
@@ -120,7 +120,7 @@ function LeaseForm({
       {showTenantFields && (
         <div>
           <label className="mb-1 block text-xs font-medium text-gray-500">Unit *</label>
-          <select value={selectedUnitId} onChange={e=>setSelectedUnitId(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800">
+          <select value={selectedUnitId} onChange={e=>setSelectedUnitId(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
             <option value="">Select unit…</option>
             {units.map(u=><option key={u.id} value={u.id}>Unit {u.unit_label}</option>)}
           </select>
@@ -172,13 +172,13 @@ function InsuranceForm({
   const updStr = (key: keyof InsuranceExtracted, v: string) => onChange({ [key]: v || null });
 
   return (
-    <div className="rounded-xl border-2 border-blue-300 bg-blue-50 p-5 space-y-4 dark:border-blue-700 dark:bg-blue-950/20">
+    <div className="rounded-xl border-2 border-blue-300 bg-blue-50 p-5 space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="font-semibold text-blue-800 dark:text-blue-300">{title}</h3>
+        <h3 className="font-semibold text-blue-800">{title}</h3>
         <button onClick={onDiscard} className="text-xs text-gray-400 hover:text-gray-600">Discard</button>
       </div>
       {data.confidence_notes && (
-        <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">⚠ {data.confidence_notes}</p>
+        <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">⚠ {data.confidence_notes}</p>
       )}
 
       {/* Policy info */}
@@ -190,7 +190,7 @@ function InsuranceForm({
           <div>
             <label className="mb-1 block text-xs font-medium text-gray-500">Policy Type</label>
             <select value={str('policy_type')} onChange={e=>updStr('policy_type',e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800">
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
               {['homeowners','landlord','liability','flood','umbrella','other'].map(t=><option key={t} value={t}>{t}</option>)}
             </select>
           </div>
@@ -231,7 +231,7 @@ function InsuranceForm({
       <div>
         <label className="mb-1 block text-xs font-medium text-gray-500">Additional Coverage Notes</label>
         <textarea value={str('coverage_notes')} onChange={e=>updStr('coverage_notes',e.target.value)} rows={3}
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800" />
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
       </div>
 
       <button onClick={onSave} disabled={saving || !data.carrier || !data.effective_date || !data.expiration_date}
@@ -417,33 +417,33 @@ function RentTab({ id, units, rent, onRefresh, unitFilter, setUnitFilter }: {
   // Inline editor row (shared by single-payment rows and expanded child payments)
   function editRowJsx(r: RentRowType) {
     return (
-      <tr key={`edit-${r.id}`} className="bg-blue-50 dark:bg-blue-950/20">
+      <tr key={`edit-${r.id}`} className="bg-blue-50">
         <td className="px-2 py-2" />
         <td className="px-4 py-2 font-medium">{r.unit_label}</td>
         <td className="px-4 py-2 text-gray-500 text-xs">{r.due_date}</td>
         <td className="px-4 py-2">
           <input type="number" value={editForm.amount_due ?? ''} onChange={e => setEditForm(p => ({ ...p, amount_due: parseFloat(e.target.value) }))}
-            className="w-24 rounded border border-gray-300 px-2 py-1 text-xs dark:border-gray-700 dark:bg-gray-800" />
+            className="w-24 rounded border border-gray-300 px-2 py-1 text-xs" />
         </td>
         <td className="px-4 py-2">
           <input type="number" value={editForm.amount_paid ?? ''} onChange={e => setEditForm(p => ({ ...p, amount_paid: e.target.value ? parseFloat(e.target.value) : null }))}
-            className="w-24 rounded border border-gray-300 px-2 py-1 text-xs dark:border-gray-700 dark:bg-gray-800" />
+            className="w-24 rounded border border-gray-300 px-2 py-1 text-xs" />
         </td>
         <td className="px-4 py-2">
           <select value={editForm.is_late ? 'late' : 'ontime'} onChange={e => setEditForm(p => ({ ...p, is_late: e.target.value === 'late' }))}
-            className="rounded border border-gray-300 px-2 py-1 text-xs dark:border-gray-700 dark:bg-gray-800">
+            className="rounded border border-gray-300 px-2 py-1 text-xs">
             <option value="ontime">On time</option>
             <option value="late">Late</option>
           </select>
         </td>
         <td className="px-4 py-2">
           <input type="number" value={editForm.late_fee_charged ?? ''} onChange={e => setEditForm(p => ({ ...p, late_fee_charged: e.target.value ? parseFloat(e.target.value) : null }))}
-            placeholder="0" className="w-20 rounded border border-gray-300 px-2 py-1 text-xs dark:border-gray-700 dark:bg-gray-800" />
+            placeholder="0" className="w-20 rounded border border-gray-300 px-2 py-1 text-xs" />
         </td>
         <td className="px-4 py-2">
           <div className="flex gap-2">
             <button onClick={saveEdit} disabled={editSaving} className="rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-700 disabled:opacity-50">{editSaving ? '…' : 'Save'}</button>
-            <button onClick={() => setEditingRow(null)} className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-100 dark:border-gray-700">Cancel</button>
+            <button onClick={() => setEditingRow(null)} className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-100">Cancel</button>
           </div>
         </td>
       </tr>
@@ -454,17 +454,17 @@ function RentTab({ id, units, rent, onRefresh, unitFilter, setUnitFilter }: {
   function childRowJsx(r: RentRowType) {
     if (editingRow?.id === r.id) return editRowJsx(r);
     return (
-      <tr key={`child-${r.id}`} className="bg-gray-50/60 dark:bg-gray-900/30">
+      <tr key={`child-${r.id}`} className="bg-gray-50/60">
         <td className="px-2 py-2" />
         <td className="px-4 py-2" />
         <td className="px-4 py-2 pl-8 text-xs text-gray-500 tabular">↳ {r.paid_date ?? r.due_date}</td>
-        <td className="px-4 py-2 text-gray-300 dark:text-gray-600">—</td>
+        <td className="px-4 py-2 text-gray-300">—</td>
         <td className="px-4 py-2 tabular">{r.amount_paid != null ? '$' + r.amount_paid.toLocaleString() : '—'}</td>
         <td className="px-4 py-2">{r.is_late && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">Late</span>}</td>
         <td className="px-4 py-2 tabular">{r.late_fee_charged ? '$' + r.late_fee_charged.toLocaleString() : '—'}</td>
         <td className="px-4 py-2">
           <div className="flex gap-2">
-            <button onClick={() => startEdit(r)} className="text-xs text-blue-600 hover:underline dark:text-blue-400">Edit</button>
+            <button onClick={() => startEdit(r)} className="text-xs text-blue-600 hover:underline">Edit</button>
             <button onClick={() => deleteRow(r.id)} disabled={deletingId === r.id} className="text-xs text-red-400 hover:text-red-600 disabled:opacity-50">{deletingId === r.id ? '…' : 'Delete'}</button>
           </div>
         </td>
@@ -475,11 +475,11 @@ function RentTab({ id, units, rent, onRefresh, unitFilter, setUnitFilter }: {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="font-semibold text-gray-700 dark:text-gray-300">Rent Collection</h2>
+        <h2 className="font-semibold text-gray-700">Rent Collection</h2>
         <div className="flex gap-2">
           <Link href={`/properties/${id}/rent/new`} className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700">+ Add Payment</Link>
-          <Link href="/rent" className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">Import CSV</Link>
-          <button onClick={exportCsv} className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">Export CSV</button>
+          <Link href="/rent" className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50">Import CSV</Link>
+          <button onClick={exportCsv} className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50">Export CSV</button>
         </div>
       </div>
 
@@ -490,7 +490,7 @@ function RentTab({ id, units, rent, onRefresh, unitFilter, setUnitFilter }: {
           const pct = stats && stats.months > 0 ? Math.round((stats.onTime / stats.months) * 100) : null;
           const tmGroup = allGroups.find(g => sameUnit(g.unit_label, u.unit_label) && g.month === thisMonth);
           return (
-            <div key={u.id} className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+            <div key={u.id} className="rounded-xl border border-gray-200 bg-white p-4">
               <div className="flex items-center justify-between mb-1">
                 <p className="text-xs font-medium text-gray-500">Unit {u.unit_label} · {currentYear}</p>
                 {tmGroup && <RentStatusBadge status={tmGroup.status} />}
@@ -500,12 +500,12 @@ function RentTab({ id, units, rent, onRefresh, unitFilter, setUnitFilter }: {
             </div>
           );
         })}
-        <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+        <div className="rounded-xl border border-gray-200 bg-white p-4">
           <p className="text-xs font-medium text-gray-500">Total YTD ({currentYear})</p>
           <p className="text-xl font-bold tabular text-green-600">${totalYTD.toLocaleString()}</p>
           {totalMonths > 0 && <p className="text-xs text-gray-400">{Math.round((totalOnTime / totalMonths) * 100)}% on time</p>}
         </div>
-        <div className={`rounded-xl border p-4 ${totalOutstanding > 0 ? 'border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/20' : 'border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/20'}`}>
+        <div className={`rounded-xl border p-4 ${totalOutstanding > 0 ? 'border-red-200 bg-red-50' : 'border-green-200 bg-green-50'}`}>
           <p className={`text-xs font-medium ${totalOutstanding > 0 ? 'text-red-500' : 'text-green-600'}`}>Outstanding {thisMonth}</p>
           <p className={`text-xl font-bold tabular ${totalOutstanding > 0 ? 'text-red-600' : 'text-green-600'}`}>${totalOutstanding.toLocaleString()}</p>
           <p className="text-xs text-gray-400">{outstandingUnits.length > 0 ? outstandingUnits.map(u => `Unit ${u.unit_label}`).join(', ') : 'All units paid'}</p>
@@ -516,7 +516,7 @@ function RentTab({ id, units, rent, onRefresh, unitFilter, setUnitFilter }: {
       <div className="flex flex-wrap gap-2">
         {(['all', ...rentalUnits.map(u => u.unit_label)] as string[]).map(label => (
           <button key={label} onClick={() => setUnitFilter(label)}
-            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${sameUnit(unitFilter, label) || (label === 'all' && unitFilter === 'all') ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400'}`}>
+            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${sameUnit(unitFilter, label) || (label === 'all' && unitFilter === 'all') ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
             {label === 'all' ? 'All Units' : `Unit ${label}`}
           </button>
         ))}
@@ -529,7 +529,7 @@ function RentTab({ id, units, rent, onRefresh, unitFilter, setUnitFilter }: {
           const active = statusFilter.has(s);
           return (
             <button key={s} onClick={() => toggleStatus(s)}
-              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${active ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400'}`}>
+              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${active ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
               {s.charAt(0).toUpperCase() + s.slice(1)} ({statusCounts[s]})
             </button>
           );
@@ -539,15 +539,15 @@ function RentTab({ id, units, rent, onRefresh, unitFilter, setUnitFilter }: {
       </div>
 
       {/* Table */}
-      <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800">
+      <div className="overflow-hidden rounded-xl border border-gray-200">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 dark:bg-gray-900">
+          <thead className="bg-gray-50">
             <tr>
               <th className="w-8 px-2 py-3" />
               {['Unit','Month','Expected','Paid','Status','Late Fee',''].map(h => <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500">{h}</th>)}
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+          <tbody className="divide-y divide-gray-100">
             {visibleGroups.length === 0
               ? <tr><td colSpan={COLS} className="px-4 py-8 text-center text-gray-400">No rent records match the current filters</td></tr>
               : visibleGroups.flatMap(g => {
@@ -558,7 +558,7 @@ function RentTab({ id, units, rent, onRefresh, unitFilter, setUnitFilter }: {
                   if (!multi) {
                     if (editingRow?.id === single.id) return [editRowJsx(single)];
                     return [(
-                      <tr key={g.key} className="hover:bg-gray-50 dark:hover:bg-gray-900/30">
+                      <tr key={g.key} className="hover:bg-gray-50">
                         <td className="px-2 py-3" />
                         <td className="px-4 py-3 font-medium">{g.unit_label}</td>
                         <td className="px-4 py-3 tabular">{monthLabel(g.month)}</td>
@@ -568,7 +568,7 @@ function RentTab({ id, units, rent, onRefresh, unitFilter, setUnitFilter }: {
                         <td className="px-4 py-3 tabular">{g.totalLateFee ? '$' + g.totalLateFee.toLocaleString() : '—'}</td>
                         <td className="px-4 py-3">
                           <div className="flex gap-2">
-                            <button onClick={() => startEdit(single)} className="text-xs text-blue-600 hover:underline dark:text-blue-400">Edit</button>
+                            <button onClick={() => startEdit(single)} className="text-xs text-blue-600 hover:underline">Edit</button>
                             <button onClick={() => deleteRow(single.id)} disabled={deletingId === single.id} className="text-xs text-red-400 hover:text-red-600 disabled:opacity-50">{deletingId === single.id ? '…' : 'Delete'}</button>
                           </div>
                         </td>
@@ -579,7 +579,7 @@ function RentTab({ id, units, rent, onRefresh, unitFilter, setUnitFilter }: {
                   // Multiple payments in the month → combined summary row + expandable children
                   const isOpen = expanded.has(g.key);
                   const rows = [(
-                    <tr key={g.key} className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-900/30" onClick={() => toggleExpand(g.key)}>
+                    <tr key={g.key} className="cursor-pointer hover:bg-gray-50" onClick={() => toggleExpand(g.key)}>
                       <td className="px-2 py-3 text-center text-gray-400 select-none">{isOpen ? '▼' : '▶'}</td>
                       <td className="px-4 py-3 font-medium">{g.unit_label}</td>
                       <td className="px-4 py-3 tabular">{monthLabel(g.month)}</td>
@@ -588,7 +588,7 @@ function RentTab({ id, units, rent, onRefresh, unitFilter, setUnitFilter }: {
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
                           <RentStatusBadge status={g.status} />
-                          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500 dark:bg-gray-800 dark:text-gray-400">{g.payments.length} payments</span>
+                          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">{g.payments.length} payments</span>
                         </div>
                       </td>
                       <td className="px-4 py-3 tabular">{g.totalLateFee ? '$' + g.totalLateFee.toLocaleString() : '—'}</td>
@@ -966,21 +966,21 @@ export default function PropertyDetailPage() {
   return (
     <>
       <div className="mb-6">
-        <Link href="/properties" className="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400">← My Properties</Link>
+        <Link href="/properties" className="text-sm text-gray-500 hover:text-gray-700">← My Properties</Link>
         <h1 className="mt-1 text-2xl font-bold">{property.address}</h1>
         <p className="text-sm text-gray-500">{property.city}, {property.state} · {property.property_type} · {property.unit_count} units</p>
       </div>
 
-      <div className="mb-6 flex gap-1 border-b border-gray-200 dark:border-gray-800">
+      <div className="mb-6 flex gap-1 border-b border-gray-200">
         {TABS.map(t => (
           <button key={t.id} onClick={() => switchTab(t.id)}
-            className={`px-4 py-2 text-sm font-medium transition-colors ${tab===t.id?'border-b-2 border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400':'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'}`}>
+            className={`px-4 py-2 text-sm font-medium transition-colors ${tab===t.id?'border-b-2 border-blue-600 text-blue-600':'text-gray-500 hover:text-gray-900'}`}>
             {t.label}
           </button>
         ))}
       </div>
 
-      {uploadError && <div className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600 dark:bg-red-950/30 dark:text-red-400">{uploadError}</div>}
+      {uploadError && <div className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">{uploadError}</div>}
 
       {/* ── OVERVIEW ── */}
       {tab==='overview' && (
@@ -997,9 +997,9 @@ export default function PropertyDetailPage() {
       {tab==='leases' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="font-semibold text-gray-700 dark:text-gray-300">Lease History</h2>
+            <h2 className="font-semibold text-gray-700">Lease History</h2>
             <div className="flex gap-2">
-              <label className={`cursor-pointer rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800 ${uploadingLease?'opacity-50':''}`}>
+              <label className={`cursor-pointer rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 ${uploadingLease?'opacity-50':''}`}>
                 {uploadingLease?'Parsing…':'Upload Lease PDF'}
                 <input type="file" accept=".pdf" className="hidden" disabled={uploadingLease} onClick={e=>{(e.target as HTMLInputElement).value='';}} onChange={async e=>{
                   const file=e.target.files?.[0];if(!file||uploadingLease)return;
@@ -1020,9 +1020,9 @@ export default function PropertyDetailPage() {
 
           {/* Unit filter bubbles */}
           <div className="flex flex-wrap gap-2">
-            <button onClick={()=>setLeaseUnitFilter('all')} className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${leaseUnitFilter==='all'?'bg-blue-600 text-white':'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400'}`}>All Units</button>
+            <button onClick={()=>setLeaseUnitFilter('all')} className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${leaseUnitFilter==='all'?'bg-blue-600 text-white':'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>All Units</button>
             {units.map(u=>(
-              <button key={u.id} onClick={()=>setLeaseUnitFilter(u.unit_label)} className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${leaseUnitFilter===u.unit_label?'bg-blue-600 text-white':'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400'}`}>
+              <button key={u.id} onClick={()=>setLeaseUnitFilter(u.unit_label)} className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${leaseUnitFilter===u.unit_label?'bg-blue-600 text-white':'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
                 Unit {u.unit_label}
               </button>
             ))}
@@ -1030,13 +1030,13 @@ export default function PropertyDetailPage() {
 
           {/* Extraction review panel */}
           {leaseExtracted && (
-            <div className="rounded-xl border-2 border-blue-300 bg-blue-50 p-5 space-y-4 dark:border-blue-700 dark:bg-blue-950/20">
+            <div className="rounded-xl border-2 border-blue-300 bg-blue-50 p-5 space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-blue-800 dark:text-blue-300">✦ AI Extracted — Review & Confirm</h3>
+                <h3 className="font-semibold text-blue-800">✦ AI Extracted — Review & Confirm</h3>
                 <button onClick={()=>setLeaseExtracted(null)} className="text-xs text-gray-400 hover:text-gray-600">Discard</button>
               </div>
               {leaseExtracted.confidence_notes && (
-                <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">⚠ {leaseExtracted.confidence_notes}</p>
+                <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">⚠ {leaseExtracted.confidence_notes}</p>
               )}
               <LeaseForm
                 data={leaseExtracted} onChange={patch=>setLeaseExtracted(prev=>({...prev,...patch}))}
@@ -1060,9 +1060,9 @@ export default function PropertyDetailPage() {
           {/* Saved leases */}
           <div className="space-y-3">
             {leases.length===0&&!leaseExtracted
-              ?<div className="rounded-xl border border-dashed border-gray-300 p-8 text-center text-gray-400 dark:border-gray-700">No leases yet. Upload a PDF or add manually.</div>
+              ?<div className="rounded-xl border border-dashed border-gray-300 p-8 text-center text-gray-400">No leases yet. Upload a PDF or add manually.</div>
               :(leaseUnitFilter==='all'?leases:leases.filter(l=>l.unit_label===leaseUnitFilter)).map(l=>(
-                <div key={l.id} className="rounded-xl border border-gray-200 dark:border-gray-800">
+                <div key={l.id} className="rounded-xl border border-gray-200">
                   {editingLease?.id===l.id ? (
                     // EDIT MODE
                     <div className="p-5 space-y-4">
@@ -1095,11 +1095,11 @@ export default function PropertyDetailPage() {
                         <div>
                           <span className="font-medium">{l.tenant_name}</span>
                           <span className="ml-2 text-sm text-gray-500">· Unit {l.unit_label}</span>
-                          {l.extracted_by_ai&&<span className="ml-2 rounded-full bg-purple-100 px-2 py-0.5 text-xs text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">AI parsed</span>}
+                          {l.extracted_by_ai&&<span className="ml-2 rounded-full bg-purple-100 px-2 py-0.5 text-xs text-purple-700">AI parsed</span>}
                         </div>
                         <div className="flex items-center gap-3">
                           <span className="text-sm font-medium tabular">{fmt$(l.rent_amount)}/mo</span>
-                          <button onClick={()=>startEditLease(l)} className="text-xs text-blue-600 hover:underline dark:text-blue-400">Edit</button>
+                          <button onClick={()=>startEditLease(l)} className="text-xs text-blue-600 hover:underline">Edit</button>
                           <button onClick={()=>deleteLease(l.id)} disabled={deletingLeaseId===l.id} className="text-xs text-red-400 hover:text-red-600 disabled:opacity-50">{deletingLeaseId===l.id?'Deleting…':'Delete'}</button>
                         </div>
                       </div>
@@ -1125,14 +1125,14 @@ export default function PropertyDetailPage() {
       {tab==='tenants' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="font-semibold text-gray-700 dark:text-gray-300">Tenants</h2>
+            <h2 className="font-semibold text-gray-700">Tenants</h2>
             <Link href={`/properties/${id}/tenants/new`} className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700">+ Add Tenant</Link>
           </div>
           {/* Unit filter */}
           <div className="flex flex-wrap gap-2">
-            <button onClick={()=>setTenantUnitFilter('all')} className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${tenantUnitFilter==='all'?'bg-blue-600 text-white':'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400'}`}>All Units</button>
+            <button onClick={()=>setTenantUnitFilter('all')} className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${tenantUnitFilter==='all'?'bg-blue-600 text-white':'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>All Units</button>
             {units.filter(u=>!u.is_owner_unit).map(u=>(
-              <button key={u.id} onClick={()=>setTenantUnitFilter(u.unit_label)} className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${tenantUnitFilter===u.unit_label?'bg-blue-600 text-white':'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400'}`}>
+              <button key={u.id} onClick={()=>setTenantUnitFilter(u.unit_label)} className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${tenantUnitFilter===u.unit_label?'bg-blue-600 text-white':'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
                 Unit {u.unit_label}
               </button>
             ))}
@@ -1140,9 +1140,9 @@ export default function PropertyDetailPage() {
 
           <div className="space-y-3">
             {existingTenants.length === 0
-              ? <div className="rounded-xl border border-dashed border-gray-300 p-8 text-center text-gray-400 dark:border-gray-700">No tenants yet.</div>
+              ? <div className="rounded-xl border border-dashed border-gray-300 p-8 text-center text-gray-400">No tenants yet.</div>
               : existingTenants.filter(t => tenantUnitFilter === 'all' || t.unit_label === tenantUnitFilter).map(t => (
-                <div key={t.id} className={`rounded-xl border border-gray-200 dark:border-gray-800 ${!t.is_active ? 'opacity-60' : ''}`}>
+                <div key={t.id} className={`rounded-xl border border-gray-200 ${!t.is_active ? 'opacity-60' : ''}`}>
                   {editingTenant?.id === t.id ? (
                     <div className="p-5 space-y-3">
                       <div className="flex items-center justify-between">
@@ -1165,21 +1165,21 @@ export default function PropertyDetailPage() {
                       {/* Clickable header */}
                       <button
                         onClick={()=>setExpandedTenantId(expandedTenantId===t.id?null:t.id)}
-                        className="flex w-full items-center justify-between p-4 text-left hover:bg-gray-50 dark:hover:bg-gray-800/50"
+                        className="flex w-full items-center justify-between p-4 text-left hover:bg-gray-50"
                       >
                         <div>
                           <p className="font-medium flex items-center gap-2">
                             {t.first_name} {t.last_name}
-                            {!t.is_active && <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-500 dark:bg-gray-700 dark:text-gray-400">Inactive</span>}
+                            {!t.is_active && <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-500">Inactive</span>}
                           </p>
                           <p className="text-sm text-gray-500">Unit {t.unit_label}</p>
                         </div>
                         <div className="flex items-center gap-3">
                           <button onClick={e=>{e.stopPropagation();toggleTenantActive(t);}} disabled={togglingTenantId===t.id}
-                            className="text-xs text-gray-500 hover:text-gray-700 hover:underline disabled:opacity-50 dark:text-gray-400">
+                            className="text-xs text-gray-500 hover:text-gray-700 hover:underline disabled:opacity-50">
                             {togglingTenantId===t.id?'…':t.is_active?'Mark inactive':'Mark active'}
                           </button>
-                          <button onClick={e=>{e.stopPropagation();startEditTenant(t);}} className="text-xs text-blue-600 hover:underline dark:text-blue-400">Edit</button>
+                          <button onClick={e=>{e.stopPropagation();startEditTenant(t);}} className="text-xs text-blue-600 hover:underline">Edit</button>
                           <button onClick={e=>{e.stopPropagation();deleteTenant(t.id);}} disabled={deletingTenantId===t.id} className="text-xs text-red-400 hover:text-red-600 disabled:opacity-50">
                             {deletingTenantId===t.id?'Deleting…':'Delete'}
                           </button>
@@ -1188,16 +1188,16 @@ export default function PropertyDetailPage() {
                       </button>
                       {/* Expanded detail */}
                       {expandedTenantId===t.id && (
-                        <div className="border-t border-gray-100 px-4 py-4 dark:border-gray-800">
+                        <div className="border-t border-gray-100 px-4 py-4">
                           <Link href={`/properties/${id}/units/${units.find(u=>u.unit_label===t.unit_label)?.id??''}`}
-                            className="inline-block mb-3 text-xs text-blue-600 hover:underline dark:text-blue-400">
+                            className="inline-block mb-3 text-xs text-blue-600 hover:underline">
                             View full unit detail →
                           </Link>
                           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 text-sm">
                             <div><p className="text-xs text-gray-500">Rent/mo</p><p className="font-semibold tabular">{units.find(u=>u.unit_label===t.unit_label)?.rent_amount!=null?'$'+units.find(u=>u.unit_label===t.unit_label)!.rent_amount!.toLocaleString():'—'}</p></div>
                             <div><p className="text-xs text-gray-500">Years in Unit</p><p className="font-semibold">{(()=>{const u=units.find(u=>u.unit_label===t.unit_label);if(!u?.first_lease_start_date)return'—';const yrs=(Date.now()-new Date(u.first_lease_start_date).getTime())/(1000*60*60*24*365.25);return yrs<0?'—':yrs.toFixed(1)+' yrs';})()}</p></div>
                             <div><p className="text-xs text-gray-500">Lease Expires</p><p className="font-medium">{units.find(u=>u.unit_label===t.unit_label)?.lease_end_date??'—'}</p></div>
-                            <div><p className="text-xs text-gray-500">Days Until Exp.</p><p className={`font-semibold tabular ${(()=>{const d=Math.ceil((new Date(units.find(u=>u.unit_label===t.unit_label)?.lease_end_date??'').getTime()-Date.now())/86400000);return d<0?'text-red-500':d<=60?'text-amber-600':'text-gray-700 dark:text-gray-300';})()}`}>{(()=>{const end=units.find(u=>u.unit_label===t.unit_label)?.lease_end_date;if(!end)return'—';const d=Math.ceil((new Date(end).getTime()-Date.now())/86400000);return Math.abs(d)+'d'+(d<0?' ago':'');})()}</p></div>
+                            <div><p className="text-xs text-gray-500">Days Until Exp.</p><p className={`font-semibold tabular ${(()=>{const d=Math.ceil((new Date(units.find(u=>u.unit_label===t.unit_label)?.lease_end_date??'').getTime()-Date.now())/86400000);return d<0?'text-red-500':d<=60?'text-amber-600':'text-gray-700';})()}`}>{(()=>{const end=units.find(u=>u.unit_label===t.unit_label)?.lease_end_date;if(!end)return'—';const d=Math.ceil((new Date(end).getTime()-Date.now())/86400000);return Math.abs(d)+'d'+(d<0?' ago':'');})()}</p></div>
                           </div>
                         </div>
                       )}
@@ -1224,32 +1224,32 @@ export default function PropertyDetailPage() {
       {tab==='escrow' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="font-semibold text-gray-700 dark:text-gray-300">Escrow</h2>
+            <h2 className="font-semibold text-gray-700">Escrow</h2>
             <label className={`cursor-pointer rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 ${uploadingEscrow?'opacity-50':''}`}>
               {uploadingEscrow?'Parsing…':'Upload Escrow Statement'}
               <input type="file" accept=".pdf" className="hidden" disabled={uploadingEscrow} onChange={async e=>{const file=e.target.files?.[0];if(!file||uploadingEscrow)return;const extracted=await uploadPdf(file,'escrow',setUploadingEscrow);if(extracted){setEscrowExtracted(extracted);setEscrowLender('');}e.target.value='';}} />
             </label>
           </div>
           {escrowExtracted&&(
-            <div className="rounded-xl border-2 border-blue-300 bg-blue-50 p-5 space-y-4 dark:border-blue-700 dark:bg-blue-950/20">
+            <div className="rounded-xl border-2 border-blue-300 bg-blue-50 p-5 space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-blue-800 dark:text-blue-300">✦ AI Extracted — Review & Edit Before Saving</h3>
+                <h3 className="font-semibold text-blue-800">✦ AI Extracted — Review & Edit Before Saving</h3>
                 <button onClick={()=>setEscrowExtracted(null)} className="text-xs text-gray-400 hover:text-gray-600">Discard</button>
               </div>
-              {escrowExtracted.confidence_notes&&<p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">⚠ {escrowExtracted.confidence_notes}</p>}
+              {escrowExtracted.confidence_notes&&<p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">⚠ {escrowExtracted.confidence_notes}</p>}
 
               {/* Payment option selector */}
               {escrowExtracted.options && escrowExtracted.options.length > 0 && (
                 <div>
-                  <p className="mb-2 text-xs font-medium text-gray-600 dark:text-gray-400">Which option did you choose?</p>
+                  <p className="mb-2 text-xs font-medium text-gray-600">Which option did you choose?</p>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     {escrowExtracted.options.map((opt, i) => (
                       <button
                         key={i}
                         onClick={()=>setEscrowExtracted(prev=>prev?{...prev, new_monthly_escrow: opt.new_monthly_escrow}:prev)}
-                        className={`rounded-lg border-2 p-3 text-left transition-colors ${escrowExtracted.new_monthly_escrow===opt.new_monthly_escrow?'border-blue-500 bg-blue-100 dark:bg-blue-900/30':'border-gray-200 bg-white hover:border-blue-300 dark:border-gray-700 dark:bg-gray-800'}`}
+                        className={`rounded-lg border-2 p-3 text-left transition-colors ${escrowExtracted.new_monthly_escrow===opt.new_monthly_escrow?'border-blue-500 bg-blue-100':'border-gray-200 bg-white hover:border-blue-300'}`}
                       >
-                        <p className="text-xs font-semibold text-gray-700 dark:text-gray-300">{opt.label}</p>
+                        <p className="text-xs font-semibold text-gray-700">{opt.label}</p>
                         <p className="mt-1 text-sm">New escrow: <span className="font-bold tabular">{fmt$(opt.new_monthly_escrow)}/mo</span></p>
                         {opt.total_payment && <p className="text-xs text-gray-500">Total payment: {fmt$(opt.total_payment)}/mo</p>}
                       </button>
@@ -1277,17 +1277,17 @@ export default function PropertyDetailPage() {
           )}
           <div className="space-y-4">
             {escrow.length===0&&!escrowExtracted ? (
-              <div className="rounded-xl border border-dashed border-gray-300 p-8 text-center text-gray-400 dark:border-gray-700">No escrow accounts yet. Upload an annual escrow statement to get started.</div>
+              <div className="rounded-xl border border-dashed border-gray-300 p-8 text-center text-gray-400">No escrow accounts yet. Upload an annual escrow statement to get started.</div>
             ) : escrow.filter(e=>!editingEscrow||editingEscrow.id!==e.id).map(e=>(
-              <div key={e.id} className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800">
+              <div key={e.id} className="overflow-hidden rounded-xl border border-gray-200">
                 {/* Header */}
-                <div className="flex items-center justify-between bg-gray-50 px-5 py-3 dark:bg-gray-900">
+                <div className="flex items-center justify-between bg-gray-50 px-5 py-3">
                   <div>
                     <p className="font-semibold">{e.lender_name}</p>
                     {e.loan_number&&<p className="text-xs text-gray-400">Loan #{e.loan_number}</p>}
                   </div>
                   <div className="flex items-center gap-3">
-                    <button onClick={()=>startEditEscrow(e)} className="text-xs text-blue-600 hover:underline dark:text-blue-400">Edit</button>
+                    <button onClick={()=>startEditEscrow(e)} className="text-xs text-blue-600 hover:underline">Edit</button>
                     <button onClick={()=>deleteEscrow(e.id)} disabled={deletingEscrowId===e.id} className="text-xs text-red-400 hover:text-red-600 disabled:opacity-50">{deletingEscrowId===e.id?'Deleting…':'Delete'}</button>
                   </div>
                 </div>
@@ -1297,26 +1297,26 @@ export default function PropertyDetailPage() {
                     <p className="mb-4 text-xs text-gray-400">Analysis period: {e.analysis_period_start} → {e.analysis_period_end}</p>
                   )}
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                    <div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-900">
+                    <div className="rounded-lg bg-gray-50 p-3">
                       <p className="text-xs text-gray-500">Property Taxes</p>
                       <p className="mt-1 text-lg font-bold tabular">{e.total_property_taxes!=null?'$'+e.total_property_taxes.toLocaleString(undefined,{minimumFractionDigits:2}):'—'}</p>
                       <p className="text-xs text-gray-400">paid this year</p>
                     </div>
-                    <div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-900">
+                    <div className="rounded-lg bg-gray-50 p-3">
                       <p className="text-xs text-gray-500">Insurance</p>
                       <p className="mt-1 text-lg font-bold tabular">{e.total_insurance!=null?'$'+e.total_insurance.toLocaleString(undefined,{minimumFractionDigits:2}):'—'}</p>
                       <p className="text-xs text-gray-400">paid this year</p>
                     </div>
-                    <div className={`rounded-lg p-3 ${(e.shortage_surplus_amount??0)<0?'bg-red-50 dark:bg-red-950/20':'bg-green-50 dark:bg-green-950/20'}`}>
+                    <div className={`rounded-lg p-3 ${(e.shortage_surplus_amount??0)<0?'bg-red-50':'bg-green-50'}`}>
                       <p className={`text-xs ${(e.shortage_surplus_amount??0)<0?'text-red-500':'text-green-600'}`}>{(e.shortage_surplus_amount??0)<0?'Escrow Shortage':'Escrow Surplus'}</p>
                       <p className={`mt-1 text-lg font-bold tabular ${(e.shortage_surplus_amount??0)<0?'text-red-600':'text-green-600'}`}>
                         {e.shortage_surplus_amount!=null?`${e.shortage_surplus_amount<0?'-':'+'}$${Math.abs(e.shortage_surplus_amount).toLocaleString(undefined,{minimumFractionDigits:2})}`:'—'}
                       </p>
                       <p className="text-xs text-gray-400">{(e.shortage_surplus_amount??0)<0?'owed to lender':'returned to you'}</p>
                     </div>
-                    <div className="rounded-lg bg-blue-50 p-3 dark:bg-blue-950/20">
-                      <p className="text-xs text-blue-600 dark:text-blue-400">New Monthly Payment</p>
-                      <p className="mt-1 text-lg font-bold tabular text-blue-700 dark:text-blue-300">{e.new_monthly_escrow!=null?'$'+e.new_monthly_escrow.toLocaleString(undefined,{minimumFractionDigits:2}):'—'}</p>
+                    <div className="rounded-lg bg-blue-50 p-3">
+                      <p className="text-xs text-blue-600">New Monthly Payment</p>
+                      <p className="mt-1 text-lg font-bold tabular text-blue-700">{e.new_monthly_escrow!=null?'$'+e.new_monthly_escrow.toLocaleString(undefined,{minimumFractionDigits:2}):'—'}</p>
                       <p className="text-xs text-gray-400">escrow portion</p>
                     </div>
                   </div>
@@ -1326,9 +1326,9 @@ export default function PropertyDetailPage() {
 
             {/* Edit panel */}
             {editingEscrow&&(
-              <div className="rounded-xl border-2 border-blue-300 bg-blue-50 p-5 space-y-4 dark:border-blue-700 dark:bg-blue-950/20">
+              <div className="rounded-xl border-2 border-blue-300 bg-blue-50 p-5 space-y-4">
                 <div className="flex items-center justify-between">
-                  <h3 className="font-semibold text-blue-800 dark:text-blue-300">Editing — {editingEscrow.lender_name}</h3>
+                  <h3 className="font-semibold text-blue-800">Editing — {editingEscrow.lender_name}</h3>
                   <button onClick={()=>setEditingEscrow(null)} className="text-xs text-gray-400 hover:text-gray-600">Cancel</button>
                 </div>
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -1350,11 +1350,11 @@ export default function PropertyDetailPage() {
 
           {/* ── PITI SECTION ── */}
           <div className="mt-8 space-y-4">
-            <div className="border-t-2 border-blue-100 pt-6 dark:border-blue-900/30">
+            <div className="border-t-2 border-blue-100 pt-6">
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <h2 className="font-semibold text-gray-900 dark:text-gray-100">Monthly PITI Breakdown</h2>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Principal · Interest · Taxes · Insurance — upload monthly mortgage statements</p>
+                  <h2 className="font-semibold text-gray-900">Monthly PITI Breakdown</h2>
+                  <p className="text-xs text-gray-500 mt-0.5">Principal · Interest · Taxes · Insurance — upload monthly mortgage statements</p>
                 </div>
                 <label className={`cursor-pointer rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 ${uploadingPiti?'opacity-50':''}`}>
                 {uploadingPiti ? 'Parsing…' : 'Upload Mortgage Statement'}
@@ -1377,12 +1377,12 @@ export default function PropertyDetailPage() {
 
             {/* PITI extraction review */}
             {pitiExtracted && (
-              <div className="rounded-xl border-2 border-blue-300 bg-blue-50 p-5 space-y-4 dark:border-blue-700 dark:bg-blue-950/20">
+              <div className="rounded-xl border-2 border-blue-300 bg-blue-50 p-5 space-y-4">
                 <div className="flex items-center justify-between">
-                  <h3 className="font-semibold text-blue-800 dark:text-blue-300">✦ AI Extracted — Review & Edit Before Saving</h3>
+                  <h3 className="font-semibold text-blue-800">✦ AI Extracted — Review & Edit Before Saving</h3>
                   <button onClick={() => setPitiExtracted(null)} className="text-xs text-gray-400 hover:text-gray-600">Discard</button>
                 </div>
-                {pitiExtracted.confidence_notes && <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">⚠ {pitiExtracted.confidence_notes}</p>}
+                {pitiExtracted.confidence_notes && <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">⚠ {pitiExtracted.confidence_notes}</p>}
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                   <Input label="Statement Date" type="date" value={pitiExtracted.statement_date??''} onChange={v=>setPitiExtracted(p=>p?{...p,statement_date:v}:p)} />
                   <Input label="Principal ($)" type="number" value={pitiExtracted.principal?.toString()??''} onChange={v=>setPitiExtracted(p=>p?{...p,principal:v?parseFloat(v):null}:p)} placeholder="1234.56" />
@@ -1417,23 +1417,23 @@ export default function PropertyDetailPage() {
 
             {/* PITI history table */}
             {pitiHistory.length === 0 && !pitiExtracted ? (
-              <div className="rounded-xl border border-dashed border-gray-300 p-8 text-center text-gray-400 dark:border-gray-700">
+              <div className="rounded-xl border border-dashed border-gray-300 p-8 text-center text-gray-400">
                 No mortgage statements yet. Upload a monthly statement to track your PITI breakdown.
               </div>
             ) : pitiHistory.length > 0 && (
               <>
-                <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800">
+                <div className="overflow-hidden rounded-xl border border-gray-200">
                   <table className="w-full text-sm">
-                    <thead className="bg-gray-50 dark:bg-gray-900">
+                    <thead className="bg-gray-50">
                       <tr>
                         {['Month','Principal','Interest','Taxes','Insurance','Total'].map(h=>(
                           <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500">{h}</th>
                         ))}
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                    <tbody className="divide-y divide-gray-100">
                       {pitiHistory.map(r=>(
-                        <tr key={r.id} className="hover:bg-gray-50 dark:hover:bg-gray-900/50">
+                        <tr key={r.id} className="hover:bg-gray-50">
                           <td className="px-4 py-3 font-medium">{r.statement_year_month}</td>
                           <td className="px-4 py-3 tabular">${Number(r.principal).toLocaleString(undefined,{minimumFractionDigits:2})}</td>
                           <td className="px-4 py-3 tabular">${Number(r.interest).toLocaleString(undefined,{minimumFractionDigits:2})}</td>
@@ -1451,7 +1451,7 @@ export default function PropertyDetailPage() {
                     { label: 'Latest Month', value: pitiHistory[0]?.statement_year_month ?? '—' },
                     { label: 'Records', value: String(pitiHistory.length) },
                   ].map(c=>(
-                    <div key={c.label} className="rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-800 dark:bg-gray-900">
+                    <div key={c.label} className="rounded-lg border border-gray-200 bg-white p-3">
                       <p className="text-xs text-gray-500">{c.label}</p>
                       <p className="mt-1 text-lg font-bold">{c.value}</p>
                     </div>
@@ -1468,7 +1468,7 @@ export default function PropertyDetailPage() {
       {tab==='insurance' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="font-semibold text-gray-700 dark:text-gray-300">Insurance Policies</h2>
+            <h2 className="font-semibold text-gray-700">Insurance Policies</h2>
             <label className={`cursor-pointer rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 ${uploadingInsurance?'opacity-50':''}`}>
               {uploadingInsurance?'Parsing…':'Upload Policy PDF'}
               <input type="file" accept=".pdf" className="hidden" disabled={uploadingInsurance} onChange={async e=>{const file=e.target.files?.[0];if(!file||uploadingInsurance)return;const extracted=await uploadPdf(file,'insurance',setUploadingInsurance);if(extracted)setInsuranceExtracted(extracted);e.target.value='';}} />
@@ -1500,7 +1500,7 @@ export default function PropertyDetailPage() {
           )}
 
           <div className="space-y-3">
-            {insurance.length===0&&!insuranceExtracted?<div className="rounded-xl border border-dashed border-gray-300 p-8 text-center text-gray-400 dark:border-gray-700">No insurance policies yet.</div>:insurance.filter(p=>!editingInsurance||editingInsurance.id!==p.id).map(p=>{
+            {insurance.length===0&&!insuranceExtracted?<div className="rounded-xl border border-dashed border-gray-300 p-8 text-center text-gray-400">No insurance policies yet.</div>:insurance.filter(p=>!editingInsurance||editingInsurance.id!==p.id).map(p=>{
               const daysLeft=Math.ceil((new Date(p.expiration_date).getTime()-Date.now())/86400000);
               const coverageFields = [
                 {label:'Dwelling', val:p.dwelling_coverage},
@@ -1518,40 +1518,40 @@ export default function PropertyDetailPage() {
                 {label:'Wind/Hail Deductible', val:p.wind_hail_deductible},
               ].filter(f=>f.val!=null);
               return(
-                <div key={p.id} className="rounded-xl border border-gray-200 p-5 dark:border-gray-800">
+                <div key={p.id} className="rounded-xl border border-gray-200 p-5">
                   <div className="flex items-start justify-between">
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className="font-medium">{p.carrier}</p>
-                        {p.policy_type&&<span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-400">{p.policy_type}</span>}
+                        {p.policy_type&&<span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">{p.policy_type}</span>}
                         {p.policy_number&&<span className="text-xs text-gray-400">#{p.policy_number}</span>}
-                        {p.extracted_by_ai&&<span className="rounded-full bg-purple-100 px-2 py-0.5 text-xs text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">AI parsed</span>}
+                        {p.extracted_by_ai&&<span className="rounded-full bg-purple-100 px-2 py-0.5 text-xs text-purple-700">AI parsed</span>}
                       </div>
                       <p className="mt-1 text-sm text-gray-500">{p.effective_date} → {p.expiration_date}</p>
                     </div>
                     <div className="flex items-center gap-3">
                       <p className={`text-sm font-medium ${daysLeft<=60?'text-amber-600':'text-gray-500'}`}>{daysLeft<=0?'Expired':daysLeft<=60?`Expires in ${daysLeft}d`:`${daysLeft}d remaining`}</p>
-                      <button onClick={()=>startEditInsurance(p)} className="text-xs text-blue-600 hover:underline dark:text-blue-400">Edit</button>
+                      <button onClick={()=>startEditInsurance(p)} className="text-xs text-blue-600 hover:underline">Edit</button>
                       <button onClick={()=>deleteInsurance(p.id)} disabled={deletingInsuranceId===p.id} className="text-xs text-red-400 hover:text-red-600 disabled:opacity-50">{deletingInsuranceId===p.id?'Deleting…':'Delete'}</button>
                     </div>
                   </div>
                   <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-                    {p.annual_premium!=null&&<div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-900"><p className="text-xs text-gray-500">Annual Premium</p><p className="font-semibold tabular">{fmt$(p.annual_premium)}/yr</p></div>}
+                    {p.annual_premium!=null&&<div className="rounded-lg bg-gray-50 p-3"><p className="text-xs text-gray-500">Annual Premium</p><p className="font-semibold tabular">{fmt$(p.annual_premium)}/yr</p></div>}
                     {coverageFields.map(f=>(
-                      <div key={f.label} className="rounded-lg bg-gray-50 p-3 dark:bg-gray-900">
+                      <div key={f.label} className="rounded-lg bg-gray-50 p-3">
                         <p className="text-xs text-gray-500">{f.label}</p>
                         <p className="font-medium tabular">{fmt$(f.val)}</p>
                       </div>
                     ))}
                     {deductibleFields.map(f=>(
-                      <div key={f.label} className="rounded-lg bg-amber-50 p-3 dark:bg-amber-900/20">
-                        <p className="text-xs text-amber-600 dark:text-amber-400">{f.label}</p>
-                        <p className="font-medium tabular text-amber-700 dark:text-amber-300">{fmt$(f.val)}</p>
+                      <div key={f.label} className="rounded-lg bg-amber-50 p-3">
+                        <p className="text-xs text-amber-600">{f.label}</p>
+                        <p className="font-medium tabular text-amber-700">{fmt$(f.val)}</p>
                       </div>
                     ))}
-                    {p.loss_of_rent_months!=null&&<div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-900"><p className="text-xs text-gray-500">Loss of Rent Period</p><p className="font-medium">{p.loss_of_rent_months} months</p></div>}
+                    {p.loss_of_rent_months!=null&&<div className="rounded-lg bg-gray-50 p-3"><p className="text-xs text-gray-500">Loss of Rent Period</p><p className="font-medium">{p.loss_of_rent_months} months</p></div>}
                   </div>
-                  {p.coverage_notes&&<p className="mt-3 text-sm text-gray-500 dark:text-gray-400">{p.coverage_notes}</p>}
+                  {p.coverage_notes&&<p className="mt-3 text-sm text-gray-500">{p.coverage_notes}</p>}
                 </div>
               );
             })}

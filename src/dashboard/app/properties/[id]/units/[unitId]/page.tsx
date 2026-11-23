@@ -98,7 +98,7 @@ export default function UnitDetailPage() {
   return (
     <>
       <div className="mb-6">
-        <Link href={`/properties/${propertyId}`} className="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400">
+        <Link href={`/properties/${propertyId}`} className="text-sm text-gray-500 hover:text-gray-700">
           ← {propertyAddress}
         </Link>
         <h1 className="mt-1 text-2xl font-bold">Unit {unit.unit_label}</h1>
@@ -112,7 +112,7 @@ export default function UnitDetailPage() {
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
 
         {/* Tenant card */}
-        <div className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
+        <div className="rounded-xl border border-gray-200 bg-white p-5">
           <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">Current Tenant</h2>
           {unit.tenant_name ? (
             <div className="space-y-3">
@@ -139,7 +139,7 @@ export default function UnitDetailPage() {
                 {unit.lease_end_date && days !== null && (
                   <div className="col-span-2">
                     <p className="text-xs text-gray-500">{days >= 0 ? 'Days Until Expiration' : 'Days Since Expiration'}</p>
-                    <p className={`font-semibold tabular ${days < 0 ? 'text-red-500' : days <= 60 ? 'text-amber-600' : 'text-gray-700 dark:text-gray-300'}`}>
+                    <p className={`font-semibold tabular ${days < 0 ? 'text-red-500' : days <= 60 ? 'text-amber-600' : 'text-gray-700'}`}>
                       {Math.abs(days)}d {days < 0 ? 'overdue' : leaseIsActive ? 'remaining' : ''}
                     </p>
                   </div>
@@ -149,7 +149,7 @@ export default function UnitDetailPage() {
           ) : (
             <div className="py-4 text-center text-gray-400">
               <p className="italic">Vacant</p>
-              <Link href={`/properties/${propertyId}/tenants/new`} className="mt-2 inline-block text-xs text-blue-600 hover:underline dark:text-blue-400">
+              <Link href={`/properties/${propertyId}/tenants/new`} className="mt-2 inline-block text-xs text-blue-600 hover:underline">
                 + Add Tenant
               </Link>
             </div>
@@ -157,7 +157,7 @@ export default function UnitDetailPage() {
         </div>
 
         {/* Rent summary card */}
-        <div className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
+        <div className="rounded-xl border border-gray-200 bg-white p-5">
           <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">Rent History</h2>
           {rent.length === 0 ? (
             <p className="py-4 text-center italic text-gray-400 text-sm">No rent records yet</p>
@@ -173,7 +173,7 @@ export default function UnitDetailPage() {
                   <p className="text-lg font-bold tabular">{fmt$(totalPaid)}</p>
                 </div>
               </div>
-              <div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-800">
+              <div className="rounded-lg bg-gray-50 p-3">
                 <div className="grid grid-cols-2 gap-2 text-sm">
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-gray-500">On time</span>
@@ -199,7 +199,7 @@ export default function UnitDetailPage() {
                     <span>Collection rate</span>
                     <span>{Math.round((totalPaid / totalExpected) * 100)}%</span>
                   </div>
-                  <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
                     <div
                       className="h-2 rounded-full bg-green-500"
                       style={{ width: `${Math.min(100, Math.round((totalPaid / totalExpected) * 100))}%` }}
@@ -212,16 +212,16 @@ export default function UnitDetailPage() {
         </div>
 
         {/* Quick actions card */}
-        <div className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
+        <div className="rounded-xl border border-gray-200 bg-white p-5">
           <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">Quick Actions</h2>
           <div className="space-y-2">
             <Link href={`/properties/${propertyId}?tab=leases`}
-              className="flex w-full items-center justify-between rounded-lg border border-gray-200 px-3 py-2.5 text-sm hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">
+              className="flex w-full items-center justify-between rounded-lg border border-gray-200 px-3 py-2.5 text-sm hover:bg-gray-50">
               <span>Upload Lease PDF</span>
               <span className="text-gray-400">→</span>
             </Link>
             <Link href={`/properties/${propertyId}?tab=rent`}
-              className="flex w-full items-center justify-between rounded-lg border border-gray-200 px-3 py-2.5 text-sm hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">
+              className="flex w-full items-center justify-between rounded-lg border border-gray-200 px-3 py-2.5 text-sm hover:bg-gray-50">
               <span>Add Rent Payment</span>
               <span className="text-gray-400">→</span>
             </Link>
@@ -232,22 +232,22 @@ export default function UnitDetailPage() {
       {/* Lease history */}
       <div className="mt-6">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="font-semibold text-gray-700 dark:text-gray-300">Lease History</h2>
+          <h2 className="font-semibold text-gray-700">Lease History</h2>
           <Link href={`/properties/${propertyId}?tab=leases`}
-            className="text-xs text-blue-600 hover:underline dark:text-blue-400">
+            className="text-xs text-blue-600 hover:underline">
             Upload PDF →
           </Link>
         </div>
         <div className="space-y-2">
           {leases.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-gray-300 p-6 text-center text-gray-400 dark:border-gray-700">
+            <div className="rounded-xl border border-dashed border-gray-300 p-6 text-center text-gray-400">
               No leases yet.
             </div>
           ) : leases.map(l => (
-            <div key={l.id} className="flex items-center justify-between rounded-xl border border-gray-200 px-5 py-3 dark:border-gray-800">
+            <div key={l.id} className="flex items-center justify-between rounded-xl border border-gray-200 px-5 py-3">
               <div>
                 <span className="font-medium text-sm">{l.tenant_name}</span>
-                {l.extracted_by_ai && <span className="ml-2 rounded-full bg-purple-100 px-2 py-0.5 text-xs text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">AI parsed</span>}
+                {l.extracted_by_ai && <span className="ml-2 rounded-full bg-purple-100 px-2 py-0.5 text-xs text-purple-700">AI parsed</span>}
                 <p className="text-xs text-gray-500 mt-0.5">{l.start_date} → {l.end_date}</p>
               </div>
               <div className="text-right">

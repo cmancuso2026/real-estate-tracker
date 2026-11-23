@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { financeApi } from './api';
+import { QUEUE_EVENT } from '@/components/NavLinks';
 import { buildTaxonomy, type Taxonomy } from '@/lib/finance-ui/taxonomy';
 import {
   mapTxn,
@@ -155,6 +156,11 @@ export function FinanceDataProvider({ children }: { children: React.ReactNode })
     () => txns.filter((t) => !t.propertyId && requiresProperty(t.cat)).length,
     [txns, requiresProperty],
   );
+
+  // Keep the main nav's Needs Property badge in step with what you just did.
+  useEffect(() => {
+    if (!loading) window.dispatchEvent(new CustomEvent(QUEUE_EVENT, { detail: unattributedCount }));
+  }, [unattributedCount, loading]);
 
   const patchTxns = useCallback((ids: number[], patch: Partial<Txn>) => {
     const set = new Set(ids);

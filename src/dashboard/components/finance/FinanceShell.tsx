@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { MultiSelect } from '@/components/MultiSelect';
 import { hasActiveFilters, PROP_PREFIX } from '@/lib/finance-ui/filters';
@@ -10,13 +9,6 @@ import { FinanceDataProvider, useFinance } from './FinanceData';
 import { NoteTooltip } from './NoteTooltip';
 import { selectCls } from './ui';
 
-const TABS = [
-  { href: '/finance', label: 'Overview', exact: true },
-  { href: '/finance/spending', label: 'Spending' },
-  { href: '/finance/transactions', label: 'Transactions' },
-  { href: '/finance/upload', label: 'Upload' },
-  { href: '/finance/attribution', label: 'Needs Property', badge: true },
-];
 
 /** Pages that don't use the global filters. */
 const NO_FILTERS = ['/finance/upload', '/finance/attribution'];
@@ -122,31 +114,9 @@ function FilterBar() {
 
 function ShellBody({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { loading, error, reload, unattributedCount } = useFinance();
+  const { loading, error, reload } = useFinance();
   return (
     <div className="space-y-4">
-      <nav className="flex w-fit gap-1 rounded-lg border border-gray-200 bg-white p-1 shadow-sm">
-        {TABS.map((t) => {
-          const active = t.exact ? pathname === t.href : pathname.startsWith(t.href);
-          return (
-            <Link
-              key={t.href}
-              href={t.href}
-              className={`rounded-md px-3 py-1.5 text-sm font-medium ${active ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
-            >
-              {t.label}
-              {t.badge && unattributedCount > 0 && (
-                <span
-                  data-testid="needs-property-badge"
-                  className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[11px] font-semibold tabular ${active ? 'bg-white text-blue-700' : 'bg-orange-500 text-white'}`}
-                >
-                  {unattributedCount}
-                </span>
-              )}
-            </Link>
-          );
-        })}
-      </nav>
       {!NO_FILTERS.includes(pathname) && <FilterBar />}
 
       {error && (
@@ -169,7 +139,7 @@ function ShellBody({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** Wraps every /finance page: shared data + global filters + sub-navigation. */
+/** Wraps every /finance page: shared data + global filters. */
 export function FinanceShell({ children }: { children: React.ReactNode }) {
   return (
     <FinanceDataProvider>

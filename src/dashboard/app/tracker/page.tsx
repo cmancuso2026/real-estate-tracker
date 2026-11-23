@@ -32,7 +32,7 @@ export default async function TrackerPage() {
     <>
       <div className="mb-5">
         <h1 className="text-2xl font-bold">Investment Dashboard</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400">
+        <p className="text-sm text-gray-500">
           Graded for-sale properties across your target markets.
         </p>
       </div>
@@ -40,24 +40,24 @@ export default async function TrackerPage() {
       <SummaryCards summary={summary} profileActive={active} />
 
       {active && allGraded.length > 0 && (
-        <div className="mt-6 flex flex-wrap items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm dark:border-blue-900 dark:bg-blue-950/40">
-          <span className="font-medium text-blue-800 dark:text-blue-200">
+        <div className="mt-6 flex flex-wrap items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm">
+          <span className="font-medium text-blue-800">
             Filtered to your Investor Profile
           </span>
           {profileChips(profile).map((c) => (
             <span
               key={c}
-              className="rounded-full bg-white px-2 py-0.5 text-xs font-medium text-blue-700 ring-1 ring-blue-200 dark:bg-blue-900/50 dark:text-blue-200 dark:ring-blue-800"
+              className="rounded-full bg-white px-2 py-0.5 text-xs font-medium text-blue-700 ring-1 ring-blue-200"
             >
               {c}
             </span>
           ))}
-          <span className="text-blue-700 dark:text-blue-300">
+          <span className="text-blue-700">
             · {properties.length} of {allGraded.length} graded
           </span>
           <Link
             href="/admin/investor-profile"
-            className="ml-auto font-semibold text-blue-700 hover:underline dark:text-blue-300"
+            className="ml-auto font-semibold text-blue-700 hover:underline"
           >
             Edit
           </Link>
@@ -65,29 +65,29 @@ export default async function TrackerPage() {
       )}
 
       {allGraded.length === 0 ? (
-        <div className="mt-8 rounded-xl border border-dashed border-gray-300 p-10 text-center text-gray-500 dark:border-gray-700 dark:text-gray-400">
+        <div className="mt-8 rounded-xl border border-dashed border-gray-300 p-10 text-center text-gray-500">
           <p className="text-lg font-medium">No graded properties yet</p>
           <p className="mt-1 text-sm">
             Run{' '}
-            <code className="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800">
+            <code className="rounded bg-gray-100 px-1.5 py-0.5">
               npm run fetch:all
             </code>{' '}
             then{' '}
-            <code className="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800">npm run grade</code>{' '}
+            <code className="rounded bg-gray-100 px-1.5 py-0.5">npm run grade</code>{' '}
             from the project root — or{' '}
-            <code className="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800">
+            <code className="rounded bg-gray-100 px-1.5 py-0.5">
               npm run seed:demo
             </code>{' '}
             for sample data.
           </p>
         </div>
       ) : properties.length === 0 ? (
-        <div className="mt-8 rounded-xl border border-dashed border-gray-300 p-10 text-center text-gray-500 dark:border-gray-700 dark:text-gray-400">
+        <div className="mt-8 rounded-xl border border-dashed border-gray-300 p-10 text-center text-gray-500">
           <p className="text-lg font-medium">No properties match your Investor Profile</p>
           <p className="mt-1 text-sm">
             All {allGraded.length} graded {allGraded.length === 1 ? 'property is' : 'properties are'}{' '}
             outside your buy-box. Try loosening your{' '}
-            <Link href="/admin/investor-profile" className="font-semibold text-blue-600 hover:underline dark:text-blue-400">
+            <Link href="/admin/investor-profile" className="font-semibold text-blue-600 hover:underline">
               Investor Profile
             </Link>
             .

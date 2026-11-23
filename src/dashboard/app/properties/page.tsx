@@ -122,7 +122,7 @@ export default function PropertiesPage() {
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">My Properties</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
+          <p className="text-sm text-gray-500">
             {new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' })}
           </p>
         </div>
@@ -144,16 +144,16 @@ export default function PropertiesPage() {
           },
           { label: 'Leases Expiring', value: String(expiring), sub: 'within 60 days' },
         ].map(card => (
-          <div key={card.label} className={`rounded-xl border p-4 ${'alert' in card && card.alert ? 'border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/20' : 'border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900'}`}>
-            <p className="text-xs text-gray-500 dark:text-gray-400">{card.label}</p>
-            <p className={`mt-1 text-2xl font-bold tabular ${'alert' in card && card.alert ? 'text-amber-700 dark:text-amber-400' : ''}`}>{card.value}</p>
+          <div key={card.label} className={`rounded-xl border p-4 ${'alert' in card && card.alert ? 'border-amber-300 bg-amber-50' : 'border-gray-200 bg-white'}`}>
+            <p className="text-xs text-gray-500">{card.label}</p>
+            <p className={`mt-1 text-2xl font-bold tabular ${'alert' in card && card.alert ? 'text-amber-700' : ''}`}>{card.value}</p>
             <p className="text-xs text-gray-400">{card.sub}</p>
           </div>
         ))}
       </div>
 
       {properties.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-gray-300 p-12 text-center text-gray-500 dark:border-gray-700">
+        <div className="rounded-xl border border-dashed border-gray-300 p-12 text-center text-gray-500">
           <p className="text-lg font-medium">No properties yet</p>
           <Link href="/properties/new" className="mt-4 inline-block rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Add Property</Link>
         </div>
@@ -164,7 +164,7 @@ export default function PropertiesPage() {
             const isExpanded = expanded[property.id];
 
             return (
-              <div key={property.id} className="rounded-xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+              <div key={property.id} className="rounded-xl border border-gray-200 bg-white">
                 {/* Property header — click to expand */}
                 <button
                   onClick={() => toggleExpand(property.id)}
@@ -178,7 +178,7 @@ export default function PropertiesPage() {
                     <Link
                       href={`/properties/${property.id}`}
                       onClick={e => e.stopPropagation()}
-                      className="rounded-lg border border-gray-200 px-3 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800"
+                      className="rounded-lg border border-gray-200 px-3 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50"
                     >
                       Manage →
                     </Link>
@@ -188,7 +188,7 @@ export default function PropertiesPage() {
 
                 {/* Expanded units */}
                 {isExpanded && (
-                  <div className="border-t border-gray-100 dark:border-gray-800">
+                  <div className="border-t border-gray-100">
                     {propUnits.length === 0 ? (
                       <p className="px-5 py-4 text-sm text-gray-400 italic">Loading units…</p>
                     ) : (
@@ -204,7 +204,7 @@ export default function PropertiesPage() {
                           <col />
                         </colgroup>
                         <thead>
-                          <tr className="border-b border-gray-50 dark:border-gray-800">
+                          <tr className="border-b border-gray-50">
                             {['Unit', 'Tenant', 'Rent/mo', 'This Month', 'Lease Status', 'Expires', 'Days', 'Tenure'].map(h => (
                               <th key={h} className="px-5 py-2.5 text-left text-xs font-medium text-gray-400">{h}</th>
                             ))}
@@ -217,15 +217,15 @@ export default function PropertiesPage() {
                               <tr
                                 key={u.id}
                                 onClick={() => router.push(`/properties/${property.id}/units/${u.id}`)}
-                                className={`cursor-pointer border-b border-gray-50 last:border-0 dark:border-gray-800/50 ${u.is_owner_unit ? 'bg-blue-50/50 dark:bg-blue-950/20' : 'hover:bg-gray-50 dark:hover:bg-gray-800/30'}`}
+                                className={`cursor-pointer border-b border-gray-50 last:border-0 ${u.is_owner_unit ? 'bg-blue-50/50' : 'hover:bg-gray-50'}`}
                               >
-                                <td className="px-5 py-3 font-semibold text-blue-600 dark:text-blue-400">
+                                <td className="px-5 py-3 font-semibold text-blue-600">
                                   <div className="flex items-center gap-2">
                                     {u.unit_label}
-                                    {u.is_owner_unit && <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">Owner</span>}
+                                    {u.is_owner_unit && <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">Owner</span>}
                                   </div>
                                 </td>
-                                <td className="px-5 py-3">{u.is_owner_unit ? <span className="italic text-blue-500 dark:text-blue-400">Owner occupied</span> : u.tenant_name ?? <span className="italic text-gray-400">Vacant</span>}</td>
+                                <td className="px-5 py-3">{u.is_owner_unit ? <span className="italic text-blue-500">Owner occupied</span> : u.tenant_name ?? <span className="italic text-gray-400">Vacant</span>}</td>
                                 <td className="px-5 py-3 tabular">{u.is_owner_unit ? <span className="text-gray-400">—</span> : fmt$(u.rent_amount)}</td>
                                 <td className="px-5 py-3">
                                   {u.is_owner_unit ? <span className="text-gray-400">—</span>

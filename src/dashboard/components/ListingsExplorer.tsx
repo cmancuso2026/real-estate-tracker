@@ -58,7 +58,7 @@ const COLUMNS: Column[] = [
 ];
 
 const SELECT =
-  'rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-900';
+  'rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm';
 
 export function ListingsExplorer({ properties }: { properties: GradedRow[] }) {
   const router = useRouter();
@@ -187,21 +187,21 @@ export function ListingsExplorer({ properties }: { properties: GradedRow[] }) {
           <button
             type="button"
             onClick={reset}
-            className="rounded-lg px-2.5 py-1.5 text-sm text-blue-600 hover:underline dark:text-blue-400"
+            className="rounded-lg px-2.5 py-1.5 text-sm text-blue-600 hover:underline"
           >
             Clear
           </button>
         )}
 
-        <span className="ml-auto text-sm text-gray-500 dark:text-gray-400">
+        <span className="ml-auto text-sm text-gray-500">
           {filtered.length} of {properties.length}
         </span>
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
+      <div className="overflow-x-auto rounded-xl border border-gray-200">
         <table className="w-full border-collapse text-sm">
-          <thead className="bg-gray-50 text-gray-600 dark:bg-gray-900 dark:text-gray-300">
+          <thead className="bg-gray-50 text-gray-600">
             <tr>
               {COLUMNS.map((c) => {
                 const active = sort.key === c.key;
@@ -215,7 +215,7 @@ export function ListingsExplorer({ properties }: { properties: GradedRow[] }) {
                         : c.align === 'center'
                           ? 'text-center'
                           : 'text-left'
-                    } hover:text-gray-900 dark:hover:text-white`}
+                    } hover:text-gray-900`}
                   >
                     {c.label}
                     <span className="ml-1 inline-block w-2 text-gray-400">
@@ -231,11 +231,11 @@ export function ListingsExplorer({ properties }: { properties: GradedRow[] }) {
               <tr
                 key={p.listing_id}
                 onClick={() => router.push(`/property/${p.listing_id}`)}
-                className="cursor-pointer border-t border-gray-100 hover:bg-blue-50 dark:border-gray-800 dark:hover:bg-gray-800/60"
+                className="cursor-pointer border-t border-gray-100 hover:bg-blue-50"
               >
                 <td className="max-w-[18rem] truncate px-3 py-2.5">
                   <div className="truncate font-medium">{p.address ?? `Listing ${p.listing_id}`}</div>
-                  <div className="truncate text-xs text-gray-500 dark:text-gray-400">
+                  <div className="truncate text-xs text-gray-500">
                     {[p.city, p.zip_code].filter(Boolean).join(' · ')}
                   </div>
                 </td>
@@ -250,7 +250,7 @@ export function ListingsExplorer({ properties }: { properties: GradedRow[] }) {
                 <td className="px-3 py-2.5 text-right tabular">{fmtPct(p.coc_return)}</td>
                 <td
                   className={`px-3 py-2.5 text-right tabular ${
-                    (p.monthly_cashflow ?? 0) < 0 ? 'text-red-600 dark:text-red-400' : ''
+                    (p.monthly_cashflow ?? 0) < 0 ? 'text-red-600' : ''
                   }`}
                 >
                   {fmtSignedMoney(p.monthly_cashflow)}
@@ -258,7 +258,7 @@ export function ListingsExplorer({ properties }: { properties: GradedRow[] }) {
                 <td className="px-3 py-2.5 text-center">
                   <GradeBadge grade={p.overall_grade} size="sm" />
                 </td>
-                <td className="whitespace-nowrap px-3 py-2.5 text-right text-xs text-gray-500 dark:text-gray-400">
+                <td className="whitespace-nowrap px-3 py-2.5 text-right text-xs text-gray-500">
                   {fmtDate(p.first_seen_at)}
                 </td>
               </tr>
@@ -267,7 +267,7 @@ export function ListingsExplorer({ properties }: { properties: GradedRow[] }) {
               <tr>
                 <td
                   colSpan={COLUMNS.length}
-                  className="px-3 py-10 text-center text-gray-500 dark:text-gray-400"
+                  className="px-3 py-10 text-center text-gray-500"
                 >
                   No properties match these filters.
                 </td>

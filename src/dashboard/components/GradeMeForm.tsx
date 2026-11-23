@@ -18,7 +18,7 @@ import { GradeBadge } from './GradeBadge';
 const INPUT =
   'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm tabular ' +
   'focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 ' +
-  'dark:border-gray-700 dark:bg-gray-900';
+  '';
 
 const PROPERTY_TYPES = [
   { value: 'SFH', hint: 'Single-family' },
@@ -40,7 +40,7 @@ function Field({
     <label className="block">
       <span className="mb-1 block text-sm font-medium">{label}</span>
       {children}
-      {hint && <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">{hint}</span>}
+      {hint && <span className="mt-1 block text-xs text-gray-500">{hint}</span>}
     </label>
   );
 }
@@ -67,7 +67,7 @@ export function GradeMeForm({ zips }: { zips: string[] }) {
 
   return (
     <div className="space-y-6">
-      <form action={formAction} className="space-y-6 rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
+      <form action={formAction} className="space-y-6 rounded-xl border border-gray-200 bg-white p-5">
         <Field label="Property address" hint="For your reference — not used in scoring.">
           <input
             name="address"
@@ -181,7 +181,7 @@ export function GradeMeForm({ zips }: { zips: string[] }) {
             {PROPERTY_TYPES.map((t, i) => (
               <label
                 key={t.value}
-                className="flex cursor-pointer items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800"
+                className="flex cursor-pointer items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50"
               >
                 <input
                   type="radio"
@@ -191,22 +191,22 @@ export function GradeMeForm({ zips }: { zips: string[] }) {
                   className="h-4 w-4 accent-blue-600"
                 />
                 <span className="font-medium">{t.value}</span>
-                <span className="text-xs text-gray-500 dark:text-gray-400">{t.hint}</span>
+                <span className="text-xs text-gray-500">{t.hint}</span>
               </label>
             ))}
           </div>
         </fieldset>
 
-        <div className="flex items-center gap-3 border-t border-gray-100 pt-4 dark:border-gray-800">
+        <div className="flex items-center gap-3 border-t border-gray-100 pt-4">
           <SubmitButton />
-          <span className="text-xs text-gray-500 dark:text-gray-400">
+          <span className="text-xs text-gray-500">
             Runs the full scoring engine using rental comps and listings in this zip.
           </span>
         </div>
       </form>
 
       {state.error && (
-        <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+        <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           {state.error}
         </div>
       )}
@@ -219,9 +219,9 @@ export function GradeMeForm({ zips }: { zips: string[] }) {
 // --- result -----------------------------------------------------------------
 
 const REC_STYLE: Record<string, string> = {
-  Pursue: 'bg-green-100 text-green-800 ring-green-300 dark:bg-green-950/50 dark:text-green-300 dark:ring-green-800',
-  Watch: 'bg-yellow-100 text-yellow-800 ring-yellow-300 dark:bg-yellow-950/50 dark:text-yellow-300 dark:ring-yellow-800',
-  Pass: 'bg-red-100 text-red-800 ring-red-300 dark:bg-red-950/50 dark:text-red-300 dark:ring-red-800',
+  Pursue: 'bg-green-100 text-green-800 ring-green-300',
+  Watch: 'bg-yellow-100 text-yellow-800 ring-yellow-300',
+  Pass: 'bg-red-100 text-red-800 ring-red-300',
 };
 
 function GradeResult({ result }: { result: ManualGradeResult }) {
@@ -229,10 +229,10 @@ function GradeResult({ result }: { result: ManualGradeResult }) {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <header className="flex flex-col gap-4 rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900 sm:flex-row sm:items-start sm:justify-between">
+      <header className="flex flex-col gap-4 rounded-xl border border-gray-200 bg-white p-5 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <h2 className="text-xl font-bold">{result.input.address || `Property in ${result.input.zip}`}</h2>
-          <div className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+          <div className="mt-1 text-sm text-gray-500">
             {result.input.zip} · {result.input.propertyType} · {fmtNum(result.input.beds)} bd /{' '}
             {fmtNum(result.input.baths)} ba · {fmtNum(result.input.sqft)} sqft · {fmtMoney(result.input.price)}
           </div>
@@ -250,7 +250,7 @@ function GradeResult({ result }: { result: ManualGradeResult }) {
         </div>
         <div className="flex shrink-0 flex-col items-center gap-2">
           <GradeBadge grade={result.overallGrade} size="lg" />
-          <div className="text-xs text-gray-500 dark:text-gray-400">
+          <div className="text-xs text-gray-500">
             Score {fmtNum(result.overallScore)} / 4
           </div>
         </div>
@@ -301,7 +301,7 @@ function GradeResult({ result }: { result: ManualGradeResult }) {
             />
           </tbody>
         </table>
-        <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+        <p className="mt-2 text-xs text-gray-500">
           Rent estimated from {fmtNum(result.rentComps)} comparable rental{result.rentComps === 1 ? '' : 's'} in {result.input.zip}.
         </p>
       </Section>
@@ -313,13 +313,13 @@ function GradeResult({ result }: { result: ManualGradeResult }) {
             <div className="space-y-1 text-sm">
               <Row label="This property" value={fmtMoney(result.pricePerSqft)} />
               <Row label="Zip median" value={fmtMoney(result.zipMedianPerSqft)} />
-              <div className="flex justify-between border-t border-gray-100 pt-1 dark:border-gray-800">
-                <span className="text-gray-500 dark:text-gray-400">Difference</span>
+              <div className="flex justify-between border-t border-gray-100 pt-1">
+                <span className="text-gray-500">Difference</span>
                 <span
                   className={`tabular font-semibold ${
                     result.pricePerSqft <= result.zipMedianPerSqft
-                      ? 'text-green-600 dark:text-green-400'
-                      : 'text-red-600 dark:text-red-400'
+                      ? 'text-green-600'
+                      : 'text-red-600'
                   }`}
                 >
                   {fmtPct(
@@ -352,7 +352,7 @@ function GradeResult({ result }: { result: ManualGradeResult }) {
 
       {/* Takeaway */}
       <Section title="The takeaway">
-        <p className="text-sm leading-relaxed text-gray-700 dark:text-gray-200">{result.takeaway}</p>
+        <p className="text-sm leading-relaxed text-gray-700">{result.takeaway}</p>
       </Section>
     </div>
   );
@@ -372,11 +372,11 @@ function Metric({
   negative?: boolean;
 }) {
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
-      <div className="text-xs text-gray-500 dark:text-gray-400">{label}</div>
+    <div className="rounded-xl border border-gray-200 bg-white p-4">
+      <div className="text-xs text-gray-500">{label}</div>
       <div
         className={`mt-1 text-xl font-bold tabular ${
-          negative ? 'text-red-600 dark:text-red-400' : accent ? 'text-green-600 dark:text-green-400' : ''
+          negative ? 'text-red-600' : accent ? 'text-green-600' : ''
         }`}
       >
         {value}
@@ -387,8 +387,8 @@ function Metric({
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
-      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+    <section className="rounded-xl border border-gray-200 bg-white p-5">
+      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
         {title}
       </h2>
       {children}
@@ -399,7 +399,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex justify-between">
-      <span className="text-gray-500 dark:text-gray-400">{label}</span>
+      <span className="text-gray-500">{label}</span>
       <span className="tabular font-medium">{value}</span>
     </div>
   );
@@ -414,7 +414,7 @@ function ComponentBar({ c }: { c: ManualComponent }) {
         <span className="ml-1 text-xs text-gray-400">({fmtPct(c.weight * 100, 0)})</span>
         <div className="text-xs text-gray-400">{c.detail}</div>
       </div>
-      <div className="h-2.5 flex-1 overflow-hidden rounded bg-gray-100 dark:bg-gray-800">
+      <div className="h-2.5 flex-1 overflow-hidden rounded bg-gray-100">
         {c.grade && (
           <div
             className="h-full rounded"
@@ -441,13 +441,13 @@ function CalcRow({
   accent?: boolean;
 }) {
   return (
-    <tr className="border-t border-gray-100 first:border-t-0 dark:border-gray-800">
-      <td className={`py-1.5 pr-4 ${strong ? 'font-semibold' : 'text-gray-600 dark:text-gray-300'}`}>
+    <tr className="border-t border-gray-100 first:border-t-0">
+      <td className={`py-1.5 pr-4 ${strong ? 'font-semibold' : 'text-gray-600'}`}>
         {label}
       </td>
       <td
         className={`py-1.5 text-right tabular ${strong ? 'font-bold' : ''} ${
-          accent ? 'text-green-600 dark:text-green-400' : ''
+          accent ? 'text-green-600' : ''
         }`}
       >
         {value}

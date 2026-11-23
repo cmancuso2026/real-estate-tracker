@@ -1,8 +1,7 @@
 import type { Config } from 'tailwindcss';
 
 export default {
-  // Dark mode is toggled by adding/removing `class="dark"` on <html>.
-  darkMode: 'class',
+  // Light mode only.
   content: ['./app/**/*.{ts,tsx}', './components/**/*.{ts,tsx}'],
   theme: {
     extend: {
