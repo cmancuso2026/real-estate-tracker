@@ -19,9 +19,10 @@ interface VendorQuote {
 }
 interface WorkOrderOption { id: number; project_name: string | null; description: string | null; property_address: string | null; }
 
-interface SpendVendor { vendor_id: number; vendor_name: string; trade: string; total_spend: number; last_90_days_spend: number; last_active_date: string | null; }
-interface SpendByPropertyUnit { unit_id: number; unit_label: string; total_spend: number; }
-interface SpendByProperty { property_id: number; address: string; total_spend: number; units: SpendByPropertyUnit[]; }
+// total_spend = selected quotes (final, else quoted); actual_spend = finance transactions linked to those projects.
+interface SpendVendor { vendor_id: number; vendor_name: string; trade: string; total_spend: number; last_90_days_spend: number; last_active_date: string | null; actual_spend: number; last_90_days_actual: number; actual_transaction_count: number; }
+interface SpendByPropertyUnit { unit_id: number; unit_label: string; total_spend: number; actual_spend: number; }
+interface SpendByProperty { property_id: number; address: string; total_spend: number; actual_spend: number; units: SpendByPropertyUnit[]; }
 interface SpendResponse { vendors: SpendVendor[]; by_property: SpendByProperty[]; }
 
 interface VendorQuoteExtracted {
@@ -104,6 +105,9 @@ export default function VendorsPage() {
 
   const spend90 = spend ? spend.vendors.reduce((s, v) => s + Number(v.last_90_days_spend || 0), 0) : 0;
   const spendAll = spend ? spend.by_property.reduce((s, p) => s + Number(p.total_spend || 0), 0) : 0;
+  const actual90 = spend ? spend.vendors.reduce((s, v) => s + Number(v.last_90_days_actual || 0), 0) : 0;
+  const actualAll = spend ? spend.by_property.reduce((s, p) => s + Number(p.actual_spend || 0), 0) : 0;
+  const actualByVendor = new Map((spend?.vendors ?? []).map(v => [v.vendor_id, v]));
 
   // Group vendors by trade: known trades first (in TRADES order), then any extras alphabetically.
   const vendorsByTrade = (() => {
@@ -134,12 +138,14 @@ export default function VendorsPage() {
         <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
           <p className="text-xs font-medium text-gray-500">Last 90 Days Spend</p>
           <p className="mt-1 text-2xl font-bold tabular text-blue-600 dark:text-blue-400">{fmt$(spend90)}</p>
-          <p className="text-xs text-gray-400">across all properties</p>
+          <p className="text-xs text-gray-500 tabular" data-testid="vendors-actual-90">Actual {fmt$(actual90)} <span className="text-gray-400">from linked transactions</span></p>
+          <p className="text-xs text-gray-400">quotes across all properties</p>
         </div>
         <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
           <p className="text-xs font-medium text-gray-500">All-Time Spend</p>
           <p className="mt-1 text-2xl font-bold tabular">{fmt$(spendAll)}</p>
-          <p className="text-xs text-gray-400">across all properties</p>
+          <p className="text-xs text-gray-500 tabular" data-testid="vendors-actual-all">Actual {fmt$(actualAll)} <span className="text-gray-400">from linked transactions</span></p>
+          <p className="text-xs text-gray-400">quotes across all properties</p>
         </div>
         <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
           <p className="text-xs font-medium text-gray-500">Spend by Property</p>
@@ -147,9 +153,9 @@ export default function VendorsPage() {
             <div className="mt-1 space-y-1">
               {spend.by_property.map(p => (
                 <div key={p.property_id}>
-                  <p className="text-sm font-semibold tabular">{p.address}: {fmt$(p.total_spend)}</p>
+                  <p className="text-sm font-semibold tabular">{p.address}: {fmt$(p.total_spend)} <span className="font-normal text-gray-500">· actual {fmt$(p.actual_spend)}</span></p>
                   {p.units.length > 0 && (
-                    <p className="text-xs text-gray-400">{p.units.map(u => `Unit ${u.unit_label}: ${fmt$(u.total_spend)}`).join('   ')}</p>
+                    <p className="text-xs text-gray-400">{p.units.map(u => `Unit ${u.unit_label}: ${fmt$(u.total_spend)} (actual ${fmt$(u.actual_spend)})`).join('   ')}</p>
                   )}
                 </div>
               ))}
@@ -267,8 +273,9 @@ export default function VendorsPage() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 dark:bg-gray-900">
               <tr>
-                {['Vendor', 'Trade', 'Google Rating', 'My Rating', 'Projects', 'Jobs', 'Total Spend', 'Contact'].map(h => (
-                  <th key={h} className="px-5 py-3 text-left text-xs font-medium text-gray-500">{h}</th>
+                {['Vendor', 'Trade', 'Google Rating', 'My Rating', 'Projects', 'Jobs', 'Total Spend', 'Actual Spend', 'Contact'].map(h => (
+                  <th key={h} className="px-5 py-3 text-left text-xs font-medium text-gray-500"
+                    title={h === 'Actual Spend' ? 'Finance transactions linked to projects where this vendor is the selected quote' : undefined}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -281,7 +288,7 @@ export default function VendorsPage() {
                       onClick={() => toggleTrade(trade)}
                       className="cursor-pointer bg-gray-100 hover:bg-gray-200/70 dark:bg-gray-800/60 dark:hover:bg-gray-800"
                     >
-                      <td colSpan={8} className="px-5 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">
+                      <td colSpan={9} className="px-5 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">
                         <span className="mr-2 inline-block text-gray-400">{collapsed ? '▸' : '▾'}</span>
                         {tradeLabel(trade)}
                         <span className="ml-2 font-normal normal-case text-gray-400">({tradeVendors.length})</span>
@@ -308,6 +315,11 @@ export default function VendorsPage() {
                           <td className="px-5 py-3 tabular">{v.project_count ?? 0}</td>
                           <td className="px-5 py-3 tabular">{v.completed_jobs}/{v.total_jobs}</td>
                           <td className="px-5 py-3 tabular">{fmt$(v.total_spend)}</td>
+                          <td className="px-5 py-3 tabular" data-testid={`vendor-actual-${v.id}`}>
+                            {actualByVendor.get(v.id)?.actual_transaction_count
+                              ? fmt$(actualByVendor.get(v.id)!.actual_spend)
+                              : <span className="text-gray-300">—</span>}
+                          </td>
                           <td className="px-5 py-3 text-gray-400 text-xs">
                             {v.phone && <p>{v.phone}</p>}
                             {v.email && <p>{v.email}</p>}
@@ -315,7 +327,7 @@ export default function VendorsPage() {
                         </tr>
                         {expandedId === v.id && (
                           <tr className="bg-gray-50 dark:bg-gray-900/30">
-                            <td colSpan={8} className="px-5 py-4">
+                            <td colSpan={9} className="px-5 py-4">
                               <VendorDetail
                                 vendor={v}
                                 onSaved={() => load(search)}
