@@ -32,17 +32,17 @@ export default async function PropertyPage({
   return (
     <div className="space-y-6">
       <Link
-        href="/"
-        className="inline-block text-sm text-blue-600 hover:underline dark:text-blue-400"
+        href="/tracker"
+        className="inline-block text-sm text-blue-600 hover:underline"
       >
         ← Back to all properties
       </Link>
 
       {/* Header */}
-      <header className="flex flex-col gap-4 rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900 sm:flex-row sm:items-start sm:justify-between">
+      <header className="flex flex-col gap-4 rounded-xl border border-gray-200 bg-white p-5 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <h1 className="text-2xl font-bold">{p.address ?? `Listing ${p.listing_id}`}</h1>
-          <div className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+          <div className="mt-1 text-sm text-gray-500">
             {[p.city, p.state, p.zip_code].filter(Boolean).join(', ')}
           </div>
           <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm">
@@ -81,7 +81,7 @@ export default async function PropertyPage({
         </div>
         <div className="flex shrink-0 flex-col items-center gap-2">
           <GradeBadge grade={p.overall_grade} size="lg" />
-          <div className="text-xs text-gray-500 dark:text-gray-400">
+          <div className="text-xs text-gray-500">
             Score {fmtNum(p.overall_score)} / 4
           </div>
           <div className="text-xs text-gray-400">Graded {fmtDate(p.graded_at)}</div>
@@ -111,7 +111,7 @@ export default async function PropertyPage({
           ))}
         </div>
         {p.reasoning && (
-          <p className="mt-4 border-t border-gray-100 pt-3 text-sm text-gray-600 dark:border-gray-800 dark:text-gray-300">
+          <p className="mt-4 border-t border-gray-100 pt-3 text-sm text-gray-600">
             {p.reasoning}
           </p>
         )}
@@ -170,7 +170,7 @@ export default async function PropertyPage({
               />
             </tbody>
           </table>
-          <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+          <p className="mt-2 text-xs text-gray-500">
             Rent estimated from {fmtNum(a.rentComps)} comparable rentals in this zip.
           </p>
         </Section>
@@ -182,20 +182,20 @@ export default async function PropertyPage({
           {p.priceVsMedian ? (
             <div className="space-y-1 text-sm">
               <div className="flex justify-between">
-                <span className="text-gray-500 dark:text-gray-400">This property</span>
+                <span className="text-gray-500">This property</span>
                 <span className="tabular font-medium">{fmtMoney(p.priceVsMedian.pricePerSqft)}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-500 dark:text-gray-400">Zip median</span>
+                <span className="text-gray-500">Zip median</span>
                 <span className="tabular font-medium">{fmtMoney(p.priceVsMedian.zipMedian)}</span>
               </div>
-              <div className="flex justify-between border-t border-gray-100 pt-1 dark:border-gray-800">
-                <span className="text-gray-500 dark:text-gray-400">Difference</span>
+              <div className="flex justify-between border-t border-gray-100 pt-1">
+                <span className="text-gray-500">Difference</span>
                 <span
                   className={`tabular font-semibold ${
                     p.priceVsMedian.belowMedianPct >= 0
-                      ? 'text-green-600 dark:text-green-400'
-                      : 'text-red-600 dark:text-red-400'
+                      ? 'text-green-600'
+                      : 'text-red-600'
                   }`}
                 >
                   {fmtPct(Math.abs(p.priceVsMedian.belowMedianPct), 1)}{' '}
@@ -214,11 +214,11 @@ export default async function PropertyPage({
         <Section title="Neighborhood signals">
           <div className="space-y-1 text-sm">
             <div className="flex justify-between">
-              <span className="text-gray-500 dark:text-gray-400">Crime index (100 = national avg)</span>
+              <span className="text-gray-500">Crime index (100 = national avg)</span>
               <span className="tabular font-medium">{fmtNum(p.crime_index)}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-500 dark:text-gray-400">Rental prevalence</span>
+              <span className="text-gray-500">Rental prevalence</span>
               <span className="tabular font-medium">
                 {p.rental_prevalence != null ? fmtPct(p.rental_prevalence, 0) : '—'}
               </span>
@@ -260,14 +260,14 @@ function Metric({
   negative?: boolean;
 }) {
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
-      <div className="text-xs text-gray-500 dark:text-gray-400">{label}</div>
+    <div className="rounded-xl border border-gray-200 bg-white p-4">
+      <div className="text-xs text-gray-500">{label}</div>
       <div
         className={`mt-1 text-xl font-bold tabular ${
           negative
-            ? 'text-red-600 dark:text-red-400'
+            ? 'text-red-600'
             : accent
-              ? 'text-green-600 dark:text-green-400'
+              ? 'text-green-600'
               : ''
         }`}
       >
@@ -279,8 +279,8 @@ function Metric({
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
-      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+    <section className="rounded-xl border border-gray-200 bg-white p-5">
+      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
         {title}
       </h2>
       {children}
@@ -296,7 +296,7 @@ function ComponentBar({ c }: { c: ComponentBreakdown }) {
         {c.label}
         <span className="ml-1 text-xs text-gray-400">({fmtPct(c.weight * 100, 0)})</span>
       </div>
-      <div className="h-2.5 flex-1 overflow-hidden rounded bg-gray-100 dark:bg-gray-800">
+      <div className="h-2.5 flex-1 overflow-hidden rounded bg-gray-100">
         {c.grade && (
           <div
             className="h-full rounded"
@@ -323,13 +323,13 @@ function CalcRow({
   accent?: boolean;
 }) {
   return (
-    <tr className="border-t border-gray-100 first:border-t-0 dark:border-gray-800">
-      <td className={`py-1.5 pr-4 ${strong ? 'font-semibold' : 'text-gray-600 dark:text-gray-300'}`}>
+    <tr className="border-t border-gray-100 first:border-t-0">
+      <td className={`py-1.5 pr-4 ${strong ? 'font-semibold' : 'text-gray-600'}`}>
         {label}
       </td>
       <td
         className={`py-1.5 text-right tabular ${strong ? 'font-bold' : ''} ${
-          accent ? 'text-green-600 dark:text-green-400' : ''
+          accent ? 'text-green-600' : ''
         }`}
       >
         {value}

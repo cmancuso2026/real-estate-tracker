@@ -13,6 +13,12 @@ import pg from 'pg';
 
 const { Pool } = pg;
 
+// Keep Postgres DATE (OID 1082) as the raw 'YYYY-MM-DD' string instead of a JS
+// Date at local midnight, which shifts the day in non-UTC zones. The finance
+// tables use DATE columns; the tracker tables store dates as TEXT, so this
+// changes nothing for them. Same rule as src/finance/db/connection.js.
+pg.types.setTypeParser(1082, (v: string) => v);
+
 /**
  * Current UTC time as a "YYYY-MM-DD HH24:MI:SS" text string — the same shape
  * the tracker stores in its TEXT timestamp columns, so dates round-trip

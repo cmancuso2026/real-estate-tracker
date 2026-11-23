@@ -107,17 +107,17 @@ export default function AddPaymentPage() {
   return (
     <>
       <div className="mb-6">
-        <Link href={`/properties/${propertyId}?tab=rent`} className="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400">← Back to Rent</Link>
+        <Link href={`/properties/${propertyId}?tab=rent`} className="text-sm text-gray-500 hover:text-gray-700">← Back to Rent</Link>
         <h1 className="mt-1 text-2xl font-bold">Add Rent Payment</h1>
       </div>
 
       <div className="max-w-lg space-y-5">
-        <div className="rounded-xl border border-gray-200 bg-white p-6 space-y-4 dark:border-gray-800 dark:bg-gray-900">
+        <div className="rounded-xl border border-gray-200 bg-white p-6 space-y-4">
 
           <div>
             <label className="mb-1 block text-xs font-medium text-gray-500">Unit *</label>
             <select value={form.unit_id} onChange={e => handleUnitChange(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800">
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
               <option value="">Select unit…</option>
               {units.filter(u => !u.hasOwnProperty('is_owner_unit')).map(u => (
                 <option key={u.id} value={u.id}>
@@ -132,28 +132,28 @@ export default function AddPaymentPage() {
               <label className="mb-1 block text-xs font-medium text-gray-500">Due Date (Month) *</label>
               <input type="month" value={form.due_date.slice(0, 7)}
                 onChange={e => setForm(p => ({ ...p, due_date: e.target.value + '-01' }))}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800" />
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-gray-500">Amount Due ($) *</label>
               <input type="number" value={form.amount_due} onChange={e => setForm(p => ({ ...p, amount_due: e.target.value }))}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800" />
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-gray-500">Date Paid</label>
               <input type="date" value={form.paid_date} onChange={e => setForm(p => ({ ...p, paid_date: e.target.value }))}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800" />
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-gray-500">Amount Paid ($)</label>
               <input type="number" value={form.amount_paid} onChange={e => setForm(p => ({ ...p, amount_paid: e.target.value }))}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800" />
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
             </div>
           </div>
 
           {/* Late detection */}
           {isLateAuto && (
-            <div className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-950/20 dark:text-amber-400">
+            <div className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
               ⚠ This payment appears to be late (paid after grace period). Late fee fields enabled below.
             </div>
           )}
@@ -163,24 +163,24 @@ export default function AddPaymentPage() {
               <label className="mb-1 block text-xs font-medium text-gray-500">Late Fee Charged ($)</label>
               <input type="number" value={form.late_fee_charged} onChange={e => setForm(p => ({ ...p, late_fee_charged: e.target.value }))}
                 placeholder="0"
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800" />
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-gray-500">Late Fee Paid ($)</label>
               <input type="number" value={form.late_fee_paid} onChange={e => setForm(p => ({ ...p, late_fee_paid: e.target.value }))}
                 placeholder="0"
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800" />
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
             </div>
           </div>
 
           <div>
             <label className="mb-1 block text-xs font-medium text-gray-500">Notes</label>
             <textarea value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} rows={2}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800" />
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
           </div>
         </div>
 
-        {error && <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600 dark:bg-red-950/30 dark:text-red-400">{error}</p>}
+        {error && <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">{error}</p>}
 
         <div className="flex gap-3">
           <button onClick={save} disabled={saving}
@@ -188,7 +188,7 @@ export default function AddPaymentPage() {
             {saving ? 'Saving…' : 'Save Payment'}
           </button>
           <Link href={`/properties/${propertyId}?tab=rent`}
-            className="rounded-lg border border-gray-300 px-6 py-2.5 text-sm hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">
+            className="rounded-lg border border-gray-300 px-6 py-2.5 text-sm hover:bg-gray-50">
             Cancel
           </Link>
         </div>

@@ -14,6 +14,12 @@ interface SpendRow {
   activity_date: string | null;
 }
 
+interface TxnRow {
+  work_order_id: number;
+  date: string;
+  amount: string | number;
+}
+
 interface UnitRow {
   project_id: number;
   unit_id: number;
@@ -49,6 +55,19 @@ export async function GET(req: NextRequest) {
       propertyId ? [propertyId] : []
     );
 
+    // Actual spend from finance transactions linked to each project
+    // (transactions.work_order_id), as a positive cost: refunds reduce it.
+    // Credited to the project's selected vendor, next to the quote figures.
+    const projectIds = [...new Set(spendRows.map((r) => r.project_id))];
+    const txnRows = projectIds.length
+      ? await query<TxnRow>(
+          `SELECT work_order_id, date::text AS date, amount
+             FROM transactions
+            WHERE work_order_id = ANY($1::int[])`,
+          [projectIds]
+        )
+      : [];
+
     // Units assigned to each project
     const unitsByProject = new Map<number, UnitRow[]>();
     for (const u of unitRows) {
@@ -61,6 +80,19 @@ export async function GET(req: NextRequest) {
     cutoff.setDate(cutoff.getDate() - 90);
     const cutoffStr = cutoff.toISOString().slice(0, 10);
 
+    const actualByProject = new Map<number, { total: number; last90: number; count: number }>();
+    for (const t of txnRows) {
+      const a = actualByProject.get(t.work_order_id) ?? { total: 0, last90: 0, count: 0 };
+      const cost = -(Number(t.amount) || 0);
+      a.total += cost;
+      if (t.date.slice(0, 10) >= cutoffStr) a.last90 += cost;
+      a.count += 1;
+      actualByProject.set(t.work_order_id, a);
+    }
+    // A project normally has one selected quote; count its actual spend once.
+    const actualCounted = new Set<number>();
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+
     // Vendors grouping
     const vendorMap = new Map<number, {
       vendor_id: number;
@@ -69,6 +101,9 @@ export async function GET(req: NextRequest) {
       total_spend: number;
       last_90_days_spend: number;
       last_active_date: string | null;
+      actual_spend: number;
+      last_90_days_actual: number;
+      actual_transaction_count: number;
     }>();
 
     // Properties grouping
@@ -76,47 +111,59 @@ export async function GET(req: NextRequest) {
       property_id: number;
       address: string;
       total_spend: number;
-      units: Map<number, { unit_id: number; unit_label: string; total_spend: number }>;
+      actual_spend: number;
+      units: Map<number, { unit_id: number; unit_label: string; total_spend: number; actual_spend: number }>;
     }>();
 
     for (const r of spendRows) {
       const amount = Number(r.amount) || 0;
       const activity = r.activity_date ? r.activity_date.slice(0, 10) : null;
+      const act = !actualCounted.has(r.project_id) ? actualByProject.get(r.project_id) : undefined;
+      actualCounted.add(r.project_id);
+      const actual = act?.total ?? 0;
 
       // --- vendor aggregation ---
       let v = vendorMap.get(r.vendor_id);
       if (!v) {
-        v = { vendor_id: r.vendor_id, vendor_name: r.vendor_name, trade: r.trade, total_spend: 0, last_90_days_spend: 0, last_active_date: null };
+        v = { vendor_id: r.vendor_id, vendor_name: r.vendor_name, trade: r.trade, total_spend: 0, last_90_days_spend: 0, last_active_date: null, actual_spend: 0, last_90_days_actual: 0, actual_transaction_count: 0 };
         vendorMap.set(r.vendor_id, v);
       }
       v.total_spend += amount;
       if (activity && activity >= cutoffStr) v.last_90_days_spend += amount;
       if (activity && (!v.last_active_date || activity > v.last_active_date)) v.last_active_date = activity;
+      v.actual_spend += actual;
+      v.last_90_days_actual += act?.last90 ?? 0;
+      v.actual_transaction_count += act?.count ?? 0;
 
       // --- property aggregation ---
       let p = propMap.get(r.property_id);
       if (!p) {
-        p = { property_id: r.property_id, address: r.address, total_spend: 0, units: new Map() };
+        p = { property_id: r.property_id, address: r.address, total_spend: 0, actual_spend: 0, units: new Map() };
         propMap.set(r.property_id, p);
       }
       p.total_spend += amount;
+      p.actual_spend += actual;
 
       const projUnits = unitsByProject.get(r.project_id) ?? [];
       if (projUnits.length > 0) {
         for (const pu of projUnits) {
-          const share = pu.cost_share != null
-            ? amount * (Number(pu.cost_share) / 100)
-            : amount / projUnits.length;
+          const frac = pu.cost_share != null ? Number(pu.cost_share) / 100 : 1 / projUnits.length;
+          const share = amount * frac;
           let um = p.units.get(pu.unit_id);
           if (!um) {
-            um = { unit_id: pu.unit_id, unit_label: pu.unit_label, total_spend: 0 };
+            um = { unit_id: pu.unit_id, unit_label: pu.unit_label, total_spend: 0, actual_spend: 0 };
             p.units.set(pu.unit_id, um);
           }
           um.total_spend += share;
+          um.actual_spend += actual * frac;
         }
       }
     }
 
+    for (const v of vendorMap.values()) {
+      v.actual_spend = r2(v.actual_spend);
+      v.last_90_days_actual = r2(v.last_90_days_actual);
+    }
     const vendors = Array.from(vendorMap.values()).sort((a, b) => {
       if (!a.last_active_date) return 1;
       if (!b.last_active_date) return -1;
@@ -127,7 +174,8 @@ export async function GET(req: NextRequest) {
       property_id: p.property_id,
       address: p.address,
       total_spend: p.total_spend,
-      units: Array.from(p.units.values()),
+      actual_spend: r2(p.actual_spend),
+      units: Array.from(p.units.values()).map((u) => ({ ...u, actual_spend: r2(u.actual_spend) })),
     }));
 
     return NextResponse.json({ vendors, by_property });

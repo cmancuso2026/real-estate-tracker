@@ -1,83 +1,145 @@
-# Real Estate Tracker
+# Mancuso HQ
 
-A full-stack tool for sourcing investment properties **and** managing the ones you already own. Built for a portfolio of three duplexes in Miami-Dade.
-
----
-
-## What It Does
-
-**Acquisition side (v1)** — Pulls live for-sale listings and rental comps, scores each property A–F using a weighted investment model, and surfaces the best opportunities via Slack alerts and a web dashboard.
-
-**Property management side (v2)** — Tracks tenants, leases, rent collection, work orders, vendors, escrow, and insurance across your owned properties. Uses Claude to parse PDFs (leases, contractor invoices, escrow statements, insurance policies) and answer natural language questions via a Slack bot.
+One app for personal finances, the rental properties you own, and the ones you might buy. It started as two projects (this real-estate tracker and a separate personal-finance app), merged into one Next.js app on one Postgres database.
 
 ---
 
-## Architecture & Stack
+## What it does
+
+- **Overview (`/`)** — this month and year-to-date for personal finance (income, spending, cash flow, top spending groups, latest data per bank) next to the real-estate picture (properties, units, occupancy, rent roll, rent collected vs outstanding, leases and insurance ending within 60 days), plus actual cash flow per property.
+- **Finances (`/finance/…`)** — upload Bank of America, Amex Gold/Blue, SoFi and Capital One exports (CSV or XLSX; the bank is detected from the headers). Transactions are categorized automatically, deduplicated across overlapping statements, and shown on the Overview, Spending (categories × months) and Transactions pages, with one set of filters shared by every page.
+- **Property attribution** — spending in categories that need a property (Repairs, Lawn Care, Home Depot by default; set per category in Admin) is tied to an owned property, and optionally a unit and a project. A **Needs Property** queue with suggestions and bulk tools clears the backlog; the property page shows repairs and spend, the Projects tab shows actual spend against the quote, and the Vendors page shows actual spend next to quotes.
+- **Properties (`/properties`, `/rent`, `/vendors`)** — tenants, leases, rent collection (BofA CSV import + manual entry), projects with vendor quotes, vendors, escrow and insurance. Claude parses lease, quote, escrow and insurance PDFs and answers questions via a Slack bot.
+- **Investing (`/tracker`, `/grade`)** — pulls for-sale listings and rental comps, grades each property A–F with a weighted investment model, and sends alerts.
+- **Admin (`/admin`)** — categories and groups (add, rename, move, merge, archive, reorder; per-category property rules), property mapping, merchant rules, attribution, data and uploads (history, re-categorization, CSV export), investor profile, and a change log. Every destructive or bulk action shows how many rows will change and waits for you to confirm.
+
+---
+
+## Stack
 
 | Layer | Choice |
 |---|---|
-| Language | TypeScript / Node.js (ESM) |
-| Database | PostgreSQL (raw SQL, no ORM) |
-| Dashboard | Next.js 15 + Tailwind CSS |
+| Language | TypeScript / Node.js 20+ (ESM); the finance core in `src/finance` is plain JS |
+| Database | PostgreSQL — raw SQL (`pg`) for the tracker, Knex for finance |
+| App | Next.js 15 (App Router) + Tailwind CSS, light mode |
+| Charts | Chart.js 4 via react-chartjs-2 |
 | Scheduling | node-cron (long-lived worker) |
 | Notifications | Slack webhooks + SendGrid |
-| AI | Anthropic Claude (PDF parsing, NLQ, monthly recaps) |
-| Hosting | Railway (web + worker services, managed Postgres) |
+| AI | Anthropic Claude (PDF parsing, questions, monthly recaps) |
+| Hosting | Railway: one web service + one worker, one managed Postgres |
+
+### Code map
+
+| Path | What |
+|---|---|
+| `src/dashboard` | The Next.js app: pages, API routes (`app/api/v2` tracker, `app/api/finance`, `app/api/admin`), components |
+| `src/finance` | Finance core: bank parsers, categorization, dedup, Knex migrations, services behind the finance/admin API, tests |
+| `src/db` | Tracker schema (`schema.sql`) and `db:migrate` |
+| `src/scheduler`, `src/scripts`, `src/scoring`, `src/notifications` | Worker jobs, CLI scripts, grading, alerts |
+| `scripts/migrate-finance-data.md` | One-time copy of data from the old finance database |
+| `docs/finance-ui-parity.md` | Every feature of the old finance page and how it was verified |
 
 ---
 
-## Project Status
+## Setup and deploy
 
-| Phase | Status | Description |
+### Run it locally
+
+Requires **Node.js 20+** and **PostgreSQL**.
+
+```bash
+npm install                     # root: tracker, finance core, tests
+npm run dashboard:install       # the Next.js app
+cp .env.example .env            # at least DATABASE_URL
+npm run db:migrate              # tracker schema + finance migrations (idempotent)
+npm run dashboard:dev           # http://localhost:3000
+```
+
+Open `/finance/upload` and upload a few statements to get started.
+
+### Environment variables
+
+See `.env.example` for every variable with comments. The ones that matter most:
+
+| Variable | Purpose |
+|---|---|
+| `DATABASE_URL` | **Required.** The one Postgres database for everything |
+| `DATABASE_SSL` | `true`/`false` to force TLS (needed for Railway's public URL) |
+| `AUTH_USER`, `AUTH_PASSWORD` | Basic Auth for every page and API route. Leave unset only for local dev |
+| `ANTHROPIC_API_KEY` | PDF parsing, questions, monthly recaps |
+| `PG_POOL_MAX`, `FINANCE_POOL_MAX` | Connection pool sizes per process (app default 5, worker/scripts 10; finance 3) |
+| `RENTCAST_API_KEY`, `RAPIDAPI_KEY`, `TARGET_ZIP_CODES`, … | Investing data sources |
+| `SLACK_WEBHOOK_URL`, `SENDGRID_*` | Alerts and digests |
+
+### Database migrations
+
+`npm run db:migrate` runs on every boot of both services and is safe to repeat:
+
+1. `src/db/schema.sql` — every tracker table (`CREATE … IF NOT EXISTS`).
+2. The finance Knex migrations in `src/finance/db/migrations` (tracked in `knex_migrations`); they run second because some reference tracker tables.
+3. Two catch-up steps that only add missing rows: new categories (for example after a data copy) join the Admin category list, and per-property categories like "1205 Rent" get a proposed property mapping for you to confirm.
+
+The whole run holds a Postgres advisory lock, so the web service and the worker never migrate at the same time.
+
+### Deploy to Railway
+
+One repository, two services, one Postgres:
+
+| Service | Start command | Does |
 |---|---|---|
-| 1 — Data ingestion | ✅ Complete | Zillow + Rentcast; deduplicated Postgres storage |
-| 2 — Scoring engine | ✅ Complete | A–F grading across 5 weighted components |
-| 5 — Dashboard + alerts | ✅ Complete | Next.js dashboard; Slack + weekly email digest |
-| 6 — Deployment | ✅ Complete | Railway web + worker; `/api/health` check |
-| v2 — Property management | ✅ Complete | Tenants, leases, rent, work orders, vendors, escrow, insurance |
+| **web** | `npm run db:migrate && npm --prefix src/dashboard run start` (Procfile `web`) | Migrates, then serves the app |
+| **worker** | `npm run worker` (Procfile `worker`) | Migrates, then runs the cron scheduler |
+
+1. Railway → New Project → Deploy from GitHub → this repository. The build command (`npm run build`, from `railway.json`) installs and builds the app.
+2. Add a PostgreSQL database and set `DATABASE_URL=${{Postgres.DATABASE_URL}}` on both services.
+3. Set `AUTH_USER` and `AUTH_PASSWORD` on the web service, and the other variables you use.
+4. Add a second service from the same repository with the start command `npm run worker`.
+5. Deploy. Both services migrate the database on boot.
+
+Coming from the separate finance app? Copy its data with `scripts/migrate-finance-data.md` after the first deploy, then redeploy (or run `npm run db:migrate`) so copied custom categories join the category list.
+
+### Cron schedule (worker, UTC)
+
+| Job | Schedule | Description |
+|---|---|---|
+| fetch-listings | `0 10 * * *` | Pull Zillow + Rentcast |
+| grade-properties | `30 10 * * *` | Score ungraded listings |
+| daily-notifications | `0 11 * * *` | Slack alerts for A-grade listings |
+| weekly-digest | `0 11 * * 5` | Friday email digest |
+| v2-daily-alerts | `0 12 * * *` | Lease expiry, unrated work orders, insurance alerts |
+| v2-monthly-recap | `0 13 1 * *` | Claude-generated monthly property recap |
+
+### Checks
+
+```bash
+npm run typecheck                                   # tracker (root)
+(cd src/dashboard && npx tsc --noEmit -p .)         # app
+npm test                                            # finance + app tests (node --test via tsx, pg-mem)
+npm run build                                       # production build
+```
+
+The tests need no database: integration tests run the real migrations against an in-memory Postgres (pg-mem) and call the real Next.js route handlers.
 
 ---
 
-## V2 Feature Summary
+## How categorization works
 
-### Data tracked
-- **Owned properties + units** — three duplexes, each unit independently tracked
-- **Tenants** — contact info, active status, payment method (Zelle)
-- **Leases** — full renewal history; PDF upload → Claude extracts dates, rent, utilities, equipment, deposits
-- **Rent collection** — monthly expected vs actual; BofA CSV import + manual entry; partial payments and late fees
-- **Work orders** — status flow: `received` (got quote, declined) → `open` (approved) → `complete`; one vendor per WO; PDF/email/manual entry
-- **Vendors** — trade, contact info, Google Places rating + review count, manual rating
-- **Escrow** — one account per property per lender; annual escrow analysis PDF → Claude extracts projected vs actual, disbursements, shortage/surplus, new monthly payment
-- **Insurance policies** — PDF upload → Claude extracts carrier, dates, premium, deductible, coverage; queryable via Slack bot
+For each uploaded transaction, the first of these that applies wins:
 
-### Agent layer
-- **Monthly recap** — Claude-generated summary of rent collection, work orders, leases, escrow, insurance; sent via Slack + email on the 1st of each month
-- **Proactive alerts** — daily check for leases expiring within 60 days, unrated completed work orders, insurance expiring within 60 days
-- **Slack bot NLQ** — answer natural language questions: "who fixed my AC last time?", "what's my deductible on Maple St?", "which vendor have I spent the most with?"
+1. **A saved override** — you changed this exact transaction before (survives re-uploads).
+2. **Your merchant rules** (Admin → Merchant rules), lowest priority number first. A rule with a property also assigns the property.
+3. **History vote** — similar past transactions vote, weighted toward ones you categorized by hand; used only when confident.
+4. **Built-in rules** in `src/finance/lib/categorize.js`, per bank.
 
-### API routes (all under `/api/v2/`)
-| Route | Methods | Purpose |
-|---|---|---|
-| `/properties` | GET, POST | Owned properties |
-| `/units` | GET, POST | Units within a property |
-| `/leases` | GET, POST | Lease history |
-| `/rent` | GET, POST, PUT | Rent collections + BofA CSV import |
-| `/vendors` | GET, POST | Vendors + Google Places lookup |
-| `/work-orders` | GET, POST | Work orders |
-| `/escrow` | GET, POST | Escrow accounts + latest statement |
-| `/insurance` | GET, POST | Insurance policies |
-| `/upload` | POST | PDF parsing (lease/work_order/escrow/insurance) |
-| `/query` | POST | Natural language query against all data |
+Renamed or merged categories keep working: their old names point to the new category. "Admin → Merchant rules → Test a description" shows which step wins for any description.
 
 ---
 
-## Scoring Model (Acquisition)
+## Scoring model (investing)
 
-Each listing is graded A–F across five components:
-
-| Component | Weight | Data Source |
+| Component | Weight | Data source |
 |---|---|---|
-| Cash-on-cash return | 30% | Computed: price, rent comps, Freddie Mac PMMS + 0.75% premium |
+| Cash-on-cash return | 30% | Price, rent comps, Freddie Mac PMMS + 0.75% premium |
 | Crime rate | 25% | Miami-Dade Open Data, benchmarked to live median |
 | Monthly cash flow | 20% | Rent − mortgage − tax − insurance |
 | Price/sqft vs. zip median | 15% | Median of stored listings |
@@ -85,114 +147,35 @@ Each listing is graded A–F across five components:
 
 ---
 
-## Setup
+## Database
 
-Requires **Node.js >= 20** and a **PostgreSQL** database.
-
-```bash
-npm install
-cp .env.example .env   # set DATABASE_URL and API keys
-npm run db:migrate     # create all tables (idempotent)
-npm run dashboard:dev  # start dashboard at http://localhost:3000
-```
-
----
-
-## Environment Variables
-
-### Required
-| Variable | Purpose |
-|---|---|
-| `DATABASE_URL` | PostgreSQL connection string |
-| `ANTHROPIC_API_KEY` | Claude PDF parsing, NLQ, monthly recaps |
-
-### Authentication
-| Variable | Purpose |
-|---|---|
-| `AUTH_USER` | Dashboard username (Basic Auth) |
-| `AUTH_PASSWORD` | Dashboard password (Basic Auth) |
-
-### Acquisition features
-| Variable | Purpose |
-|---|---|
-| `RENTCAST_API_KEY` | Rental comps |
-| `RAPIDAPI_KEY` | Zillow listings via RapidAPI |
-| `TARGET_ZIP_CODES` | Comma-separated zip codes to track |
-| `FBI_API_KEY` | Crime data (defaults to rate-limited DEMO_KEY) |
-| `CENSUS_API_KEY` | Renter-occupancy data |
-| `MANUAL_PMMS_RATE` | Override Freddie Mac 30-yr rate |
-
-### Notifications
-| Variable | Purpose |
-|---|---|
-| `SLACK_WEBHOOK_URL` | Incoming webhook for alerts + recaps |
-| `SENDGRID_API_KEY` | Email delivery |
-| `SENDGRID_FROM_EMAIL` | Verified sender address |
-| `SENDGRID_TO_EMAIL` | Recipient(s), comma-separated |
-| `NOTIFY_EMAIL` | V2 monthly recap recipient |
-| `NOTIFY_FROM_EMAIL` | V2 recap sender address |
-
-### Optional
-| Variable | Purpose |
-|---|---|
-| `GOOGLE_PLACES_API_KEY` | Vendor Google rating lookup |
-| `DATABASE_SSL` | `true`/`false` to force TLS |
-
----
-
-## Deployment (Railway)
-
-Two services from one repo, backed by one managed Postgres:
-
-- **web** — Next.js dashboard (`npm run start`). Runs `db:migrate` on boot, then serves the UI. Health check at `/api/health`.
-- **worker** — Cron scheduler (`npm run worker`). Long-lived process; fires daily alerts and monthly recaps.
-
-### Cron schedule (UTC)
-| Job | Schedule | Description |
-|---|---|---|
-| fetch-listings | `0 10 * * *` | Pull Zillow + Rentcast |
-| grade-properties | `30 10 * * *` | Score ungraded listings |
-| daily-notifications | `0 11 * * *` | Slack alerts for A-grade listings |
-| weekly-digest | `0 11 * * 5` | Friday email digest |
-| v2-daily-alerts | `0 12 * * *` | Lease expiry, unrated WOs, insurance alerts |
-| v2-monthly-recap | `0 13 1 * *` | Claude-generated monthly property recap |
-
-### Deploy steps
-1. Push repo to GitHub
-2. Railway → New Project → Deploy from GitHub
-3. Add PostgreSQL plugin; set `DATABASE_URL=${{Postgres.DATABASE_URL}}`
-4. Add all required env vars (see table above)
-5. Add second service from same repo; set start command to `npm run worker`
-6. Push to main → Railway auto-deploys both services
-
----
-
-## Database Schema
-
-### V1 — Acquisition
+### Tracker (`src/db/schema.sql`)
 | Table | Purpose |
 |---|---|
-| `listings` | For-sale properties (Zillow) |
-| `rentals` | Rental comps (Rentcast) |
-| `interest_rates` | Freddie Mac PMMS weekly snapshots |
-| `grades` | A–F grades with reasoning and metrics |
-| `crime_zip_cache` | Per-zip Miami-Dade crime index |
-| `census_cache` | Per-zip renter-occupancy |
-| `alerts_sent` | Notification deduplication log |
-| `investor_profile` | Dashboard buy-box settings |
+| `listings`, `rentals`, `interest_rates`, `grades`, `crime_zip_cache`, `census_cache`, `alerts_sent` | Investing |
+| `investor_profile` | Buy-box settings (Admin → Investor profile) |
+| `owned_properties`, `units`, `tenants`, `leases`, `rent_collections` | Owned properties and rent |
+| `vendors`, `work_orders` (projects), `project_quotes`, `project_units`, `recurring_costs` | Projects and vendors |
+| `escrow_accounts`, `escrow_statements`, `piti_history`, `insurance_policies` | Escrow and insurance |
 
-### V2 — Property Management
+Tracker timestamps are TEXT in UTC `YYYY-MM-DD HH:MM:SS`.
+
+### Finance (`src/finance/db/migrations`)
 | Table | Purpose |
 |---|---|
-| `owned_properties` | Your duplexes |
-| `units` | Individual rentable units |
-| `tenants` | Tenant contact info and status |
-| `leases` | Full lease history per unit |
-| `rent_collections` | Monthly expected vs actual payments |
-| `vendors` | Contractors with Google + manual ratings |
-| `work_orders` | Maintenance jobs (received/open/complete) |
-| `escrow_accounts` | One per property per lender |
-| `escrow_statements` | Annual escrow analysis PDFs, parsed |
-| `insurance_policies` | Policies per property, parsed from PDF |
+| `transactions` | One row per bank transaction (expenses negative), with `property_id` / `unit_id` / `work_order_id` attribution |
+| `category_overrides`, `attribution_overrides` | Your category and property edits, keyed by dedup hash so they survive re-uploads |
+| `upload_log` | One row per uploaded file |
+| `category_groups`, `categories`, `category_aliases` | The category list (seeded from `lib/taxonomy.js`); aliases keep renamed/merged names working |
+| `custom_categories` | Categories added in the old finance app (kept as a seed source) |
+| `category_settings` | Per category: requires a property, allows project tags, default property |
+| `property_category_map` | Per-property categories ("1205 Rent") → property and role (rent / PITI / expense) |
+| `merchant_rules` | Your categorization rules |
+| `admin_audit` | Change log of Admin actions |
 
-All timestamps stored as TEXT in UTC `YYYY-MM-DD HH:MM:SS` format.
+---
+
+## Later (not built yet)
+
+- **One upload for rent and finances.** `/rent` imports Bank of America CSVs for rent collections, and the finance upload parses Bank of America CSVs too. Eventually one upload should feed both.
+- **Splitting a transaction across properties.** A `transaction_allocations` table (transaction, property, share) so one Home Depot receipt can be divided between properties instead of assigned to one.

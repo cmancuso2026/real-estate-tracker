@@ -59,18 +59,18 @@ function MultiSlicer({ label, options, selected, onChange }: {
 
   return (
     <div className="relative" ref={ref}>
-      <p className="mb-1 text-xs font-medium text-gray-500 dark:text-gray-400">{label}</p>
+      <p className="mb-1 text-xs font-medium text-gray-500">{label}</p>
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700"
+        className="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm hover:bg-gray-50"
       >
         <span>{displayLabel}</span>
         <span className="text-gray-400 text-xs">{open ? '▲' : '▼'}</span>
       </button>
       {open && (
-        <div className="absolute top-full left-0 z-20 mt-1 min-w-48 rounded-xl border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-900">
+        <div className="absolute top-full left-0 z-20 mt-1 min-w-48 rounded-xl border border-gray-200 bg-white shadow-lg">
           {options.map(o => (
-            <label key={o.value} className="flex cursor-pointer items-center gap-2 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800">
+            <label key={o.value} className="flex cursor-pointer items-center gap-2 px-3 py-2 hover:bg-gray-50">
               <input
                 type="checkbox"
                 checked={o.value === 'all' ? isAll : selected.has(o.value)}
@@ -236,13 +236,13 @@ export default function RentImportPage() {
         <Link href="/properties" className="text-sm text-gray-500 hover:text-gray-700">← My Properties</Link>
         <h1 className="mt-1 text-2xl font-bold">Import Rent Payments</h1>
       </div>
-      <div className="rounded-xl border border-green-200 bg-green-50 p-8 text-center dark:border-green-800 dark:bg-green-950/20">
-        <p className="text-3xl font-bold text-green-700 dark:text-green-400">✓ {saved} payment{saved !== 1 ? 's' : ''} recorded</p>
+      <div className="rounded-xl border border-green-200 bg-green-50 p-8 text-center">
+        <p className="text-3xl font-bold text-green-700">✓ {saved} payment{saved !== 1 ? 's' : ''} recorded</p>
         {skipped > 0 && (
           <p className="mt-2 text-sm text-gray-500">{skipped} row{skipped !== 1 ? 's' : ''} skipped — already imported (same unit, date &amp; amount)</p>
         )}
         <div className="mt-4 flex justify-center gap-3">
-          <button onClick={() => { setSaved(null); setSkipped(0); setRows([]); }} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50 dark:border-gray-700">Import Another</button>
+          <button onClick={() => { setSaved(null); setSkipped(0); setRows([]); }} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">Import Another</button>
           <Link href="/properties" className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Back to Properties</Link>
         </div>
       </div>
@@ -258,7 +258,7 @@ export default function RentImportPage() {
           <p className="text-sm text-gray-500">Upload a Bank of America CSV — Zelle payments matched to tenants across all properties</p>
         </div>
         {rows.length > 0 && (
-          <label className={`cursor-pointer rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50 dark:border-gray-700 ${uploading ? 'opacity-50' : ''}`}>
+          <label className={`cursor-pointer rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50 ${uploading ? 'opacity-50' : ''}`}>
             {uploading ? 'Parsing…' : 'Upload New CSV'}
             <input type="file" accept=".csv" className="hidden" disabled={uploading}
               onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ''; }} />
@@ -268,9 +268,9 @@ export default function RentImportPage() {
 
       {rows.length === 0 ? (
         <div className="max-w-lg">
-          <label className={`flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-white p-12 text-center hover:border-blue-400 hover:bg-blue-50 cursor-pointer transition-colors dark:border-gray-700 dark:bg-gray-900 ${uploading ? 'opacity-50' : ''}`}>
+          <label className={`flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-white p-12 text-center hover:border-blue-400 hover:bg-blue-50 cursor-pointer transition-colors ${uploading ? 'opacity-50' : ''}`}>
             <span className="text-5xl mb-3">📄</span>
-            <p className="font-semibold text-gray-700 dark:text-gray-200">{uploading ? 'Parsing CSV…' : 'Click to upload BofA CSV'}</p>
+            <p className="font-semibold text-gray-700">{uploading ? 'Parsing CSV…' : 'Click to upload BofA CSV'}</p>
             <p className="mt-1 text-xs text-gray-400">BofA → Account → Download → Microsoft Excel format (CSV)</p>
             <input type="file" accept=".csv" className="hidden" disabled={uploading}
               onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
@@ -288,7 +288,7 @@ export default function RentImportPage() {
               { label: 'Early Payments', value: counts.early, sub: 'next month', color: 'text-blue-600' },
               { label: 'Late Fee Not Charged', value: counts.late_fee_not_charged, sub: counts.late_fee_included > 0 ? `${counts.late_fee_included} fee included in payment` : '', color: 'text-amber-600' },
             ].map(c => (
-              <div key={c.label} className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+              <div key={c.label} className="rounded-xl border border-gray-200 bg-white p-4">
                 <p className="text-xs text-gray-500">{c.label}</p>
                 <p className={`mt-1 text-2xl font-bold ${c.color ?? ''}`}>{c.value}</p>
                 {c.sub && <p className="text-xs text-gray-400">{c.sub}</p>}
@@ -297,7 +297,7 @@ export default function RentImportPage() {
           </div>
 
           {/* Multi-select slicers */}
-          <div className="flex flex-wrap items-end gap-4 rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+          <div className="flex flex-wrap items-end gap-4 rounded-xl border border-gray-200 bg-white p-4">
             <MultiSlicer
               label="Confidence"
               selected={confidenceFilter}
@@ -346,7 +346,7 @@ export default function RentImportPage() {
               placeholder="Search description, tenant name, amount…"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-4 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-900"
+              className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-4 text-sm focus:border-blue-500 focus:outline-none"
             />
             {search && (
               <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-sm">✕</button>
@@ -354,9 +354,9 @@ export default function RentImportPage() {
           </div>
 
           {/* Table */}
-          <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800">
+          <div className="overflow-hidden rounded-xl border border-gray-200">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 dark:bg-gray-900">
+              <thead className="bg-gray-50">
                 <tr>
                   {([['date','Date'],['desc','Description'],['amount','Amount'],['match','Match'],['tenant','Tenant'],['month','Month'],['','Flags']] as [string,string][]).map(([col, label]) => (
                     <th key={label} onClick={() => col && toggleSort(col)}
@@ -366,16 +366,16 @@ export default function RentImportPage() {
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+              <tbody className="divide-y divide-gray-100">
                 {filtered.length === 0 ? (
                   <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">No transactions match current filters</td></tr>
                 ) : filtered.map((row, i) => {
                   const actualIdx = rows.indexOf(row);
                   return (
-                    <tr key={i} className={row.category === 'non_rent' ? 'bg-gray-50/50 dark:bg-gray-900/20' : ''}>
+                    <tr key={i} className={row.category === 'non_rent' ? 'bg-gray-50/50' : ''}>
                       <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{row.raw_date}</td>
                       <td className="px-4 py-3 max-w-52">
-                        <p className="truncate text-xs text-gray-600 dark:text-gray-400">{row.description}</p>
+                        <p className="truncate text-xs text-gray-600">{row.description}</p>
                         {row.note && <p className="text-xs text-gray-400 mt-0.5">{row.note}</p>}
                       </td>
                       <td className="px-4 py-3 font-semibold whitespace-nowrap">{fmt$(row.amount)}</td>
@@ -384,7 +384,7 @@ export default function RentImportPage() {
                         <select
                           value={row.matched_tenant_id ? String(row.matched_tenant_id) : ''}
                           onChange={e => reassignTenant(actualIdx, e.target.value)}
-                          className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800"
+                          className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs focus:border-blue-500 focus:outline-none"
                         >
                           <option value="">— Non-Rent —</option>
                           {tenantOptions.map(t => (
@@ -399,7 +399,7 @@ export default function RentImportPage() {
                         <select
                           value={row.assigned_month}
                           onChange={e => updateRow(actualIdx, { assigned_month: e.target.value, due_date: `${e.target.value}-01` })}
-                          className="rounded border border-gray-300 px-2 py-1 text-xs focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800"
+                          className="rounded border border-gray-300 px-2 py-1 text-xs focus:border-blue-500 focus:outline-none"
                         >
                           {Array.from({ length: 8 }, (_, j) => {
                             const d = new Date((row.assigned_month || new Date().toISOString().slice(0,7)) + '-01');
@@ -415,7 +415,7 @@ export default function RentImportPage() {
                           {row.is_late && !row.late_fee_included && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">Late</span>}
                           {row.late_fee_included && <span className="rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700">Late + fee included{row.late_fee_amount ? ` ($${row.late_fee_amount})` : ''}</span>}
                           {row.late_fee_applicable && !row.late_fee_included && <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-600">Fee not charged{row.late_fee_amount ? ` ($${row.late_fee_amount})` : ''}</span>}
-                          {row.category === 'non_rent' && <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-500 dark:bg-gray-700 dark:text-gray-400">Non-Rent</span>}
+                          {row.category === 'non_rent' && <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-500">Non-Rent</span>}
                         </div>
                       </td>
                     </tr>
@@ -431,7 +431,7 @@ export default function RentImportPage() {
               {saving ? 'Saving…' : `Save ${rows.filter(r => r.category === 'rent' && (r.matched_unit_id || r.matched_tenant_id)).length} Rent Payments`}
             </button>
             <button onClick={() => { setRows([]); setError(''); }}
-              className="rounded-lg border border-gray-300 px-6 py-2.5 text-sm hover:bg-gray-50 dark:border-gray-700">
+              className="rounded-lg border border-gray-300 px-6 py-2.5 text-sm hover:bg-gray-50">
               Start Over
             </button>
             <p className="text-xs text-gray-400">{counts.non_rent} non-rent rows will be skipped</p>

@@ -48,7 +48,7 @@ export function GradeHistoryChart({ history }: { history: HistoryPoint[] }) {
               x2={W - pad.right}
               y1={y(g.score)}
               y2={y(g.score)}
-              className="stroke-gray-200 dark:stroke-gray-800"
+              className="stroke-gray-200"
               strokeWidth={1}
             />
             <text

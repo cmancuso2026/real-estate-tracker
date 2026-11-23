@@ -65,7 +65,7 @@ export default function NewPropertyPage() {
   return (
     <>
       <div className="mb-6">
-        <Link href="/properties" className="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400">
+        <Link href="/properties" className="text-sm text-gray-500 hover:text-gray-700">
           ← My Properties
         </Link>
         <h1 className="mt-1 text-2xl font-bold">Add Property</h1>
@@ -74,7 +74,7 @@ export default function NewPropertyPage() {
       <div className="max-w-2xl space-y-6">
 
         {/* Property Info */}
-        <div className="rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900">
+        <div className="rounded-xl border border-gray-200 bg-white p-6">
           <h2 className="mb-4 font-semibold">Property Info</h2>
           <div className="space-y-4">
             <div>
@@ -84,7 +84,7 @@ export default function NewPropertyPage() {
                 placeholder="e.g. 20-22 NW 119th St"
                 value={form.address}
                 onChange={e => setForm(p => ({ ...p, address: e.target.value }))}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
               />
             </div>
             <div className="grid grid-cols-3 gap-3">
@@ -94,7 +94,7 @@ export default function NewPropertyPage() {
                   type="text"
                   value={form.city}
                   onChange={e => setForm(p => ({ ...p, city: e.target.value }))}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                 />
               </div>
               <div>
@@ -103,7 +103,7 @@ export default function NewPropertyPage() {
                   type="text"
                   value={form.state}
                   onChange={e => setForm(p => ({ ...p, state: e.target.value }))}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                 />
               </div>
               <div>
@@ -112,7 +112,7 @@ export default function NewPropertyPage() {
                   type="text"
                   value={form.zip_code}
                   onChange={e => setForm(p => ({ ...p, zip_code: e.target.value }))}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                 />
               </div>
             </div>
@@ -121,7 +121,7 @@ export default function NewPropertyPage() {
               <select
                 value={form.property_type}
                 onChange={e => setForm(p => ({ ...p, property_type: e.target.value }))}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
               >
                 {['duplex','sfh','triplex','quad','other'].map(t => (
                   <option key={t} value={t}>{t}</option>
@@ -134,19 +134,19 @@ export default function NewPropertyPage() {
                 value={form.notes}
                 onChange={e => setForm(p => ({ ...p, notes: e.target.value }))}
                 rows={2}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
               />
             </div>
           </div>
         </div>
 
         {/* Units */}
-        <div className="rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900">
+        <div className="rounded-xl border border-gray-200 bg-white p-6">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="font-semibold">Units</h2>
             <button
               onClick={addUnit}
-              className="text-sm text-blue-600 hover:underline dark:text-blue-400"
+              className="text-sm text-blue-600 hover:underline"
             >
               + Add unit
             </button>
@@ -164,7 +164,7 @@ export default function NewPropertyPage() {
                     placeholder="e.g. 1205"
                     value={u.label}
                     onChange={e => updateUnit(i, 'label', e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                   />
                 </div>
                 <div className="col-span-2">
@@ -174,7 +174,7 @@ export default function NewPropertyPage() {
                     placeholder="3"
                     value={u.bedrooms}
                     onChange={e => updateUnit(i, 'bedrooms', e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                   />
                 </div>
                 <div className="col-span-2">
@@ -185,7 +185,7 @@ export default function NewPropertyPage() {
                     placeholder="1"
                     value={u.bathrooms}
                     onChange={e => updateUnit(i, 'bathrooms', e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                   />
                 </div>
                 <div className="col-span-3">
@@ -195,7 +195,7 @@ export default function NewPropertyPage() {
                     placeholder="900"
                     value={u.sqft}
                     onChange={e => updateUnit(i, 'sqft', e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                   />
                 </div>
                 <div className="col-span-2 flex justify-end">
@@ -214,7 +214,7 @@ export default function NewPropertyPage() {
         </div>
 
         {error && (
-          <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600 dark:bg-red-950/30 dark:text-red-400">
+          <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">
             {error}
           </p>
         )}
@@ -229,7 +229,7 @@ export default function NewPropertyPage() {
           </button>
           <Link
             href="/properties"
-            className="rounded-lg border border-gray-300 px-6 py-2.5 text-sm hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800"
+            className="rounded-lg border border-gray-300 px-6 py-2.5 text-sm hover:bg-gray-50"
           >
             Cancel
           </Link>

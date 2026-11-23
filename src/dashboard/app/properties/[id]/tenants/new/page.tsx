@@ -62,14 +62,14 @@ export default function NewTenantPage() {
   return (
     <>
       <div className="mb-6">
-        <Link href={`/properties/${propertyId}?tab=overview`} className="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400">
+        <Link href={`/properties/${propertyId}?tab=overview`} className="text-sm text-gray-500 hover:text-gray-700">
           ← Back to Property
         </Link>
         <h1 className="mt-1 text-2xl font-bold">Add Tenant</h1>
       </div>
 
       <div className="max-w-lg space-y-6">
-        <div className="rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900">
+        <div className="rounded-xl border border-gray-200 bg-white p-6">
           <h2 className="mb-4 font-semibold">Tenant Info</h2>
           <div className="space-y-4">
 
@@ -78,7 +78,7 @@ export default function NewTenantPage() {
               <select
                 value={form.unit_id}
                 onChange={e => setForm(p => ({ ...p, unit_id: e.target.value }))}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
               >
                 <option value="">Select a unit…</option>
                 {units.map(u => (
@@ -94,7 +94,7 @@ export default function NewTenantPage() {
                   type="text"
                   value={form.first_name}
                   onChange={e => setForm(p => ({ ...p, first_name: e.target.value }))}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                 />
               </div>
               <div>
@@ -103,7 +103,7 @@ export default function NewTenantPage() {
                   type="text"
                   value={form.last_name}
                   onChange={e => setForm(p => ({ ...p, last_name: e.target.value }))}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                 />
               </div>
             </div>
@@ -115,7 +115,7 @@ export default function NewTenantPage() {
                 value={form.phone}
                 onChange={e => setForm(p => ({ ...p, phone: e.target.value }))}
                 placeholder="(305) 555-0100"
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
               />
             </div>
 
@@ -125,7 +125,7 @@ export default function NewTenantPage() {
                 type="email"
                 value={form.email}
                 onChange={e => setForm(p => ({ ...p, email: e.target.value }))}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
               />
             </div>
 
@@ -135,18 +135,18 @@ export default function NewTenantPage() {
                 value={form.notes}
                 onChange={e => setForm(p => ({ ...p, notes: e.target.value }))}
                 rows={2}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
               />
             </div>
           </div>
         </div>
 
-        <p className="text-sm text-gray-500 dark:text-gray-400">
+        <p className="text-sm text-gray-500">
           After saving, you'll be taken straight to add a lease for this tenant.
         </p>
 
         {error && (
-          <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600 dark:bg-red-950/30 dark:text-red-400">
+          <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">
             {error}
           </p>
         )}
@@ -161,7 +161,7 @@ export default function NewTenantPage() {
           </button>
           <Link
             href={`/properties/${propertyId}?tab=overview`}
-            className="rounded-lg border border-gray-300 px-6 py-2.5 text-sm hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800"
+            className="rounded-lg border border-gray-300 px-6 py-2.5 text-sm hover:bg-gray-50"
           >
             Cancel
           </Link>

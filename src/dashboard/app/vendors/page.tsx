@@ -19,9 +19,10 @@ interface VendorQuote {
 }
 interface WorkOrderOption { id: number; project_name: string | null; description: string | null; property_address: string | null; }
 
-interface SpendVendor { vendor_id: number; vendor_name: string; trade: string; total_spend: number; last_90_days_spend: number; last_active_date: string | null; }
-interface SpendByPropertyUnit { unit_id: number; unit_label: string; total_spend: number; }
-interface SpendByProperty { property_id: number; address: string; total_spend: number; units: SpendByPropertyUnit[]; }
+// total_spend = selected quotes (final, else quoted); actual_spend = finance transactions linked to those projects.
+interface SpendVendor { vendor_id: number; vendor_name: string; trade: string; total_spend: number; last_90_days_spend: number; last_active_date: string | null; actual_spend: number; last_90_days_actual: number; actual_transaction_count: number; }
+interface SpendByPropertyUnit { unit_id: number; unit_label: string; total_spend: number; actual_spend: number; }
+interface SpendByProperty { property_id: number; address: string; total_spend: number; actual_spend: number; units: SpendByPropertyUnit[]; }
 interface SpendResponse { vendors: SpendVendor[]; by_property: SpendByProperty[]; }
 
 interface VendorQuoteExtracted {
@@ -104,6 +105,9 @@ export default function VendorsPage() {
 
   const spend90 = spend ? spend.vendors.reduce((s, v) => s + Number(v.last_90_days_spend || 0), 0) : 0;
   const spendAll = spend ? spend.by_property.reduce((s, p) => s + Number(p.total_spend || 0), 0) : 0;
+  const actual90 = spend ? spend.vendors.reduce((s, v) => s + Number(v.last_90_days_actual || 0), 0) : 0;
+  const actualAll = spend ? spend.by_property.reduce((s, p) => s + Number(p.actual_spend || 0), 0) : 0;
+  const actualByVendor = new Map((spend?.vendors ?? []).map(v => [v.vendor_id, v]));
 
   // Group vendors by trade: known trades first (in TRADES order), then any extras alphabetically.
   const vendorsByTrade = (() => {
@@ -122,7 +126,7 @@ export default function VendorsPage() {
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Vendors</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">Contractors and service providers</p>
+          <p className="text-sm text-gray-500">Contractors and service providers</p>
         </div>
         <button onClick={() => setAddMode('choice')} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
           + Add Vendor
@@ -131,25 +135,27 @@ export default function VendorsPage() {
 
       {/* Spend summary */}
       <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+        <div className="rounded-xl border border-gray-200 bg-white p-4">
           <p className="text-xs font-medium text-gray-500">Last 90 Days Spend</p>
-          <p className="mt-1 text-2xl font-bold tabular text-blue-600 dark:text-blue-400">{fmt$(spend90)}</p>
-          <p className="text-xs text-gray-400">across all properties</p>
+          <p className="mt-1 text-2xl font-bold tabular text-blue-600">{fmt$(spend90)}</p>
+          <p className="text-xs text-gray-500 tabular" data-testid="vendors-actual-90">Actual {fmt$(actual90)} <span className="text-gray-400">from linked transactions</span></p>
+          <p className="text-xs text-gray-400">quotes across all properties</p>
         </div>
-        <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+        <div className="rounded-xl border border-gray-200 bg-white p-4">
           <p className="text-xs font-medium text-gray-500">All-Time Spend</p>
           <p className="mt-1 text-2xl font-bold tabular">{fmt$(spendAll)}</p>
-          <p className="text-xs text-gray-400">across all properties</p>
+          <p className="text-xs text-gray-500 tabular" data-testid="vendors-actual-all">Actual {fmt$(actualAll)} <span className="text-gray-400">from linked transactions</span></p>
+          <p className="text-xs text-gray-400">quotes across all properties</p>
         </div>
-        <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+        <div className="rounded-xl border border-gray-200 bg-white p-4">
           <p className="text-xs font-medium text-gray-500">Spend by Property</p>
           {spend && spend.by_property.length > 0 ? (
             <div className="mt-1 space-y-1">
               {spend.by_property.map(p => (
                 <div key={p.property_id}>
-                  <p className="text-sm font-semibold tabular">{p.address}: {fmt$(p.total_spend)}</p>
+                  <p className="text-sm font-semibold tabular">{p.address}: {fmt$(p.total_spend)} <span className="font-normal text-gray-500">· actual {fmt$(p.actual_spend)}</span></p>
                   {p.units.length > 0 && (
-                    <p className="text-xs text-gray-400">{p.units.map(u => `Unit ${u.unit_label}: ${fmt$(u.total_spend)}`).join('   ')}</p>
+                    <p className="text-xs text-gray-400">{p.units.map(u => `Unit ${u.unit_label}: ${fmt$(u.total_spend)} (actual ${fmt$(u.actual_spend)})`).join('   ')}</p>
                   )}
                 </div>
               ))}
@@ -160,14 +166,14 @@ export default function VendorsPage() {
 
       {/* Add-vendor choice */}
       {addMode === 'choice' && (
-        <div className="mb-6 rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
+        <div className="mb-6 rounded-xl border border-gray-200 bg-white p-5">
           <div className="mb-4 flex items-center justify-between">
             <h3 className="font-semibold">Add a Vendor</h3>
             <button onClick={() => setAddMode(null)} className="text-xs text-gray-400 hover:text-gray-600">Cancel</button>
           </div>
           <div className="flex flex-wrap gap-3">
             <button onClick={() => setAddMode('import')} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Import from PDF or Email</button>
-            <button onClick={() => setAddMode('manual')} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">Enter Manually</button>
+            <button onClick={() => setAddMode('manual')} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">Enter Manually</button>
           </div>
         </div>
       )}
@@ -179,7 +185,7 @@ export default function VendorsPage() {
 
       {/* Manual add vendor form */}
       {addMode === 'manual' && (
-        <div className="mb-6 rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
+        <div className="mb-6 rounded-xl border border-gray-200 bg-white p-5">
           <h3 className="mb-4 font-semibold">New Vendor</h3>
           <div className="grid grid-cols-2 gap-3">
             {[
@@ -192,14 +198,14 @@ export default function VendorsPage() {
                 <label className="mb-1 block text-xs text-gray-500">{f.label}</label>
                 <input type={f.type} value={(form as Record<string, string>)[f.key]}
                   onChange={e => setForm(prev => ({ ...prev, [f.key]: e.target.value }))}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                 />
               </div>
             ))}
             <div>
               <label className="mb-1 block text-xs text-gray-500">Trade *</label>
               <select value={form.trade} onChange={e => setForm(prev => ({ ...prev, trade: e.target.value }))}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800">
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
                 {TRADES.map(t => <option key={t} value={t}>{tradeLabel(t)}</option>)}
               </select>
             </div>
@@ -209,7 +215,7 @@ export default function VendorsPage() {
             <button onClick={save} disabled={saving} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
               {saving ? 'Saving…' : 'Save Vendor'}
             </button>
-            <button onClick={() => setAddMode(null)} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">
+            <button onClick={() => setAddMode(null)} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">
               Cancel
             </button>
           </div>
@@ -218,19 +224,19 @@ export default function VendorsPage() {
 
       {/* Post-save: assign to project prompt */}
       {justCreated && (
-        <div className="mb-6 rounded-xl border border-green-200 bg-green-50 p-5 dark:border-green-800 dark:bg-green-950/20">
+        <div className="mb-6 rounded-xl border border-green-200 bg-green-50 p-5">
           <div className="mb-3 flex items-center justify-between">
-            <h3 className="font-semibold text-green-800 dark:text-green-300">Vendor “{justCreated.name}” saved</h3>
+            <h3 className="font-semibold text-green-800">Vendor “{justCreated.name}” saved</h3>
             <button onClick={() => { setJustCreated(null); setPromptCreateProject(false); }} className="text-xs text-gray-400 hover:text-gray-600">Close</button>
           </div>
           {!promptCreateProject ? (
             <>
-              <p className="mb-3 text-sm text-gray-600 dark:text-gray-300">Would you like to assign this vendor to a project?</p>
+              <p className="mb-3 text-sm text-gray-600">Would you like to assign this vendor to a project?</p>
               <div className="flex flex-wrap gap-3">
                 <button onClick={() => setPromptCreateProject(true)}
                   className="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700">Create New Project</button>
                 <button onClick={() => { setJustCreated(null); setPromptCreateProject(false); }}
-                  className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">Skip for now</button>
+                  className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">Skip for now</button>
               </div>
             </>
           ) : (
@@ -251,37 +257,38 @@ export default function VendorsPage() {
           type="text" placeholder="Search by name or trade…" value={search}
           onChange={e => setSearch(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && load(search)}
-          className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-900"
+          className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-blue-500 focus:outline-none"
         />
       </div>
 
       {loading ? (
         <div className="py-12 text-center text-gray-400">Loading…</div>
       ) : vendors.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-gray-300 p-12 text-center text-gray-400 dark:border-gray-700">
+        <div className="rounded-xl border border-dashed border-gray-300 p-12 text-center text-gray-400">
           <p className="text-lg font-medium">No vendors yet</p>
           <p className="mt-1 text-sm">Add your contractors to start tracking projects and ratings.</p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800">
+        <div className="overflow-hidden rounded-xl border border-gray-200">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 dark:bg-gray-900">
+            <thead className="bg-gray-50">
               <tr>
-                {['Vendor', 'Trade', 'Google Rating', 'My Rating', 'Projects', 'Jobs', 'Total Spend', 'Contact'].map(h => (
-                  <th key={h} className="px-5 py-3 text-left text-xs font-medium text-gray-500">{h}</th>
+                {['Vendor', 'Trade', 'Google Rating', 'My Rating', 'Projects', 'Jobs', 'Total Spend', 'Actual Spend', 'Contact'].map(h => (
+                  <th key={h} className="px-5 py-3 text-left text-xs font-medium text-gray-500"
+                    title={h === 'Actual Spend' ? 'Finance transactions linked to projects where this vendor is the selected quote' : undefined}>{h}</th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+            <tbody className="divide-y divide-gray-100">
               {vendorsByTrade.map(({ trade, vendors: tradeVendors }) => {
                 const collapsed = collapsedTrades.has(trade);
                 return (
                   <Fragment key={trade}>
                     <tr
                       onClick={() => toggleTrade(trade)}
-                      className="cursor-pointer bg-gray-100 hover:bg-gray-200/70 dark:bg-gray-800/60 dark:hover:bg-gray-800"
+                      className="cursor-pointer bg-gray-100 hover:bg-gray-200/70"
                     >
-                      <td colSpan={8} className="px-5 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">
+                      <td colSpan={9} className="px-5 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-600">
                         <span className="mr-2 inline-block text-gray-400">{collapsed ? '▸' : '▾'}</span>
                         {tradeLabel(trade)}
                         <span className="ml-2 font-normal normal-case text-gray-400">({tradeVendors.length})</span>
@@ -291,7 +298,7 @@ export default function VendorsPage() {
                       <Fragment key={v.id}>
                         <tr
                           onClick={() => setExpandedId(id => (id === v.id ? null : v.id))}
-                          className={`cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-900/50 ${expandedId === v.id ? 'bg-gray-50 dark:bg-gray-900/50' : ''}`}
+                          className={`cursor-pointer hover:bg-gray-50 ${expandedId === v.id ? 'bg-gray-50' : ''}`}
                         >
                           <td className="px-5 py-3 pl-10 font-medium">
                             <span className="mr-2 inline-block text-gray-400">{expandedId === v.id ? '▾' : '▸'}</span>
@@ -308,14 +315,19 @@ export default function VendorsPage() {
                           <td className="px-5 py-3 tabular">{v.project_count ?? 0}</td>
                           <td className="px-5 py-3 tabular">{v.completed_jobs}/{v.total_jobs}</td>
                           <td className="px-5 py-3 tabular">{fmt$(v.total_spend)}</td>
+                          <td className="px-5 py-3 tabular" data-testid={`vendor-actual-${v.id}`}>
+                            {actualByVendor.get(v.id)?.actual_transaction_count
+                              ? fmt$(actualByVendor.get(v.id)!.actual_spend)
+                              : <span className="text-gray-300">—</span>}
+                          </td>
                           <td className="px-5 py-3 text-gray-400 text-xs">
                             {v.phone && <p>{v.phone}</p>}
                             {v.email && <p>{v.email}</p>}
                           </td>
                         </tr>
                         {expandedId === v.id && (
-                          <tr className="bg-gray-50 dark:bg-gray-900/30">
-                            <td colSpan={8} className="px-5 py-4">
+                          <tr className="bg-gray-50">
+                            <td colSpan={9} className="px-5 py-4">
                               <VendorDetail
                                 vendor={v}
                                 onSaved={() => load(search)}
@@ -388,15 +400,15 @@ function VendorImportPanel({ onCancel, onDone }: { onCancel: () => void; onDone:
   }
 
   return (
-    <div className="mb-6 rounded-xl border-2 border-blue-300 bg-blue-50 p-5 dark:border-blue-700 dark:bg-blue-950/20">
+    <div className="mb-6 rounded-xl border-2 border-blue-300 bg-blue-50 p-5">
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="font-semibold text-blue-800 dark:text-blue-300">Import Vendor from PDF or Email</h3>
+        <h3 className="font-semibold text-blue-800">Import Vendor from PDF or Email</h3>
         <button onClick={onCancel} className="text-xs text-gray-400 hover:text-gray-600">Cancel</button>
       </div>
 
       {!data ? (
         <div className="space-y-3">
-          <label className={`flex cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-blue-300 px-4 py-8 text-sm text-blue-600 hover:bg-blue-100/50 dark:border-blue-700 dark:hover:bg-blue-900/20 ${parsing ? 'opacity-50' : ''}`}>
+          <label className={`flex cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-blue-300 px-4 py-8 text-sm text-blue-600 hover:bg-blue-100/50 ${parsing ? 'opacity-50' : ''}`}>
             {parsing ? 'Parsing…' : 'Drop a quote, invoice, or email (PDF / .eml / .txt)'}
             <input type="file" accept=".pdf,.eml,.txt,image/*" className="hidden" disabled={parsing}
               onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ''; }} />
@@ -404,7 +416,7 @@ function VendorImportPanel({ onCancel, onDone }: { onCancel: () => void; onDone:
           <div>
             <label className="mb-1 block text-xs font-medium text-gray-500">Or paste email/quote text here</label>
             <textarea value={pastedText} onChange={e => setPastedText(e.target.value)} rows={4}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800" />
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
           </div>
           <button onClick={parseText} disabled={parsing || !pastedText.trim()}
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
@@ -415,22 +427,22 @@ function VendorImportPanel({ onCancel, onDone }: { onCancel: () => void; onDone:
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
           {/* LEFT: source */}
-          <div className="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
+          <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
             {previewUrl
               ? <iframe src={previewUrl} className="h-[500px] w-full" title="Source preview" />
-              : <pre className="max-h-[500px] overflow-auto whitespace-pre-wrap p-4 text-xs text-gray-600 dark:text-gray-400">{pastedText || 'No preview available'}</pre>}
+              : <pre className="max-h-[500px] overflow-auto whitespace-pre-wrap p-4 text-xs text-gray-600">{pastedText || 'No preview available'}</pre>}
           </div>
           {/* RIGHT: editable form */}
           <div className="space-y-3">
             {data.confidence_notes && (
-              <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">⚠ {data.confidence_notes}</p>
+              <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">⚠ {data.confidence_notes}</p>
             )}
             <div className="grid grid-cols-2 gap-3">
               <ImpField label="Vendor Name" value={data.vendor_name ?? ''} onChange={v => patch({ vendor_name: v })} />
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-500">Trade</label>
                 <select value={data.trade ?? 'general'} onChange={e => patch({ trade: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800">
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
                   {TRADES.map(t => <option key={t} value={t}>{tradeLabel(t)}</option>)}
                 </select>
               </div>
@@ -443,7 +455,7 @@ function VendorImportPanel({ onCancel, onDone }: { onCancel: () => void; onDone:
             <div>
               <label className="mb-1 block text-xs font-medium text-gray-500">Scope of Work</label>
               <textarea value={data.scope_of_work ?? ''} onChange={e => patch({ scope_of_work: e.target.value })} rows={2}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800" />
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
             </div>
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={createVendor} onChange={e => setCreateVendor(e.target.checked)} />
@@ -451,7 +463,7 @@ function VendorImportPanel({ onCancel, onDone }: { onCancel: () => void; onDone:
             </label>
             {error && <p className="text-sm text-red-600">{error}</p>}
             <div className="flex justify-end gap-2">
-              <button onClick={() => { setData(null); setError(''); }} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">Re-upload</button>
+              <button onClick={() => { setData(null); setError(''); }} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">Re-upload</button>
               <button onClick={confirm} disabled={saving || (createVendor && !data.vendor_name)}
                 className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
                 {saving ? 'Saving…' : 'Confirm'}
@@ -567,29 +579,29 @@ function VendorDetail({ vendor, onSaved, onDeleted }: { vendor: Vendor; onSaved:
           <div>
             <label className="mb-1 block text-xs text-gray-500">Name</label>
             <input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800" />
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
           </div>
           <div>
             <label className="mb-1 block text-xs text-gray-500">Trade</label>
             <select value={form.trade} onChange={e => setForm(p => ({ ...p, trade: e.target.value }))}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800">
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
               {TRADES.map(t => <option key={t} value={t}>{tradeLabel(t)}</option>)}
             </select>
           </div>
           <div>
             <label className="mb-1 block text-xs text-gray-500">Phone</label>
             <input value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800" />
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
           </div>
           <div>
             <label className="mb-1 block text-xs text-gray-500">Email</label>
             <input value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800" />
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
           </div>
           <div>
             <label className="mb-1 block text-xs text-gray-500">My Rating</label>
             <select value={form.manual_rating} onChange={e => setForm(p => ({ ...p, manual_rating: Number(e.target.value) }))}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800">
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
               <option value={0}>—</option>
               {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{'★'.repeat(n)}</option>)}
             </select>
@@ -598,7 +610,7 @@ function VendorDetail({ vendor, onSaved, onDeleted }: { vendor: Vendor; onSaved:
         <div className="mt-3">
           <label className="mb-1 block text-xs text-gray-500">Notes</label>
           <textarea value={form.manual_notes} onChange={e => setForm(p => ({ ...p, manual_notes: e.target.value }))} rows={2}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800" />
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
         </div>
         <div className="mt-4 flex gap-2">
           <button onClick={save} disabled={saving}
@@ -606,7 +618,7 @@ function VendorDetail({ vendor, onSaved, onDeleted }: { vendor: Vendor; onSaved:
             {saving ? 'Saving…' : 'Save'}
           </button>
           <button onClick={remove} disabled={deleting}
-            className="rounded-lg border border-red-300 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 dark:border-red-800 dark:hover:bg-red-950/30">
+            className="rounded-lg border border-red-300 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50">
             {deleting ? 'Deleting…' : 'Delete'}
           </button>
         </div>
@@ -631,25 +643,25 @@ function VendorDetail({ vendor, onSaved, onDeleted }: { vendor: Vendor; onSaved:
               />
             </div>
           ) : (
-            <div className="mb-3 rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-800 dark:bg-blue-950/20">
+            <div className="mb-3 rounded-lg border border-blue-200 bg-blue-50 p-3">
               <label className="mb-1 block text-xs text-gray-500">Project</label>
               <select value={assignWoId} onChange={e => setAssignWoId(e.target.value)}
-                className="mb-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800">
+                className="mb-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
                 <option value="">Select a project…</option>
                 {workOrders.map(w => <option key={w.id} value={w.id}>{woLabel(w)}</option>)}
               </select>
               <button onClick={() => setCreatingProject(true)}
-                className="mb-2 text-xs font-medium text-green-700 hover:text-green-800 dark:text-green-400">+ Create New Project</button>
+                className="mb-2 text-xs font-medium text-green-700 hover:text-green-800">+ Create New Project</button>
               <label className="mb-1 block text-xs text-gray-500">Quoted Cost ($)</label>
               <input type="number" value={assignCost} onChange={e => setAssignCost(e.target.value)}
-                className="mb-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800" />
+                className="mb-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
               <div className="flex gap-2">
                 <button onClick={submitAssign} disabled={assignSaving || !assignWoId}
                   className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50">
                   {assignSaving ? 'Saving…' : 'Assign'}
                 </button>
                 <button onClick={closeAssign}
-                  className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">Cancel</button>
+                  className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs hover:bg-gray-50">Cancel</button>
               </div>
             </div>
           )
@@ -660,21 +672,21 @@ function VendorDetail({ vendor, onSaved, onDeleted }: { vendor: Vendor; onSaved:
         ) : quotes.length === 0 ? (
           <p className="text-sm text-gray-400">No projects assigned yet.</p>
         ) : (
-          <div className="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
+          <div className="overflow-hidden rounded-lg border border-gray-200">
             <table className="w-full text-xs">
-              <thead className="bg-gray-100 dark:bg-gray-800">
+              <thead className="bg-gray-100">
                 <tr>
                   {['Project', 'Quoted', 'Final', 'Status'].map(h => (
                     <th key={h} className="px-3 py-2 text-left font-medium text-gray-500">{h}</th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+              <tbody className="divide-y divide-gray-100">
                 {quotes.map(q => (
                   <Fragment key={q.id}>
                     <tr
                       onClick={() => setExpandedProjectId(id => (id === q.work_order_id ? null : q.work_order_id))}
-                      className={`cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800/50 ${expandedProjectId === q.work_order_id ? 'bg-gray-100 dark:bg-gray-800/50' : ''}`}
+                      className={`cursor-pointer hover:bg-gray-100 ${expandedProjectId === q.work_order_id ? 'bg-gray-100' : ''}`}
                     >
                       <td className="px-3 py-2">
                         <span className="mr-1 inline-block text-gray-400">{expandedProjectId === q.work_order_id ? '▾' : '▸'}</span>
@@ -687,7 +699,7 @@ function VendorDetail({ vendor, onSaved, onDeleted }: { vendor: Vendor; onSaved:
                       <td className="px-3 py-2 text-gray-500">{q.status ? tradeLabel(q.status) : '—'}</td>
                     </tr>
                     {expandedProjectId === q.work_order_id && (
-                      <tr className="bg-gray-50 dark:bg-gray-900/40">
+                      <tr className="bg-gray-50">
                         <td colSpan={4} className="px-3 py-3">
                           <ProjectQuotes
                             workOrderId={q.work_order_id}
@@ -758,25 +770,25 @@ function CreateProjectInline({ vendorId, onCreated, onCancel }: { vendorId: numb
   };
 
   return (
-    <div className="rounded-lg border border-green-200 bg-green-50 p-3 dark:border-green-800 dark:bg-green-950/20">
-      <p className="mb-2 text-xs font-semibold text-green-800 dark:text-green-300">Create New Project</p>
+    <div className="rounded-lg border border-green-200 bg-green-50 p-3">
+      <p className="mb-2 text-xs font-semibold text-green-800">Create New Project</p>
       <label className="mb-1 block text-xs text-gray-500">Project Name</label>
       <input value={projectName} onChange={e => setProjectName(e.target.value)} placeholder="e.g. Roof replacement"
-        className="mb-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800" />
+        className="mb-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
       <label className="mb-1 block text-xs text-gray-500">Property</label>
       <select value={propertyId} onChange={e => setPropertyId(e.target.value)}
-        className="mb-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800">
+        className="mb-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
         <option value="">Select a property…</option>
         {properties.map(p => <option key={p.id} value={p.id}>{p.address}</option>)}
       </select>
       <label className="mb-1 block text-xs text-gray-500">Status</label>
       <select value={status} onChange={e => setStatus(e.target.value)}
-        className="mb-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800">
+        className="mb-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
         {PROJECT_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
       </select>
       <label className="mb-1 block text-xs text-gray-500">Quoted Cost ($)</label>
       <input type="number" value={quotedCost} onChange={e => setQuotedCost(e.target.value)}
-        className="mb-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800" />
+        className="mb-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
       {error && <p className="mb-2 text-xs text-red-600">{error}</p>}
       <div className="flex gap-2">
         <button onClick={create} disabled={saving || !projectName.trim() || !propertyId}
@@ -784,7 +796,7 @@ function CreateProjectInline({ vendorId, onCreated, onCancel }: { vendorId: numb
           {saving ? 'Creating…' : 'Create & Assign'}
         </button>
         <button onClick={onCancel}
-          className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">Cancel</button>
+          className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs hover:bg-gray-50">Cancel</button>
       </div>
     </div>
   );
@@ -840,16 +852,16 @@ function ProjectQuotes({ workOrderId, projectLabel, onChanged }: { workOrderId: 
       ) : rows.length === 0 ? (
         <p className="text-xs text-gray-400">No quotes on this project yet.</p>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
+        <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
           <table className="w-full text-xs">
-            <thead className="bg-gray-100 dark:bg-gray-800">
+            <thead className="bg-gray-100">
               <tr>
                 {['Vendor', 'Quoted', 'Final', 'Status', 'Selected'].map(h => (
                   <th key={h} className="px-3 py-2 text-left font-medium text-gray-500">{h}</th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+            <tbody className="divide-y divide-gray-100">
               {rows.map(r => (
                 <tr key={r.id}>
                   <td className="px-3 py-2">
@@ -863,15 +875,15 @@ function ProjectQuotes({ workOrderId, projectLabel, onChanged }: { workOrderId: 
                       value={r.status ?? 'received'}
                       disabled={savingId === r.id}
                       onChange={e => updateStatus(r.id, e.target.value)}
-                      className="rounded-md border border-gray-300 px-2 py-1 text-xs focus:border-blue-500 focus:outline-none disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800"
+                      className="rounded-md border border-gray-300 px-2 py-1 text-xs focus:border-blue-500 focus:outline-none disabled:opacity-50"
                     >
                       {PROJECT_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
                     </select>
                   </td>
                   <td className="px-3 py-2">
                     {r.is_selected
-                      ? <span className="rounded-full bg-green-100 px-2 py-0.5 text-green-700 dark:bg-green-900/40 dark:text-green-400">✓ Selected</span>
-                      : <span className="text-gray-300 dark:text-gray-600">—</span>}
+                      ? <span className="rounded-full bg-green-100 px-2 py-0.5 text-green-700">✓ Selected</span>
+                      : <span className="text-gray-300">—</span>}
                   </td>
                 </tr>
               ))}
@@ -888,7 +900,7 @@ function ImpField({ label, value, onChange, type = 'text' }: { label: string; va
     <div>
       <label className="mb-1 block text-xs font-medium text-gray-500">{label}</label>
       <input type={type} value={value} onChange={e => onChange(e.target.value)}
-        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800" />
+        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
     </div>
   );
 }

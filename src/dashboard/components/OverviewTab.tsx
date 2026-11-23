@@ -60,10 +60,10 @@ function LeaseStatusBadge({ startDate, endDate }: { startDate: string | null; en
   const isActive = startDate && startDate <= today && endDate >= today;
   const isExpired = endDate < today;
 
-  if (isExpired) return <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-600 dark:bg-red-900/30 dark:text-red-400">Expired</span>;
-  if (isActive && daysLeft <= 60) return <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">Expiring soon</span>;
-  if (isActive) return <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">Active</span>;
-  return <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">Upcoming</span>;
+  if (isExpired) return <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-600">Expired</span>;
+  if (isActive && daysLeft <= 60) return <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">Expiring soon</span>;
+  if (isActive) return <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">Active</span>;
+  return <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-600">Upcoming</span>;
 }
 
 function daysUntilExpiry(endDate: string | null): string {
@@ -80,10 +80,10 @@ function InsuranceExpirationBadge({ expirationDate }: { expirationDate: string |
   const daysLeft = Math.ceil((new Date(expirationDate).getTime() - Date.now()) / 86400000);
   const isExpired = expirationDate < today;
 
-  if (isExpired) return <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-600 dark:bg-red-900/30 dark:text-red-400">Expired</span>;
-  if (daysLeft <= 30) return <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-600 dark:bg-red-900/30 dark:text-red-400">Renews in {daysLeft}d</span>;
-  if (daysLeft <= 60) return <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">Renews in {daysLeft}d</span>;
-  return <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">Active</span>;
+  if (isExpired) return <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-600">Expired</span>;
+  if (daysLeft <= 30) return <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-600">Renews in {daysLeft}d</span>;
+  if (daysLeft <= 60) return <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">Renews in {daysLeft}d</span>;
+  return <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">Active</span>;
 }
 
 function PaymentStatusBadge({ status, amount, amountDue }: { status?: string | null; amount?: number | null; amountDue?: number | null }) {
@@ -91,13 +91,13 @@ function PaymentStatusBadge({ status, amount, amountDue }: { status?: string | n
     return <span className="italic text-gray-400 text-xs">No record</span>;
   }
   if (status === 'outstanding') {
-    return <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-600 dark:bg-red-900/30 dark:text-red-400">Outstanding</span>;
+    return <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-600">Outstanding</span>;
   }
   if (status === 'paid') {
-    return <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">✓ Paid {fmt$(amount)}</span>;
+    return <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">✓ Paid {fmt$(amount)}</span>;
   }
   if (status === 'partial') {
-    return <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">⚠ Partial {fmt$(amount)}/{fmt$(amountDue)}</span>;
+    return <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">⚠ Partial {fmt$(amount)}/{fmt$(amountDue)}</span>;
   }
   return null;
 }
@@ -170,25 +170,25 @@ export function OverviewTab({ id, units, onRefresh, onSwitchTab }: { id: string;
       {/* 12-Month Metrics Dashboard */}
       {selectedUnit === 'all' && (
         <div>
-          <h3 className="mb-3 text-sm font-semibold text-gray-700 dark:text-gray-300">12-Month Summary</h3>
+          <h3 className="mb-3 text-sm font-semibold text-gray-700">12-Month Summary</h3>
           {metricsLoading ? (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {[...Array(4)].map((_, i) => (
-                <div key={i} className="h-24 rounded-xl border border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-800 animate-pulse" />
+                <div key={i} className="h-24 rounded-xl border border-gray-200 bg-gray-50 animate-pulse" />
               ))}
             </div>
           ) : metrics ? (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {/* On-Time Payment % */}
-              <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
-                <p className="text-xs text-gray-500 dark:text-gray-400">On-Time Payment %</p>
+              <div className="rounded-xl border border-gray-200 bg-white p-4">
+                <p className="text-xs text-gray-500">On-Time Payment %</p>
                 <p className="mt-2 text-2xl font-bold text-green-600">{metrics.on_time_percent}%</p>
                 <p className="mt-1 text-xs text-gray-500">of {metrics.months_analyzed} months</p>
               </div>
 
               {/* Vacancy Rate % */}
-              <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
-                <p className="text-xs text-gray-500 dark:text-gray-400">Vacancy Rate</p>
+              <div className="rounded-xl border border-gray-200 bg-white p-4">
+                <p className="text-xs text-gray-500">Vacancy Rate</p>
                 <p className={`mt-2 text-2xl font-bold ${metrics.vacancy_percent < 5 ? 'text-green-600' : metrics.vacancy_percent < 15 ? 'text-amber-600' : 'text-red-600'}`}>
                   {metrics.vacancy_percent}%
                 </p>
@@ -196,15 +196,15 @@ export function OverviewTab({ id, units, onRefresh, onSwitchTab }: { id: string;
               </div>
 
               {/* Rent Collected vs Expected */}
-              <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
-                <p className="text-xs text-gray-500 dark:text-gray-400">Rent Collected</p>
+              <div className="rounded-xl border border-gray-200 bg-white p-4">
+                <p className="text-xs text-gray-500">Rent Collected</p>
                 <p className="mt-2 text-xl font-bold tabular">${(metrics.total_rent_collected / 1000).toFixed(1)}k</p>
                 <p className="mt-1 text-xs text-gray-500">of ${(metrics.total_rent_expected / 1000).toFixed(1)}k expected</p>
               </div>
 
               {/* Monthly Cash Flow */}
-              <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
-                <p className="text-xs text-gray-500 dark:text-gray-400">Monthly Cash Flow</p>
+              <div className="rounded-xl border border-gray-200 bg-white p-4">
+                <p className="text-xs text-gray-500">Monthly Cash Flow</p>
                 <p className={`mt-2 text-2xl font-bold ${metrics.monthly_net_cash_flow >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                   ${Math.abs(metrics.monthly_net_cash_flow).toLocaleString()}
                 </p>
@@ -218,20 +218,20 @@ export function OverviewTab({ id, units, onRefresh, onSwitchTab }: { id: string;
       {/* Insurance Expiration Card */}
       {selectedUnit === 'all' && (
         <div>
-          <h3 className="mb-3 text-sm font-semibold text-gray-700 dark:text-gray-300">Insurance & Renewals</h3>
+          <h3 className="mb-3 text-sm font-semibold text-gray-700">Insurance & Renewals</h3>
           {insuranceLoading ? (
-            <div className="h-20 rounded-xl border border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-800 animate-pulse" />
+            <div className="h-20 rounded-xl border border-gray-200 bg-gray-50 animate-pulse" />
           ) : insurance ? (
-            <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+            <div className="rounded-xl border border-gray-200 bg-white p-4">
               <div className="flex items-center justify-between">
                 <div className="flex-1">
-                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{insurance.carrier}</p>
-                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  <p className="text-sm font-medium text-gray-900">{insurance.carrier}</p>
+                  <p className="mt-1 text-xs text-gray-500">
                     {insurance.policy_type && `${insurance.policy_type} • `}
                     Expires {new Date(insurance.expiration_date).toLocaleDateString()}
                   </p>
                   {insurance.annual_premium && (
-                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    <p className="mt-1 text-xs text-gray-500">
                       Premium: ${insurance.annual_premium.toLocaleString()}/year
                     </p>
                   )}
@@ -240,8 +240,8 @@ export function OverviewTab({ id, units, onRefresh, onSwitchTab }: { id: string;
               </div>
             </div>
           ) : (
-            <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-center dark:border-gray-800 dark:bg-gray-900">
-              <p className="text-sm text-gray-500 dark:text-gray-400">No insurance policy on file</p>
+            <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-center">
+              <p className="text-sm text-gray-500">No insurance policy on file</p>
             </div>
           )}
         </div>
@@ -249,9 +249,9 @@ export function OverviewTab({ id, units, onRefresh, onSwitchTab }: { id: string;
 
       {/* Units Header */}
       <div className="flex items-center justify-between">
-        <h2 className="font-semibold text-gray-700 dark:text-gray-300">Units</h2>
+        <h2 className="font-semibold text-gray-700">Units</h2>
         <div className="flex gap-2">
-          <Link href={`/properties/${id}/tenants/new`} className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">
+          <Link href={`/properties/${id}/tenants/new`} className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50">
             + Add Tenant
           </Link>
           <button type="button" onClick={()=>onSwitchTab('leases')} className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700">
@@ -267,7 +267,7 @@ export function OverviewTab({ id, units, onRefresh, onSwitchTab }: { id: string;
           className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
             selectedUnit === 'all'
               ? 'bg-blue-600 text-white'
-              : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
+              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
           }`}
         >
           All Units
@@ -279,7 +279,7 @@ export function OverviewTab({ id, units, onRefresh, onSwitchTab }: { id: string;
             className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
               selectedUnit === u.unit_label
                 ? 'bg-blue-600 text-white'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
             }`}
           >
             Unit {u.unit_label}
@@ -297,22 +297,22 @@ export function OverviewTab({ id, units, onRefresh, onSwitchTab }: { id: string;
         const collected = rentalUnits.reduce((s, u) => s + (u.amount_paid ?? 0), 0);
         return (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+            <div className="rounded-xl border border-gray-200 bg-white p-4">
               <p className="text-xs text-gray-500">This Month's Rent</p>
               <p className="mt-1 text-xl font-bold tabular">${totalRent.toLocaleString()}</p>
               <p className="text-xs text-gray-400">due today</p>
             </div>
-            <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+            <div className="rounded-xl border border-gray-200 bg-white p-4">
               <p className="text-xs text-gray-500">Rent Collected (MTD)</p>
               <p className="mt-1 text-xl font-bold tabular">${collected.toLocaleString()}</p>
               <p className="text-xs text-gray-400">{totalRent > 0 ? Math.round((collected/totalRent)*100) : 0}% collected</p>
             </div>
-            <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+            <div className="rounded-xl border border-gray-200 bg-white p-4">
               <p className="text-xs text-gray-500">Leases Expiring Soon</p>
               <p className="mt-1 text-xl font-bold">{rentalUnits.filter(u=>{const d=u.lease_end_date?Math.ceil((new Date(u.lease_end_date).getTime()-Date.now())/86400000):null;return d!==null&&d>=0&&d<=60;}).length}</p>
               <p className="text-xs text-gray-400">within 60 days</p>
             </div>
-            <div className={`rounded-xl border p-4 ${insurance && Math.ceil((new Date(insurance.expiration_date).getTime()-Date.now())/86400000) <= 60 ? 'border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/20' : 'border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900'}`}>
+            <div className={`rounded-xl border p-4 ${insurance && Math.ceil((new Date(insurance.expiration_date).getTime()-Date.now())/86400000) <= 60 ? 'border-amber-200 bg-amber-50' : 'border-gray-200 bg-white'}`}>
               <p className="text-xs text-gray-500">Insurance Expiry</p>
               {insurance ? (
                 <>
@@ -330,31 +330,31 @@ export function OverviewTab({ id, units, onRefresh, onSwitchTab }: { id: string;
       })()}
 
       {/* Table */}
-      <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800">
+      <div className="overflow-hidden rounded-xl border border-gray-200">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 dark:bg-gray-900">
+          <thead className="bg-gray-50">
             <tr>
               {['Unit', 'Tenant', 'Rent/mo', 'Payment Status', 'Lease Status', 'Lease Expiration', 'Days Until Exp.', 'Years in Unit', ''].map(h => (
                 <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500">{h}</th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+          <tbody className="divide-y divide-gray-100">
             {filtered.length === 0 ? (
               <tr>
                 <td colSpan={9} className="px-4 py-8 text-center text-gray-400">No units</td>
               </tr>
             ) : filtered.map(u => (
-              <tr key={u.id} className={`cursor-pointer ${u.is_owner_unit ? 'bg-blue-50/50 dark:bg-blue-950/20' : 'hover:bg-gray-50 dark:hover:bg-gray-900/50'}`} onClick={()=>window.location.href=`/properties/${id}/units/${u.id}`}>
-                <td className="px-4 py-3 font-semibold text-blue-600 dark:text-blue-400">
+              <tr key={u.id} className={`cursor-pointer ${u.is_owner_unit ? 'bg-blue-50/50' : 'hover:bg-gray-50'}`} onClick={()=>window.location.href=`/properties/${id}/units/${u.id}`}>
+                <td className="px-4 py-3 font-semibold text-blue-600">
                   <div className="flex items-center gap-2">
                     {u.unit_label}
-                    {u.is_owner_unit && <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">Owner</span>}
+                    {u.is_owner_unit && <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">Owner</span>}
                   </div>
                 </td>
                 <td className="px-4 py-3">
                   {u.is_owner_unit
-                    ? <span className="italic text-blue-500 dark:text-blue-400">Owner occupied</span>
+                    ? <span className="italic text-blue-500">Owner occupied</span>
                     : u.tenant_name
                     ? <span className="font-medium">{u.tenant_name}</span>
                     : <span className="italic text-gray-400">Vacant</span>
@@ -375,7 +375,7 @@ export function OverviewTab({ id, units, onRefresh, onSwitchTab }: { id: string;
                 <td className="px-4 py-3">
                   <LeaseStatusBadge startDate={u.lease_start_date} endDate={u.lease_end_date} />
                 </td>
-                <td className="px-4 py-3 tabular text-gray-600 dark:text-gray-400">
+                <td className="px-4 py-3 tabular text-gray-600">
                   {u.lease_end_date ?? <span className="text-gray-400">—</span>}
                 </td>
                 <td className="px-4 py-3 tabular">
@@ -386,20 +386,20 @@ export function OverviewTab({ id, units, onRefresh, onSwitchTab }: { id: string;
                         ? 'text-amber-600 font-medium'
                         : Math.ceil((new Date(u.lease_end_date).getTime() - Date.now()) / 86400000) < 0
                         ? 'text-red-500'
-                        : 'text-gray-600 dark:text-gray-400'
+                        : 'text-gray-600'
                     }>
                       {daysUntilExpiry(u.lease_end_date)}
                     </span>
                   ) : <span className="text-gray-400">—</span>}
                 </td>
-                <td className="px-4 py-3 tabular text-gray-600 dark:text-gray-400">
+                <td className="px-4 py-3 tabular text-gray-600">
                   {u.is_owner_unit ? '—' : yearsInUnit(u.first_lease_start_date)}
                 </td>
                 <td className="px-4 py-3" onClick={e=>e.stopPropagation()}>
                   <button
                     onClick={e=>toggleOwner(u,e)}
                     disabled={togglingId===u.id}
-                    className={`rounded-full px-2 py-0.5 text-xs font-medium transition-colors ${u.is_owner_unit ? 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/40 dark:text-blue-300' : 'bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400'}`}
+                    className={`rounded-full px-2 py-0.5 text-xs font-medium transition-colors ${u.is_owner_unit ? 'bg-blue-100 text-blue-700 hover:bg-blue-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
                   >
                     {togglingId===u.id ? '…' : u.is_owner_unit ? 'Owner ✓' : 'Set Owner'}
                   </button>

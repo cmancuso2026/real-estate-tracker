@@ -4,12 +4,12 @@ import { useState } from 'react';
 import { useFormStatus } from 'react-dom';
 import type { InvestorProfile } from '@/lib/profile';
 import { PROFILE_PROPERTY_TYPES, formatThousands } from '@/lib/format';
-import { saveProfileAction } from '@/app/settings/actions';
+import { saveProfileAction } from '@/app/admin/investor-profile/actions';
 
 const INPUT =
   'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm tabular ' +
   'focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 ' +
-  'dark:border-gray-700 dark:bg-gray-900';
+  '';
 
 const TYPE_HINTS: Record<string, string> = {
   SFH: 'Single-family',
@@ -31,7 +31,7 @@ function Field({
     <label className="block">
       <span className="mb-1 block text-sm font-medium">{label}</span>
       {children}
-      {hint && <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">{hint}</span>}
+      {hint && <span className="mt-1 block text-xs text-gray-500">{hint}</span>}
     </label>
   );
 }
@@ -149,14 +149,14 @@ export function ProfileForm({ profile }: { profile: InvestorProfile }) {
 
       <fieldset>
         <legend className="mb-2 text-sm font-medium">Target property types</legend>
-        <p className="mb-2 text-xs text-gray-500 dark:text-gray-400">
+        <p className="mb-2 text-xs text-gray-500">
           Leave all unchecked to include any type.
         </p>
         <div className="flex flex-wrap gap-2">
           {PROFILE_PROPERTY_TYPES.map((t) => (
             <label
               key={t}
-              className="flex cursor-pointer items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800"
+              className="flex cursor-pointer items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50"
             >
               <input
                 type="checkbox"
@@ -166,15 +166,15 @@ export function ProfileForm({ profile }: { profile: InvestorProfile }) {
                 className="h-4 w-4 accent-blue-600"
               />
               <span className="font-medium">{t}</span>
-              <span className="text-xs text-gray-500 dark:text-gray-400">{TYPE_HINTS[t]}</span>
+              <span className="text-xs text-gray-500">{TYPE_HINTS[t]}</span>
             </label>
           ))}
         </div>
       </fieldset>
 
-      <div className="flex items-center gap-3 border-t border-gray-100 pt-4 dark:border-gray-800">
+      <div className="flex items-center gap-3 border-t border-gray-100 pt-4">
         <SubmitButton />
-        <span className="text-xs text-gray-500 dark:text-gray-400">
+        <span className="text-xs text-gray-500">
           Applies to the dashboard and listings immediately after saving.
         </span>
       </div>

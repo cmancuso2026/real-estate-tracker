@@ -65,7 +65,7 @@ export function MultiSelect({
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={listId}
-        className="flex min-h-[34px] min-w-[8rem] items-center gap-1 rounded-lg border border-gray-300 bg-white px-2.5 py-1 text-sm dark:border-gray-700 dark:bg-gray-900"
+        className="flex min-h-[34px] min-w-[8rem] items-center gap-1 rounded-lg border border-gray-300 bg-white px-2.5 py-1 text-sm"
       >
         <span className="flex flex-1 flex-wrap items-center gap-1 text-left">
           {allSelected || selected.length === 0 ? (
@@ -76,7 +76,7 @@ export function MultiSelect({
             selected.map((v) => (
               <span
                 key={v}
-                className="rounded bg-blue-100 px-1.5 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/50 dark:text-blue-200"
+                className="rounded bg-blue-100 px-1.5 py-0.5 text-xs font-medium text-blue-700"
               >
                 {label(v)}
               </span>
@@ -91,14 +91,14 @@ export function MultiSelect({
           id={listId}
           role="listbox"
           aria-multiselectable="true"
-          className="absolute z-20 mt-1 max-h-72 w-max min-w-full overflow-auto rounded-lg border border-gray-200 bg-white p-1 shadow-lg dark:border-gray-700 dark:bg-gray-900"
+          className="absolute z-20 mt-1 max-h-72 w-max min-w-full overflow-auto rounded-lg border border-gray-200 bg-white p-1 shadow-lg"
         >
-          <div className="flex items-center justify-between gap-2 border-b border-gray-100 px-2 py-1.5 dark:border-gray-800">
+          <div className="flex items-center justify-between gap-2 border-b border-gray-100 px-2 py-1.5">
             <button
               type="button"
               onClick={() => onChange([...options])}
               disabled={allSelected}
-              className="text-xs font-medium text-blue-600 hover:underline disabled:opacity-40 dark:text-blue-400"
+              className="text-xs font-medium text-blue-600 hover:underline disabled:opacity-40"
             >
               Select all
             </button>
@@ -106,7 +106,7 @@ export function MultiSelect({
               type="button"
               onClick={() => onChange([])}
               disabled={selected.length === 0}
-              className="text-xs font-medium text-blue-600 hover:underline disabled:opacity-40 dark:text-blue-400"
+              className="text-xs font-medium text-blue-600 hover:underline disabled:opacity-40"
             >
               Clear
             </button>
@@ -114,7 +114,7 @@ export function MultiSelect({
           {options.map((value) => (
             <label
               key={value}
-              className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-800"
+              className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-gray-50"
             >
               <input
                 type="checkbox"

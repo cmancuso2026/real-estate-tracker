@@ -120,7 +120,7 @@ export default function NewLeasePage() {
   return (
     <>
       <div className="mb-6">
-        <Link href={`/properties/${propertyId}?tab=leases`} className="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400">
+        <Link href={`/properties/${propertyId}?tab=leases`} className="text-sm text-gray-500 hover:text-gray-700">
           ← Back to Property
         </Link>
         <h1 className="mt-1 text-2xl font-bold">Add Lease</h1>
@@ -136,26 +136,26 @@ export default function NewLeasePage() {
 
         {/* Tenant selector (if not pre-filled) */}
         {!tenantId && (
-          <div className="rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900">
+          <div className="rounded-xl border border-gray-200 bg-white p-6">
             <h2 className="mb-4 font-semibold">Tenant</h2>
             <select
               value={selectedTenantId}
               onChange={e => setSelectedTenantId(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
             >
               <option value="">Select tenant…</option>
               {allTenants.map(t => (
                 <option key={t.id} value={t.id}>{t.first_name} {t.last_name}</option>
               ))}
             </select>
-            <Link href={`/properties/${propertyId}/tenants/new`} className="mt-2 inline-block text-xs text-blue-600 hover:underline dark:text-blue-400">
+            <Link href={`/properties/${propertyId}/tenants/new`} className="mt-2 inline-block text-xs text-blue-600 hover:underline">
               + Add new tenant first
             </Link>
           </div>
         )}
 
         {/* Term & Financials */}
-        <div className="rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900">
+        <div className="rounded-xl border border-gray-200 bg-white p-6">
           <h2 className="mb-4 font-semibold">Term & Rent</h2>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
@@ -165,7 +165,7 @@ export default function NewLeasePage() {
                   type="date"
                   value={form.start_date}
                   onChange={e => setForm(p => ({ ...p, start_date: e.target.value }))}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                 />
               </div>
               <div>
@@ -174,7 +174,7 @@ export default function NewLeasePage() {
                   type="date"
                   value={form.end_date}
                   onChange={e => setForm(p => ({ ...p, end_date: e.target.value }))}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                 />
               </div>
             </div>
@@ -187,7 +187,7 @@ export default function NewLeasePage() {
                   value={form.rent_amount}
                   onChange={e => setForm(p => ({ ...p, rent_amount: e.target.value }))}
                   placeholder="1500"
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                 />
               </div>
               <div>
@@ -197,7 +197,7 @@ export default function NewLeasePage() {
                   value={form.security_deposit}
                   onChange={e => setForm(p => ({ ...p, security_deposit: e.target.value }))}
                   placeholder="1500"
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                 />
               </div>
             </div>
@@ -210,7 +210,7 @@ export default function NewLeasePage() {
                   value={form.late_fee_amount}
                   onChange={e => setForm(p => ({ ...p, late_fee_amount: e.target.value }))}
                   placeholder="75"
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                 />
               </div>
               <div>
@@ -220,7 +220,7 @@ export default function NewLeasePage() {
                   value={form.late_fee_grace_days}
                   onChange={e => setForm(p => ({ ...p, late_fee_grace_days: e.target.value }))}
                   placeholder="5"
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                 />
               </div>
             </div>
@@ -228,7 +228,7 @@ export default function NewLeasePage() {
         </div>
 
         {/* Utilities */}
-        <div className="rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900">
+        <div className="rounded-xl border border-gray-200 bg-white p-6">
           <h2 className="mb-4 font-semibold">Utilities</h2>
           <div className="space-y-4">
             <div>
@@ -242,7 +242,7 @@ export default function NewLeasePage() {
                     className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                       form.utilities_landlord.includes(u)
                         ? 'bg-blue-600 text-white'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                     }`}
                   >
                     {u}
@@ -261,7 +261,7 @@ export default function NewLeasePage() {
                     className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                       form.utilities_tenant.includes(u)
                         ? 'bg-green-600 text-white'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                     }`}
                   >
                     {u}
@@ -273,7 +273,7 @@ export default function NewLeasePage() {
         </div>
 
         {/* Equipment */}
-        <div className="rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900">
+        <div className="rounded-xl border border-gray-200 bg-white p-6">
           <h2 className="mb-4 font-semibold">Equipment Included</h2>
           <div className="flex flex-wrap gap-2">
             {EQUIPMENT.map(e => (
@@ -284,7 +284,7 @@ export default function NewLeasePage() {
                 className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                   form.equipment_included.includes(e)
                     ? 'bg-purple-600 text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}
               >
                 {e}
@@ -294,7 +294,7 @@ export default function NewLeasePage() {
         </div>
 
         {error && (
-          <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600 dark:bg-red-950/30 dark:text-red-400">
+          <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">
             {error}
           </p>
         )}
@@ -309,7 +309,7 @@ export default function NewLeasePage() {
           </button>
           <Link
             href={`/properties/${propertyId}?tab=leases`}
-            className="rounded-lg border border-gray-300 px-6 py-2.5 text-sm hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800"
+            className="rounded-lg border border-gray-300 px-6 py-2.5 text-sm hover:bg-gray-50"
           >
             Cancel
           </Link>

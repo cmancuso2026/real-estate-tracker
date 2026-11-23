@@ -40,7 +40,7 @@ export function middleware(req: NextRequest) {
   return new NextResponse('Unauthorized', {
     status: 401,
     headers: {
-      'WWW-Authenticate': 'Basic realm="Property Manager", charset="UTF-8"',
+      'WWW-Authenticate': 'Basic realm="Mancuso HQ", charset="UTF-8"',
     },
   });
 }

@@ -17,6 +17,8 @@ interface Project {
   property_id: number;
   status: ProjectStatus;
   is_recurring: boolean;
+  /** Starting cost (whole dollars), e.g. set when a project is created from a transaction. */
+  quoted_cost?: number | string | null;
   created_at: string;
   updated_at: string | null;
   units: AssignedUnit[];
@@ -46,10 +48,38 @@ const projName = (p: Project) => p.project_name || p.description || 'Untitled Pr
 const selectedQuote = (p: Project) => p.quotes.find(q => q.is_selected) ?? null;
 const quoteCost = (q: Quote | null) => (q ? (q.final_cost ?? q.quoted_cost) : null);
 
+/** Actual spend from linked finance transactions vs. the selected quote (or starting cost). */
+interface ActualSpend { actual_spend: number; transaction_count: number; }
+function SpendVsQuote({ project, actual }: { project: Project; actual?: ActualSpend }) {
+  const sel = selectedQuote(project);
+  const budget = sel ? quoteCost(sel) : project.quoted_cost ?? null;
+  const budgetLabel = sel ? 'Quote' : 'Starting cost';
+  const spent = actual?.actual_spend ?? 0;
+  const diff = budget != null && budget !== '' ? spent - num(budget) : null;
+  return (
+    <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs" data-testid={`project-spend-${project.id}`}>
+      {budget != null && budget !== '' && <span className="text-gray-500">{budgetLabel} {fmt$(budget)}</span>}
+      <span className="font-medium text-gray-700">Actual {fmt$(spent)}</span>
+      {actual && diff != null && Math.abs(diff) >= 0.005 && (
+        <span className={`rounded-full px-2 py-0.5 font-medium ${diff > 0 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+          {diff > 0 ? 'Over' : 'Under'} by {fmt$(Math.abs(diff))}
+        </span>
+      )}
+      {actual ? (
+        <a href={`/finance/transactions?project=${project.id}`} onClick={(e) => e.stopPropagation()} className="text-blue-600 hover:underline">
+          {actual.transaction_count} transaction{actual.transaction_count === 1 ? '' : 's'} →
+        </a>
+      ) : (
+        <span className="text-gray-400">No linked transactions</span>
+      )}
+    </span>
+  );
+}
+
 const STATUS_BADGE: Record<ProjectStatus, string> = {
-  received: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
-  open: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-  completed: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+  received: 'bg-gray-100 text-gray-600',
+  open: 'bg-blue-100 text-blue-700',
+  completed: 'bg-green-100 text-green-700',
 };
 function StatusBadge({ status }: { status: ProjectStatus }) {
   return <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE[status] ?? STATUS_BADGE.received}`}>{capitalize(status)}</span>;
@@ -62,7 +92,7 @@ function Field({ label, value, onChange, type = 'text', placeholder = '' }: {
     <div>
       <label className="mb-1 block text-xs font-medium text-gray-500">{label}</label>
       <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800" />
+        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
     </div>
   );
 }
@@ -144,15 +174,15 @@ function VendorImport({ vendors, prefillProjectName, onCancel, onConfirm, onVend
   }
 
   return (
-    <div className="rounded-xl border-2 border-blue-300 bg-blue-50 p-5 dark:border-blue-700 dark:bg-blue-950/20">
+    <div className="rounded-xl border-2 border-blue-300 bg-blue-50 p-5">
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="font-semibold text-blue-800 dark:text-blue-300">Import Quote from PDF / Email</h3>
+        <h3 className="font-semibold text-blue-800">Import Quote from PDF / Email</h3>
         <button onClick={onCancel} className="text-xs text-gray-400 hover:text-gray-600">Cancel</button>
       </div>
 
       {!extracted ? (
         <div className="space-y-3">
-          <label className={`flex cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-blue-300 px-4 py-8 text-sm text-blue-600 hover:bg-blue-100/50 dark:border-blue-700 dark:hover:bg-blue-900/20 ${parsing ? 'opacity-50' : ''}`}>
+          <label className={`flex cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-blue-300 px-4 py-8 text-sm text-blue-600 hover:bg-blue-100/50 ${parsing ? 'opacity-50' : ''}`}>
             {parsing ? 'Parsing…' : 'Drop a quote, invoice, or email (PDF / .eml / .txt)'}
             <input type="file" accept=".pdf,.eml,.txt,image/*" className="hidden" disabled={parsing}
               onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ''; }} />
@@ -160,7 +190,7 @@ function VendorImport({ vendors, prefillProjectName, onCancel, onConfirm, onVend
           <div className="text-center text-xs text-gray-400">or paste email/quote text here</div>
           <textarea value={pastedText} onChange={e => setPastedText(e.target.value)} rows={4}
             placeholder="Paste the contractor email or quote text…"
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800" />
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
           <button onClick={parsePastedText} disabled={parsing || !pastedText.trim()}
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
             {parsing ? 'Parsing…' : 'Parse'}
@@ -170,23 +200,23 @@ function VendorImport({ vendors, prefillProjectName, onCancel, onConfirm, onVend
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
           {/* LEFT: source preview */}
-          <div className="min-h-[300px] overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
+          <div className="min-h-[300px] overflow-hidden rounded-lg border border-gray-200 bg-white">
             {previewUrl
               ? <iframe src={previewUrl} className="h-[500px] w-full" title="Quote preview" />
-              : <pre className="max-h-[500px] overflow-auto whitespace-pre-wrap p-4 text-xs text-gray-600 dark:text-gray-400">{pastedText || 'No preview available'}</pre>}
+              : <pre className="max-h-[500px] overflow-auto whitespace-pre-wrap p-4 text-xs text-gray-600">{pastedText || 'No preview available'}</pre>}
           </div>
 
           {/* RIGHT: editable extracted fields */}
           <div className="space-y-3">
             {extracted.confidence_notes && (
-              <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">⚠ {extracted.confidence_notes}</p>
+              <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">⚠ {extracted.confidence_notes}</p>
             )}
             <div className="grid grid-cols-2 gap-3">
               <Field label="Vendor Name" value={extracted.vendor_name ?? ''} onChange={v => patch({ vendor_name: v })} />
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-500">Trade</label>
                 <select value={extracted.trade ?? 'general'} onChange={e => patch({ trade: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800">
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
                   {TRADES.map(t => <option key={t} value={t}>{tradeLabel(t)}</option>)}
                 </select>
               </div>
@@ -199,7 +229,7 @@ function VendorImport({ vendors, prefillProjectName, onCancel, onConfirm, onVend
             <div>
               <label className="mb-1 block text-xs font-medium text-gray-500">Scope of Work</label>
               <textarea value={extracted.scope_of_work ?? ''} onChange={e => patch({ scope_of_work: e.target.value })} rows={2}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800" />
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
             </div>
 
             <label className="flex items-center gap-2 text-sm">
@@ -208,7 +238,7 @@ function VendorImport({ vendors, prefillProjectName, onCancel, onConfirm, onVend
             </label>
             {!createVendor && (
               <select value={matchedVendorId} onChange={e => setMatchedVendorId(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800">
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
                 <option value="">Select existing vendor…</option>
                 {vendors.map(v => <option key={v.id} value={v.id}>{v.name} ({tradeLabel(v.trade)})</option>)}
               </select>
@@ -219,7 +249,7 @@ function VendorImport({ vendors, prefillProjectName, onCancel, onConfirm, onVend
                 className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
                 {saving ? 'Saving…' : 'Confirm & Add Quote'}
               </button>
-              <button onClick={() => { setExtracted(null); setError(''); }} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">Re-upload</button>
+              <button onClick={() => { setExtracted(null); setError(''); }} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">Re-upload</button>
             </div>
           </div>
         </div>
@@ -255,7 +285,7 @@ function UnitAssigner({ units, draft, setDraft }: {
             <div className="flex items-center gap-1">
               <input type="number" value={draft[u.id]?.share ?? ''} onChange={e => setShare(u.id, e.target.value)}
                 placeholder="even" min="0" max="100"
-                className="w-20 rounded border border-gray-300 px-2 py-1 text-xs dark:border-gray-700 dark:bg-gray-800" />
+                className="w-20 rounded border border-gray-300 px-2 py-1 text-xs" />
               <span className="text-xs text-gray-400">%</span>
             </div>
           )}
@@ -275,11 +305,16 @@ export function ProjectsTab({ id, units }: { id: string; units: UnitLite[] }) {
   const [unitFilter, setUnitFilter] = useState<string>('all');
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [showNew, setShowNew] = useState(false);
+  const [actuals, setActuals] = useState<Record<number, ActualSpend>>({});
 
   const loadProjects = useCallback(async () => {
     const res = await fetch(`/api/v2/work-orders?propertyId=${id}`);
     const d = await res.json();
     setProjects(Array.isArray(d) ? d : []);
+    // Actual spend per project from linked finance transactions (optional: an
+    // error just leaves the column empty).
+    const a = await fetch(`/api/finance/rollups/projects?propertyId=${id}`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    setActuals(a?.projects ?? {});
   }, [id]);
   const loadVendors = useCallback(async () => {
     const res = await fetch('/api/v2/vendors');
@@ -309,7 +344,7 @@ export function ProjectsTab({ id, units }: { id: string; units: UnitLite[] }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="font-semibold text-gray-700 dark:text-gray-300">Projects</h2>
+        <h2 className="font-semibold text-gray-700">Projects</h2>
         <button onClick={() => { setShowNew(v => !v); setExpandedId(null); }}
           className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700">+ New Project</button>
       </div>
@@ -317,10 +352,10 @@ export function ProjectsTab({ id, units }: { id: string; units: UnitLite[] }) {
       {/* Unit pill slicers */}
       <div className="flex flex-wrap gap-2">
         <button onClick={() => setUnitFilter('all')}
-          className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${unitFilter === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400'}`}>All Projects</button>
+          className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${unitFilter === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>All Projects</button>
         {units.map(u => (
           <button key={u.id} onClick={() => setUnitFilter(String(u.id))}
-            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${unitFilter === String(u.id) ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400'}`}>
+            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${unitFilter === String(u.id) ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
             Unit {u.unit_label}
           </button>
         ))}
@@ -329,11 +364,11 @@ export function ProjectsTab({ id, units }: { id: string; units: UnitLite[] }) {
       {/* Spend cards (only on All) */}
       {unitFilter === 'all' && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+          <div className="rounded-xl border border-gray-200 bg-white p-4">
             <p className="text-xs font-medium text-gray-500">Last 90 Days</p>
-            <p className="mt-1 text-2xl font-bold tabular text-blue-600 dark:text-blue-400">{fmt$(spend90)}</p>
+            <p className="mt-1 text-2xl font-bold tabular text-blue-600">{fmt$(spend90)}</p>
           </div>
-          <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+          <div className="rounded-xl border border-gray-200 bg-white p-4">
             <p className="text-xs font-medium text-gray-500">All-Time Spend</p>
             <p className="mt-1 text-2xl font-bold tabular">{fmt$(spendAll)}</p>
           </div>
@@ -353,28 +388,31 @@ export function ProjectsTab({ id, units }: { id: string; units: UnitLite[] }) {
       {/* Project list */}
       <div className="space-y-3">
         {visibleProjects.length === 0 && !showNew ? (
-          <div className="rounded-xl border border-dashed border-gray-300 p-8 text-center text-gray-400 dark:border-gray-700">
+          <div className="rounded-xl border border-dashed border-gray-300 p-8 text-center text-gray-400">
             No projects yet. Create one with “+ New Project”.
           </div>
         ) : visibleProjects.map(p => {
           const sel = selectedQuote(p);
           return (
-            <div key={p.id} className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800">
+            <div key={p.id} className="overflow-hidden rounded-xl border border-gray-200">
               <button onClick={() => setExpandedId(expandedId === p.id ? null : p.id)}
-                className="flex w-full items-center justify-between gap-4 p-4 text-left hover:bg-gray-50 dark:hover:bg-gray-900/40">
+                className="flex w-full items-center justify-between gap-4 p-4 text-left hover:bg-gray-50">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-medium">{projName(p)}</span>
                     <StatusBadge status={p.status} />
-                    {p.is_recurring && <span className="rounded-full bg-purple-100 px-2 py-0.5 text-xs text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">Recurring</span>}
+                    {p.is_recurring && <span className="rounded-full bg-purple-100 px-2 py-0.5 text-xs text-purple-700">Recurring</span>}
                     {p.units.map(u => (
-                      <span key={u.unit_id} className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-800 dark:text-gray-400">{u.unit_label}</span>
+                      <span key={u.unit_id} className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500">{u.unit_label}</span>
                     ))}
                   </div>
                   <p className="mt-1 text-xs text-gray-400">
                     {p.quotes.length} quote{p.quotes.length === 1 ? '' : 's'}
                     {' · '}{sel ? `${sel.vendor_name} — ${fmt$(quoteCost(sel))}` : 'No vendor selected'}
                   </p>
+                  <div className="mt-1.5">
+                    <SpendVsQuote project={p} actual={actuals[p.id]} />
+                  </div>
                 </div>
                 <span className="shrink-0 text-xs text-gray-400">{expandedId === p.id ? '▲' : '▼'}</span>
               </button>
@@ -436,9 +474,9 @@ function NewProjectPanel({ id, units, vendors, onClose, onCreated, onVendorCreat
   }
 
   return (
-    <div className="rounded-xl border-2 border-blue-300 bg-blue-50 p-5 space-y-4 dark:border-blue-700 dark:bg-blue-950/20">
+    <div className="rounded-xl border-2 border-blue-300 bg-blue-50 p-5 space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="font-semibold text-blue-800 dark:text-blue-300">New Project</h3>
+        <h3 className="font-semibold text-blue-800">New Project</h3>
         <button onClick={onClose} className="text-xs text-gray-400 hover:text-gray-600">Cancel</button>
       </div>
 
@@ -454,7 +492,7 @@ function NewProjectPanel({ id, units, vendors, onClose, onCreated, onVendorCreat
         <div className="flex gap-2">
           {STATUSES.map(s => (
             <button key={s} onClick={() => setStatus(s)}
-              className={`rounded-full px-3 py-1 text-xs font-medium ${status === s ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-400'}`}>{capitalize(s)}</button>
+              className={`rounded-full px-3 py-1 text-xs font-medium ${status === s ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'}`}>{capitalize(s)}</button>
           ))}
         </div>
       </div>
@@ -465,7 +503,7 @@ function NewProjectPanel({ id, units, vendors, onClose, onCreated, onVendorCreat
           <>
             <div className="grid grid-cols-2 gap-3">
               <select value={quoteVendor} onChange={e => setQuoteVendor(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800">
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
                 <option value="">Skip — add quotes later</option>
                 {vendors.map(v => <option key={v.id} value={v.id}>{v.name} ({tradeLabel(v.trade)})</option>)}
               </select>
@@ -576,13 +614,13 @@ function ProjectDetail({ project, units, vendors, onChanged, onVendorCreated }: 
   }
 
   return (
-    <div className="border-t border-gray-100 p-5 space-y-5 dark:border-gray-800">
+    <div className="border-t border-gray-100 p-5 space-y-5">
       {/* Name + delete */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="flex-1 min-w-[200px]">
           <label className="mb-1 block text-xs font-medium text-gray-500">Project Name</label>
           <input value={name} onChange={e => setName(e.target.value)} onBlur={() => { if (name.trim() && name.trim() !== projName(project)) patchProject({ project_name: name.trim() }); }}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800" />
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
         </div>
         <button onClick={deleteProject} className="text-xs text-red-400 hover:text-red-600">Delete project</button>
       </div>
@@ -593,7 +631,7 @@ function ProjectDetail({ project, units, vendors, onChanged, onVendorCreated }: 
         <div className="flex gap-2">
           {STATUSES.map(s => (
             <button key={s} onClick={() => patchProject({ status: s })}
-              className={`rounded-full px-3 py-1 text-xs font-medium ${project.status === s ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-400'}`}>{capitalize(s)}</button>
+              className={`rounded-full px-3 py-1 text-xs font-medium ${project.status === s ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'}`}>{capitalize(s)}</button>
           ))}
         </div>
       </div>
@@ -610,16 +648,16 @@ function ProjectDetail({ project, units, vendors, onChanged, onVendorCreated }: 
       {/* Quotes */}
       <div>
         <p className="mb-2 text-xs font-medium text-gray-500">Quotes</p>
-        <div className="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-800">
+        <div className="overflow-hidden rounded-lg border border-gray-200">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 dark:bg-gray-900">
+            <thead className="bg-gray-50">
               <tr>{['Vendor', 'Quoted Cost', 'Final Cost', 'Notes', 'Winner', 'Actions'].map(h => <th key={h} className="px-3 py-2 text-left text-xs font-medium text-gray-500">{h}</th>)}</tr>
             </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+            <tbody className="divide-y divide-gray-100">
               {project.quotes.length === 0 ? (
                 <tr><td colSpan={6} className="px-3 py-4 text-center text-xs text-gray-400">No quotes yet.</td></tr>
               ) : project.quotes.map(q => (
-                <tr key={q.id} className={q.is_selected ? 'border-l-4 border-green-500 bg-green-50 dark:bg-green-950/20' : ''}>
+                <tr key={q.id} className={q.is_selected ? 'border-l-4 border-green-500 bg-green-50' : ''}>
                   <td className="px-3 py-2">
                     <span className="font-medium">{q.vendor_name}</span>
                     <span className="block text-xs text-gray-400">{tradeLabel(q.vendor_trade)}</span>
@@ -629,7 +667,7 @@ function ProjectDetail({ project, units, vendors, onChanged, onVendorCreated }: 
                     <input type="number" defaultValue={q.final_cost != null ? String(num(q.final_cost)) : ''}
                       onChange={e => setFinalDrafts(p => ({ ...p, [q.id]: e.target.value }))}
                       onBlur={() => { if (finalDrafts[q.id] != null) patchQuote(q.id, { final_cost: finalDrafts[q.id] ? parseFloat(finalDrafts[q.id]!) : null }); }}
-                      placeholder="—" className="w-24 rounded border border-gray-300 px-2 py-1 text-xs dark:border-gray-700 dark:bg-gray-800" />
+                      placeholder="—" className="w-24 rounded border border-gray-300 px-2 py-1 text-xs" />
                   </td>
                   <td className="px-3 py-2 text-xs text-gray-500 max-w-[160px] truncate" title={q.notes ?? ''}>{q.notes ?? '—'}</td>
                   <td className="px-3 py-2">
@@ -646,16 +684,16 @@ function ProjectDetail({ project, units, vendors, onChanged, onVendorCreated }: 
         {!showImport ? (
           <div className="mt-3 flex flex-wrap items-end gap-2">
             <select value={addVendor} onChange={e => setAddVendor(e.target.value)}
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800">
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
               <option value="">Select vendor…</option>
               {vendors.map(v => <option key={v.id} value={v.id}>{v.name} ({tradeLabel(v.trade)})</option>)}
             </select>
             <input type="number" value={addCost} onChange={e => setAddCost(e.target.value)} placeholder="Quoted $"
-              className="w-28 rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-800" />
+              className="w-28 rounded-lg border border-gray-300 px-3 py-2 text-sm" />
             <input value={addNotes} onChange={e => setAddNotes(e.target.value)} placeholder="Notes"
-              className="flex-1 min-w-[120px] rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-800" />
+              className="flex-1 min-w-[120px] rounded-lg border border-gray-300 px-3 py-2 text-sm" />
             <button onClick={addQuote} disabled={!addVendor} className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">+ Add Quote</button>
-            <button onClick={() => setShowImport(true)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">Import from PDF/email</button>
+            <button onClick={() => setShowImport(true)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50">Import from PDF/email</button>
           </div>
         ) : (
           <div className="mt-3">
@@ -673,7 +711,7 @@ function ProjectDetail({ project, units, vendors, onChanged, onVendorCreated }: 
       </div>
 
       {/* Recurring cost */}
-      <div className="rounded-lg bg-gray-50 p-4 dark:bg-gray-800/50">
+      <div className="rounded-lg bg-gray-50 p-4">
         <label className="flex items-center gap-2 text-sm font-medium">
           <input type="checkbox" checked={project.is_recurring} onChange={() => patchProject({ is_recurring: !project.is_recurring })} />
           Mark as recurring cost
@@ -681,9 +719,9 @@ function ProjectDetail({ project, units, vendors, onChanged, onVendorCreated }: 
         {project.is_recurring && (
           <div className="mt-3 flex flex-wrap items-end gap-2">
             <input value={recurringDesc} onChange={e => setRecurringDesc(e.target.value)} placeholder="Description (defaults to project name)"
-              className="flex-1 min-w-[160px] rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-800" />
+              className="flex-1 min-w-[160px] rounded-lg border border-gray-300 px-3 py-2 text-sm" />
             <input type="number" value={recurringAmt} onChange={e => setRecurringAmt(e.target.value)} placeholder="$/mo"
-              className="w-28 rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-800" />
+              className="w-28 rounded-lg border border-gray-300 px-3 py-2 text-sm" />
             <button onClick={saveRecurring} disabled={!recurringAmt} className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">Save recurring cost</button>
           </div>
         )}
