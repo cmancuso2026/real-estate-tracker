@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { OverviewTab } from '@/components/OverviewTab';
 import { ProjectsTab } from '@/components/ProjectsTab';
 import { PropertySpendTab } from '@/components/PropertySpendTab';
+import { DOC_TYPES, takePendingDoc } from '@/lib/pendingDoc';
 
 type Tab = 'overview' | 'tenants' | 'rent' | 'leases' | 'projects' | 'spend' | 'escrow' | 'insurance';
 
@@ -729,6 +730,56 @@ export default function PropertyDetailPage() {
     return data.extracted;
   }
 
+  // One handler per document type, used by each tab's "Upload … PDF" button and
+  // by a PDF handed over from Upload → Property documents.
+  async function handleLeaseFile(file: File) {
+    const extracted = await uploadPdf(file, 'lease', setUploadingLease);
+    if (extracted) {
+      setLeaseExtracted(extracted);
+      setLeaseTenantFirst(extracted.tenant_first_name ?? '');
+      setLeaseTenantLast(extracted.tenant_last_name ?? '');
+      setLeaseTenantMode('new');
+      setLeaseSelectedTenant(''); setLeaseSelectedUnit('');
+    }
+  }
+  async function handleEscrowFile(file: File) {
+    const extracted = await uploadPdf(file, 'escrow', setUploadingEscrow);
+    if (extracted) { setEscrowExtracted(extracted); setEscrowLender(''); }
+  }
+  async function handleInsuranceFile(file: File) {
+    const extracted = await uploadPdf(file, 'insurance', setUploadingInsurance);
+    if (extracted) setInsuranceExtracted(extracted);
+  }
+  async function handlePitiFile(file: File) {
+    setUploadingPiti(true);
+    const form = new FormData();
+    form.append('file', file);
+    form.append('property_id', id);
+    try {
+      const res = await fetch('/api/v2/piti', { method: 'POST', body: form });
+      if (res.ok) { const d = await res.json(); setPitiExtracted(d.extracted); }
+      else alert('Failed to parse mortgage statement');
+    } catch { alert('Upload error'); }
+    finally { setUploadingPiti(false); }
+  }
+
+  // A PDF dropped on Upload → Property documents for this property: open its
+  // tab and run the same reader, so the usual review screen appears.
+  const pendingTaken = useRef(false);
+  useEffect(() => {
+    if (loading || pendingTaken.current) return;
+    pendingTaken.current = true;
+    const doc = takePendingDoc(Number(id));
+    if (!doc) return;
+    const tabFor = DOC_TYPES.find((d) => d.type === doc.type)?.tab as Tab | undefined;
+    if (tabFor) switchTab(tabFor);
+    if (doc.type === 'lease') void handleLeaseFile(doc.file);
+    else if (doc.type === 'escrow') void handleEscrowFile(doc.file);
+    else if (doc.type === 'insurance') void handleInsuranceFile(doc.file);
+    else if (doc.type === 'mortgage') void handlePitiFile(doc.file);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
+
   async function confirmLease() {
     if (!leaseExtracted || leaseSaving) return;
     setLeaseSaving(true);
@@ -1004,14 +1055,7 @@ export default function PropertyDetailPage() {
                 <input type="file" accept=".pdf" className="hidden" disabled={uploadingLease} onClick={e=>{(e.target as HTMLInputElement).value='';}} onChange={async e=>{
                   const file=e.target.files?.[0];if(!file||uploadingLease)return;
                   e.target.value='';
-                  const extracted=await uploadPdf(file,'lease',setUploadingLease);
-                  if(extracted){
-                    setLeaseExtracted(extracted);
-                    setLeaseTenantFirst(extracted.tenant_first_name??'');
-                    setLeaseTenantLast(extracted.tenant_last_name??'');
-                    setLeaseTenantMode('new');
-                    setLeaseSelectedTenant(''); setLeaseSelectedUnit('');
-                  }
+                  await handleLeaseFile(file);
                 }} />
               </label>
               <Link href={`/properties/${id}/leases/new`} className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700">+ Add Manually</Link>
@@ -1227,7 +1271,7 @@ export default function PropertyDetailPage() {
             <h2 className="font-semibold text-gray-700">Escrow</h2>
             <label className={`cursor-pointer rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 ${uploadingEscrow?'opacity-50':''}`}>
               {uploadingEscrow?'Parsing…':'Upload Escrow Statement'}
-              <input type="file" accept=".pdf" className="hidden" disabled={uploadingEscrow} onChange={async e=>{const file=e.target.files?.[0];if(!file||uploadingEscrow)return;const extracted=await uploadPdf(file,'escrow',setUploadingEscrow);if(extracted){setEscrowExtracted(extracted);setEscrowLender('');}e.target.value='';}} />
+              <input type="file" accept=".pdf" className="hidden" disabled={uploadingEscrow} onChange={async e=>{const file=e.target.files?.[0];if(!file||uploadingEscrow)return;await handleEscrowFile(file);e.target.value='';}} />
             </label>
           </div>
           {escrowExtracted&&(
@@ -1361,16 +1405,8 @@ export default function PropertyDetailPage() {
                 <input type="file" accept=".pdf" className="hidden" disabled={uploadingPiti} onChange={async e => {
                   const file = e.target.files?.[0];
                   if (!file || uploadingPiti) return;
-                  setUploadingPiti(true);
-                  const form = new FormData();
-                  form.append('file', file);
-                  form.append('property_id', id);
-                  try {
-                    const res = await fetch('/api/v2/piti', { method: 'POST', body: form });
-                    if (res.ok) { const d = await res.json(); setPitiExtracted(d.extracted); }
-                    else alert('Failed to parse mortgage statement');
-                  } catch { alert('Upload error'); }
-                  finally { setUploadingPiti(false); e.target.value = ''; }
+                  await handlePitiFile(file);
+                  e.target.value = '';
                 }} />
               </label>
             </div>
@@ -1471,7 +1507,7 @@ export default function PropertyDetailPage() {
             <h2 className="font-semibold text-gray-700">Insurance Policies</h2>
             <label className={`cursor-pointer rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 ${uploadingInsurance?'opacity-50':''}`}>
               {uploadingInsurance?'Parsing…':'Upload Policy PDF'}
-              <input type="file" accept=".pdf" className="hidden" disabled={uploadingInsurance} onChange={async e=>{const file=e.target.files?.[0];if(!file||uploadingInsurance)return;const extracted=await uploadPdf(file,'insurance',setUploadingInsurance);if(extracted)setInsuranceExtracted(extracted);e.target.value='';}} />
+              <input type="file" accept=".pdf" className="hidden" disabled={uploadingInsurance} onChange={async e=>{const file=e.target.files?.[0];if(!file||uploadingInsurance)return;await handleInsuranceFile(file);e.target.value='';}} />
             </label>
           </div>
 

@@ -1,7 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { useRef, useState } from 'react';
+import { Suspense, useRef, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { PropertyDocsUpload } from '@/components/PropertyDocsUpload';
 import { financeApi } from '@/components/finance/api';
 import { Card, btnPrimary, selectCls } from '@/components/finance/ui';
 import { QUEUE_EVENT } from '@/components/NavLinks';
@@ -47,7 +49,8 @@ function Stat({ n, label, href, testId, tone = 'text-gray-900' }: { n: number; l
   );
 }
 
-export default function UploadPage() {
+/** Bank statements → transactions (and rent), as before. */
+function StatementsUpload() {
   const input = useRef<HTMLInputElement>(null);
   const [source, setSource] = useState('');
   const [busy, setBusy] = useState(false);
@@ -81,10 +84,10 @@ export default function UploadPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4">
+    <div className="space-y-4">
       <Card className="space-y-4">
         <div>
-          <h1 className="text-lg font-semibold">Upload statements</h1>
+          <h2 className="text-lg font-semibold">Bank statements</h2>
           <p className="mt-1 text-sm text-gray-500">
             CSV or Excel exports, up to 20 files at once. One upload feeds both your finances and rent: rent payments are
             recorded on the right unit automatically. Re-uploading overlapping statements never creates duplicates.
@@ -164,5 +167,80 @@ export default function UploadPage() {
         </Card>
       )}
     </div>
+  );
+}
+
+type Kind = 'statements' | 'documents';
+const TILES: { kind: Kind; title: string; body: string; icon: string }[] = [
+  {
+    kind: 'statements',
+    title: 'Bank statements',
+    body: 'Expenses and income: CSV or Excel exports from Bank of America, Amex, SoFi or Capital One. Rent payments in them are recorded automatically.',
+    icon: 'M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h12v2H3v-2z',
+  },
+  {
+    kind: 'documents',
+    title: 'Property documents',
+    body: 'PDFs for a property: lease, insurance policy, escrow statement or mortgage statement. Read automatically, reviewed before saving.',
+    icon: 'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm0 2.5L17.5 8H14V4.5z',
+  },
+];
+
+/** Upload: choose what you're adding, then the matching uploader (?kind= keeps it on refresh / back). */
+function UploadChooser() {
+  const params = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const kind = (['statements', 'documents'] as const).find((k) => k === params.get('kind')) ?? null;
+  const pick = (k: Kind | null) => router.push(k ? `${pathname}?kind=${k}` : pathname);
+
+  if (!kind) {
+    return (
+      <div className="mx-auto max-w-3xl space-y-4">
+        <h1 className="text-lg font-semibold">What are you uploading?</h1>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {TILES.map((t) => (
+            <button
+              key={t.kind}
+              type="button"
+              data-testid={`upload-tile-${t.kind}`}
+              onClick={() => pick(t.kind)}
+              className="group flex flex-col items-start gap-3 rounded-xl border border-gray-200 bg-white p-5 text-left shadow-sm transition hover:border-gray-900 hover:shadow"
+            >
+              <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100 text-gray-700 group-hover:bg-gray-900 group-hover:text-white">
+                <svg aria-hidden viewBox="0 0 24 24" className="h-5 w-5 fill-current">
+                  <path d={t.icon} />
+                </svg>
+              </span>
+              <span className="text-base font-semibold text-gray-900">{t.title}</span>
+              <span className="text-sm text-gray-500">{t.body}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="mx-auto max-w-3xl space-y-4">
+      <button type="button" onClick={() => pick(null)} className="text-sm font-medium text-gray-500 hover:text-gray-900" data-testid="upload-back">
+        ← Upload something else
+      </button>
+      {kind === 'statements' ? (
+        <StatementsUpload />
+      ) : (
+        <Card className="space-y-4">
+          <h2 className="text-lg font-semibold">Property documents</h2>
+          <PropertyDocsUpload />
+        </Card>
+      )}
+    </div>
+  );
+}
+
+export default function UploadPage() {
+  return (
+    <Suspense fallback={null}>
+      <UploadChooser />
+    </Suspense>
   );
 }
