@@ -1,9 +1,10 @@
 // Income, spending and cash flow: the one definition every page and API uses
 // (the landing page, /finance cards and chart, GET /api/finance/summary).
 //
-//   Transfers  categories in the Financials group (Amex, Capital One, Venmo):
-//              card payments and moves between your own accounts. Left out of
-//              everything, so a card payment isn't counted as spending on one
+//   Transfers  categories in the Financials group (Amex, Capital One, Venmo)
+//              and any category named "Transfer(s)", wherever it sits: card
+//              payments and moves between your own accounts. Left out of
+//              everything, so the same money isn't counted as spending on one
 //              account and income on the other.
 //   Income     money in to an income category: the W2 Income group, any
 //              category mapped to a property as rent (property_category_map
@@ -18,6 +19,8 @@
 import { CAT_TO_GROUP } from './taxonomy.js';
 
 export const TRANSFER_GROUPS = ['Financials'];
+/** Any category named like "Transfer" / "Transfers" (in any group) is a move between your own accounts. */
+export const TRANSFER_CATEGORY = /\btransfers?\b/i;
 export const INCOME_GROUPS = ['W2 Income'];
 
 export const DEFINITIONS = {
@@ -35,7 +38,7 @@ const r2 = (n) => Math.round(n * 100) / 100;
 export function categoryKind(category, ctx = {}) {
   const groupOf = ctx.groupOf || ((c) => CAT_TO_GROUP[c] || 'Other');
   const group = groupOf(category);
-  if (TRANSFER_GROUPS.includes(group)) return 'transfer';
+  if (TRANSFER_GROUPS.includes(group) || TRANSFER_CATEGORY.test(String(category))) return 'transfer';
   if (INCOME_GROUPS.includes(group) || category === 'Uncategorized' || ctx.incomeCategories?.has(category)) return 'income';
   return 'spending';
 }
@@ -145,6 +148,7 @@ export async function getMetricsDefinition(knex) {
   return {
     definitions: DEFINITIONS,
     transfer_groups: TRANSFER_GROUPS,
+    transfer_category_pattern: TRANSFER_CATEGORY.source,
     income_groups: INCOME_GROUPS,
     income_categories: rent.map((r) => r.category).sort(),
   };
