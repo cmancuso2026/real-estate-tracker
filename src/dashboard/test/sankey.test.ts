@@ -32,14 +32,17 @@ test('sankey: income sources → Total Income → groups → categories, saved =
   const hero = heroTotals(rows, ctx);
   assert.equal(m.income, hero.income);
   assert.equal(m.spending, hero.spend);
-  assert.equal(sum(m.flows.filter((f) => f.to === TOTAL).map((f) => f.flow)), hero.income, 'flows into Total Income = Income card');
+  const takenOut = sum(m.flows.filter((f) => f.to.startsWith('out:')).map((f) => f.flow));
+  assert.equal(takenOut, 50, 'taxes are taken out of income');
+  assert.equal(sum(m.flows.filter((f) => f.to === TOTAL).map((f) => f.flow)), hero.income + takenOut, 'flows into Total Income = Income card + what was taken out of it');
   const toGroups = m.flows.filter((f) => f.from === TOTAL && f.to.startsWith('grp:'));
   assert.equal(sum(toGroups.map((f) => f.flow)), hero.spend, 'flows to spending groups = Spending card');
   assert.equal(m.flows.find((f) => f.to === SAVED)!.flow, hero.flow, 'Saved = Cash flow card');
   assert.deepEqual(m.flows.find((f) => f.to === 'cat:Groceries'), { from: 'grp:Food', to: 'cat:Groceries', flow: 80 }, 'refund netted');
   assert.equal(m.flows.some((f) => f.from.includes('Amex') || f.to.includes('Amex')), false, 'transfers left out');
   assert.equal(m.labels['grp:Other'], undefined);
-  assert.equal(m.labels['cat:Taxes'], 'Taxes');
+  assert.equal(m.labels['cat:Taxes'], undefined, 'taxes are not a spending category');
+  assert.equal(m.labels['out:Taxes'], 'Taxes (taken out of income)');
 });
 
 test('sankey: spending above income shows a Shortfall feeding Total Income', () => {

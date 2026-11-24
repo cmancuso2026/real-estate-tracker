@@ -1,5 +1,6 @@
 // Money flow for the Overview's Sankey view: income sources (by category) →
-// Total Income → spending groups → categories, plus "Saved / Cash flow" when
+// Total Income → spending groups → categories (and income categories that
+// net negative, like Taxes, as "taken out of income"), plus "Saved / Cash flow" when
 // income is larger, or a "Shortfall" feeding Total Income when spending is.
 // Built from the same rows and the same definition (metrics.ts) as the KPI
 // cards, so Total Income = the Income card and the spending flows add up to
@@ -51,11 +52,18 @@ export function buildSankey(rows: Txn[], tax: Taxonomy, ctx: MetricsCtx): Sankey
   const columns: Record<string, number> = { [TOTAL]: 1 };
 
   for (const [cat, v] of Object.entries(incomeBy).sort((a, b) => b[1] - a[1])) {
-    if (r2(v) <= 0) continue;
-    const k = `in:${cat}`;
-    labels[k] = cat;
-    columns[k] = 0;
-    flows.push({ from: k, to: TOTAL, flow: r2(v) });
+    if (r2(v) > 0) {
+      const k = `in:${cat}`;
+      labels[k] = cat;
+      columns[k] = 0;
+      flows.push({ from: k, to: TOTAL, flow: r2(v) });
+    } else if (r2(v) < 0) {
+      // an income category with more out than in (e.g. Taxes): taken out of income, not spending
+      const k = `out:${cat}`;
+      labels[k] = `${cat} (taken out of income)`;
+      columns[k] = 2;
+      flows.push({ from: TOTAL, to: k, flow: r2(-v) });
+    }
   }
 
   // Spending per group → per category. A category whose refunds outweigh its

@@ -45,7 +45,7 @@ test('landing page, summary API and /finance agree for the same month', async ()
       row('2026-11-06', 'PUBLIX', -100, 'Groceries', 'Food', 'Amex Gold'),
       row('2026-11-09', 'PUBLIX REFUND', 20, 'Groceries', 'Food', 'Amex Gold'), // a refund reduces spending
       row('2026-11-10', 'PLUMBER', -300, 'Repairs', 'Investments'),
-      row('2026-11-12', 'IRS', -50, 'Taxes', 'W2 Income'), // money out of an income category is spending
+      row('2026-11-12', 'IRS', -50, 'Taxes', 'W2 Income'), // money out of an income category reduces income (take-home)
       row('2026-11-14', 'MYSTERY DEPOSIT', 40, 'Uncategorized', 'Other'), // uncategorized deposits are income
       row('2026-11-30', 'VENMO PAYMENT', -75, 'Venmo', 'Other'), // Venmo counts as spending (017)
       row('2026-10-15', 'PUBLIX', -80, 'Groceries', 'Food', 'Amex Gold'), // October: outside the month
@@ -53,18 +53,18 @@ test('landing page, summary API and /finance agree for the same month', async ()
 
     const venmo = await knex('categories as c').join('category_groups as g', 'g.id', 'c.group_id').where('c.name', 'Venmo').first('g.name as group');
     assert.equal(venmo.group, 'Other', '017 moved Venmo out of Financials');
-    const expected = { income: 6090, spending: 505, cash_flow: 5585 };
+    const expected = { income: 6040, spending: 455, cash_flow: 5585 };
 
     // Landing page
     const o = await getOverview(knex, { month: '2026-11', today: '2026-11-23' });
     assert.deepEqual({ income: o.finance.month.income, spending: o.finance.month.spending, cash_flow: o.finance.month.cash_flow }, expected);
     assert.equal(o.finance.month.count, 8, '10 November rows, the two card-payment rows left out');
-    assert.deepEqual(o.finance.top_groups.month, [{ group: 'Investments', spending: 300 }, { group: 'Food', spending: 80 }, { group: 'Other', spending: 75 }, { group: 'W2 Income', spending: 50 }]);
+    assert.deepEqual(o.finance.top_groups.month, [{ group: 'Investments', spending: 300 }, { group: 'Food', spending: 80 }, { group: 'Other', spending: 75 }], 'W2 Income is never a spending group');
 
     // Summary API
     const s = await getSummary(knex, { year: '2026', months: '11' });
     assert.deepEqual({ income: s.income, spending: s.spending, cash_flow: s.cash_flow }, expected);
-    assert.deepEqual(s.by_month['2026-11'], { income: 6090, spending: 505 });
+    assert.deepEqual(s.by_month['2026-11'], { income: 6040, spending: 455 });
     assert.equal(s.transfers, 0, 'the Amex payment out and its credit on the card net to zero');
 
     // /finance: the browser's rows, taxonomy and definition, November selected
@@ -81,7 +81,7 @@ test('landing page, summary API and /finance agree for the same month', async ()
     // …and the chart's November bars
     const model = buildChart(nov, tax, '', '', 'monthly', ctx)!;
     const i = model.keys.indexOf('2026-11');
-    assert.deepEqual([model.series[0]!.data[i], model.series[1]!.data[i]], [6090, 505]);
+    assert.deepEqual([model.series[0]!.data[i], model.series[1]!.data[i]], [6040, 455]);
   } finally {
     await knex.destroy();
   }

@@ -134,11 +134,14 @@ export async function renameAccount(knex, body = {}) {
  * For the landing page: total cash (and each account) — latest balance, change
  * over 30 days and this year, month-end trend.
  */
-export async function cashSummary(knex) {
+export async function cashSummary(knex, { asOf = null } = {}) {
   const { accounts, total } = await getBalances(knex);
   if (!total) return null;
-  const pts = total.points;
-  const latest = total.latest;
+  // asOf 'YYYY-MM-DD' (e.g. the end of the month picked on the Overview): the
+  // balance in force that day, and the history up to it
+  const pts = asOf ? total.points.filter((p) => p.date <= asOf) : total.points;
+  if (!pts.length) return { latest: null, change_30d: null, change_ytd: null, month_ends: [], accounts: [], before_history: total.points[0].date };
+  const latest = pts[pts.length - 1];
   const d30 = new Date(latest.date + 'T00:00:00Z');
   d30.setUTCDate(d30.getUTCDate() - 30);
   const ago30 = balanceOn(pts, d30.toISOString().slice(0, 10));
@@ -148,7 +151,7 @@ export async function cashSummary(knex) {
     latest,
     change_30d: ago30 ? r2(latest.balance - ago30.balance) : null,
     change_ytd: yearStart ? r2(latest.balance - yearStart.balance) : null,
-    month_ends: total.month_ends.slice(-12),
-    accounts: accounts.map((a) => ({ account: a.account, latest: a.latest })),
+    month_ends: total.month_ends.filter((m) => !asOf || m.month <= asOf.slice(0, 7)).slice(-12),
+    accounts: accounts.map((a) => ({ account: a.account, latest: asOf ? balanceOn(a.points, asOf) : a.latest })),
   };
 }

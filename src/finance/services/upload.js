@@ -8,6 +8,24 @@ import { unattributedQuery } from '../lib/attribution.js';
 import { syncRentQuietly } from '../lib/rentSync.js';
 import { reapplyAllocations } from '../lib/allocations.js';
 import { bofaDepositBalances } from '../parsers/balances.js';
+import { fileToRows } from '../parsers/util.js';
+
+const AMEX_LABELS = new Set(['Amex Gold', 'Amex Blue']);
+
+/** 'amex:<account ending>' from an Amex export ("Account Ending 1-21004", or the Account # column), or null. */
+function amexAccountKey(rows) {
+  for (const row of rows.slice(0, 12)) {
+    const m = (row || []).map((c) => String(c ?? '')).join(' ').match(/account ending\s+([\w-]+)/i);
+    if (m) return `amex:${m[1]}`;
+  }
+  const h = rows.findIndex((r) => (r || []).some((c) => /^account\s*#$/i.test(String(c ?? '').trim())));
+  if (h !== -1) {
+    const col = rows[h].findIndex((c) => /^account\s*#$/i.test(String(c ?? '').trim()));
+    const v = String((rows[h + 1] || [])[col] ?? '').trim();
+    if (v) return `amex:${v}`;
+  }
+  return null;
+}
 import { saveFileBalances } from '../lib/balances.js';
 
 // Same limits the Express route enforced through multer.
@@ -43,15 +61,33 @@ export async function processUpload(knex, uploadedFiles, opts = {}) {
   // doesn't fail the whole batch — it's collected and reported back.
   const parsed = []; // { filename, source, transactions }
   const fileErrors = []; // { filename, error }
+  // Cards remembered by account number (Amex Gold vs Blue look the same).
+  const cardMap = (await knex.schema.hasTable('source_accounts'))
+    ? new Map((await knex('source_accounts').select('account_key', 'source_key')).map((r) => [r.account_key, r.source_key]))
+    : new Map();
+  const learned = new Map(); // account_key → source_key picked on this upload
   files.forEach((f) => {
     try {
-      const { source, transactions } = sourceKey
-        ? parseFile(f.buffer, f.originalname, sourceKey)
-        : parseFileAuto(f.buffer, f.originalname);
+      let res = sourceKey ? { ...parseFile(f.buffer, f.originalname, sourceKey), sourceKey } : parseFileAuto(f.buffer, f.originalname);
+      // Amex: which card is it? Picked on Upload → remember it for this account
+      // number; detected → use the card remembered for it. Either way we're
+      // sure of the card, so rows already here from this file get its label.
+      let sureOfCard = false;
+      if (AMEX_LABELS.has(res.source)) {
+        const acct = amexAccountKey(fileToRows(f.buffer, f.originalname));
+        if (sourceKey) {
+          sureOfCard = true;
+          if (acct) learned.set(acct, sourceKey);
+        } else if (acct && cardMap.has(acct)) {
+          sureOfCard = true;
+          if (cardMap.get(acct) !== res.sourceKey) res = { ...parseFile(f.buffer, f.originalname, cardMap.get(acct)), sourceKey: cardMap.get(acct) };
+        }
+      }
+      const { source, transactions } = res;
       // Bank of America checking exports also carry a running balance: kept for
       // the cash position chart (read separately; the transactions are unchanged).
       const balances = source === 'Bank of America' ? bofaDepositBalances(f.buffer, f.originalname) : null;
-      parsed.push({ filename: f.originalname, source, transactions, balances });
+      parsed.push({ filename: f.originalname, source, transactions, balances, relabel: sureOfCard });
     } catch (err) {
       fileErrors.push({ filename: f.originalname, error: err.message });
     }
@@ -105,8 +141,8 @@ export async function processUpload(knex, uploadedFiles, opts = {}) {
     }
   });
 
-  // Collapse duplicates WITHIN this batch (first occurrence wins). The hash
-  // includes the source, so rows from different sources never collide.
+  // Collapse duplicates WITHIN this batch (first occurrence wins). The hash is
+  // the same whichever account the row came from (date, description, amount).
   const seen = new Set();
   const batch = [];
   for (const e of enriched) {
@@ -171,6 +207,7 @@ export async function processUpload(knex, uploadedFiles, opts = {}) {
   // to its originating file's upload_id.
   const uploadIds = [];
   let balancesSaved = 0;
+  let relabeled = 0;
   await knex.transaction(async (trx) => {
     const fileUploadId = new Array(parsed.length).fill(null);
     for (let i = 0; i < parsed.length; i += 1) {
@@ -188,6 +225,23 @@ export async function processUpload(knex, uploadedFiles, opts = {}) {
       fileUploadId[i] = id;
       uploadIds.push(id);
 
+    }
+
+    // Amex rows already here from a file whose card we're sure of: give them that
+    // card's label (they were labeled Amex Gold before the card could be picked).
+    for (let i = 0; i < parsed.length; i += 1) {
+      if (!parsed[i].relabel) continue;
+      const dupHashes = enriched.filter((e) => e.fileIdx === i && existing.has(e.row.dedup_hash)).map((e) => e.row.dedup_hash);
+      for (let k = 0; k < dupHashes.length; k += 500) {
+        relabeled += await trx('transactions')
+          .whereIn('dedup_hash', dupHashes.slice(k, k + 500))
+          .whereIn('source', [...AMEX_LABELS])
+          .whereNot('source', parsed[i].source)
+          .update({ source: parsed[i].source });
+      }
+    }
+    for (const [account_key, source_key] of learned) {
+      await trx('source_accounts').insert({ account_key, source_key, updated_at: trx.fn.now() }).onConflict('account_key').merge();
     }
 
     // Daily balances (BofA checking / savings), oldest file first so statements chain up.
@@ -251,6 +305,7 @@ export async function processUpload(knex, uploadedFiles, opts = {}) {
     recategorized,
     needs_property: needsProperty,
     balances_saved: balancesSaved,
+    relabeled,
     rent,
     by_source: Object.values(bySource),
     errors: fileErrors,
