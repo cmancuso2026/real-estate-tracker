@@ -9,6 +9,7 @@ import { buildChart, type Granularity } from '@/lib/finance-ui/chart';
 import { fmt } from '@/lib/finance-ui/format';
 import { heroTotals } from '@/lib/finance-ui/transactions';
 import { InfoTip } from '@/components/finance/InfoTip';
+import { CashPosition } from '@/components/finance/CashPosition';
 import { TransfersNote } from '@/components/finance/TransfersNote';
 import { SankeyChart } from '@/components/finance/SankeyChart';
 import { buildGroupSankey, buildSankey, transfersLeftOut } from '@/lib/finance-ui/sankey';
@@ -18,7 +19,7 @@ type ChartView = 'bar' | 'sankey';
 const VIEW_KEY = 'mancuso.finance.overviewChart.v2';
 
 export default function FinanceOverviewPage() {
-  const { filteredTxns, tax, filters, unattributedCount, metricsCtx, definitions } = useFinance();
+  const { filteredTxns, tax, filters, unattributedCount, metricsCtx, definitions, selYears, selMonths } = useFinance();
   const [gran, setGran] = useState<Granularity>('monthly');
   const [kind, setKind] = useState<ChartKind>('line');
   const [stack, setStack] = useState<StackMode>('grouped');
@@ -214,6 +215,8 @@ export default function FinanceOverviewPage() {
         )}
         {view === 'sankey' && <TransfersNote items={transfers} />}
       </Card>
+
+      <CashPosition years={selYears} months={selMonths} />
     </div>
   );
 }
