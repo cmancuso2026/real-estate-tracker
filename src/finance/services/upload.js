@@ -7,8 +7,8 @@ import { canonicalName, loadTaxonomy } from '../lib/categories.js';
 import { unattributedQuery } from '../lib/attribution.js';
 import { syncRentQuietly } from '../lib/rentSync.js';
 import { reapplyAllocations } from '../lib/allocations.js';
-import { BOFA_CHECKING, bofaCheckingBalances } from '../parsers/balances.js';
-import { saveBalances } from '../lib/balances.js';
+import { bofaDepositBalances } from '../parsers/balances.js';
+import { saveFileBalances } from '../lib/balances.js';
 
 // Same limits the Express route enforced through multer.
 export const MAX_FILES = 20;
@@ -50,7 +50,7 @@ export async function processUpload(knex, uploadedFiles, opts = {}) {
         : parseFileAuto(f.buffer, f.originalname);
       // Bank of America checking exports also carry a running balance: kept for
       // the cash position chart (read separately; the transactions are unchanged).
-      const balances = source === 'Bank of America' ? bofaCheckingBalances(f.buffer, f.originalname) : [];
+      const balances = source === 'Bank of America' ? bofaDepositBalances(f.buffer, f.originalname) : null;
       parsed.push({ filename: f.originalname, source, transactions, balances });
     } catch (err) {
       fileErrors.push({ filename: f.originalname, error: err.message });
@@ -187,8 +187,13 @@ export async function processUpload(knex, uploadedFiles, opts = {}) {
       const id = inserted[0].id ?? inserted[0];
       fileUploadId[i] = id;
       uploadIds.push(id);
-      if (p.balances.length) balancesSaved += await saveBalances(trx, BOFA_CHECKING, p.balances, id);
+
     }
+
+    // Daily balances (BofA checking / savings), oldest file first so statements chain up.
+    const withBal = parsed.map((p, i) => [p, fileUploadId[i]]).filter(([p]) => p.balances && p.balances.points.length);
+    withBal.sort((x, y) => x[0].balances.points[0].date.localeCompare(y[0].balances.points[0].date));
+    for (const [p, uid] of withBal) balancesSaved += (await saveFileBalances(trx, p.balances, uid)).saved;
 
     if (toInsert.length) {
       const inserted = await trx('transactions')

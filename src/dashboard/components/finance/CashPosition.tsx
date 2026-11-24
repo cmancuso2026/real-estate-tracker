@@ -1,51 +1,81 @@
 'use client';
 
-import { CategoryScale, Chart as ChartJS, Filler, LinearScale, LineController, LineElement, PointElement, Tooltip, type ChartOptions } from 'chart.js';
+import { CategoryScale, Chart as ChartJS, Filler, Legend, LinearScale, LineController, LineElement, PointElement, Tooltip, type ChartOptions } from 'chart.js';
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Chart } from 'react-chartjs-2';
 import { financeApi } from './api';
 import { Card } from './ui';
 
-ChartJS.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip);
+ChartJS.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip, Legend);
 
-interface Account {
-  account: string;
+interface Series {
   points: { date: string; balance: number }[];
   latest: { date: string; balance: number } | null;
+}
+interface Account extends Series {
+  account: string;
+}
+interface Balances {
+  accounts: Account[];
+  total: Series | null;
 }
 
 const usd = (n: number) => (n < 0 ? '-$' : '$') + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const short = (d: string) => new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
+const ACCOUNT_COLORS = ['#2f9e44', '#f08c00', '#7048e8', '#0c8599', '#c2255c'];
+
+/** The balance in force on a date (last closing balance on or before it). */
+function on(points: { date: string; balance: number }[], date: string): number | null {
+  let v: number | null = null;
+  for (const p of points) {
+    if (p.date <= date) v = p.balance;
+    else break;
+  }
+  return v;
+}
 
 /**
- * Cash position: the Bank of America checking balance over the selected
- * period (daily closing balances from the uploaded statements).
+ * Cash position: total cash (every Bank of America checking / savings account)
+ * over the selected period, with a line per account. Accounts can be renamed.
  */
 export function CashPosition({ years, months }: { years: Set<string>; months: Set<string> }) {
-  const [accounts, setAccounts] = useState<Account[] | null>(null);
-  useEffect(() => {
+  const [data, setData] = useState<Balances | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [name, setName] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(() => {
     financeApi
-      .get<{ accounts: Account[] }>('/api/finance/balances')
-      .then((r) => setAccounts(r.accounts))
-      .catch(() => setAccounts([]));
+      .get<Balances>('/api/finance/balances')
+      .then(setData)
+      .catch(() => setData({ accounts: [], total: null }));
   }, []);
+  useEffect(load, [load]);
 
-  const acct = accounts?.[0] ?? null;
-  // Points in the selected years × months (the same period as the cards above).
-  const pts = useMemo(
-    () => (acct ? acct.points.filter((p) => years.has(p.date.slice(0, 4)) && months.has(String(Number(p.date.slice(5, 7))))) : []),
-    [acct, years, months],
-  );
+  const inPeriod = useCallback((d: string) => years.has(d.slice(0, 4)) && months.has(String(Number(d.slice(5, 7)))), [years, months]);
+  const total = data?.total ?? null;
+  const pts = useMemo(() => (total ? total.points.filter((p) => inPeriod(p.date)) : []), [total, inPeriod]);
 
-  if (accounts === null) return null;
-  if (!acct) {
+  async function rename(from: string) {
+    setError(null);
+    try {
+      await financeApi.patch('/api/finance/balances', { from, to: name.trim() });
+      setEditing(null);
+      load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  if (data === null) return null;
+  if (!total || !data.accounts.length) {
     return (
       <Card data-testid="cash-position">
         <h2 className="font-semibold">Cash position</h2>
         <p className="mt-1 text-sm text-gray-500">
-          Upload Bank of America <strong>checking</strong> statements (CSV) to see your balance over time. Re-uploading older
-          statements is safe: duplicate transactions are skipped and their balances are recorded.{' '}
+          Upload Bank of America <strong>checking and savings</strong> statements (CSV) to see your cash over time. Re-uploading
+          older statements is safe: duplicate transactions are skipped and their balances are recorded.{' '}
           <Link href="/upload?kind=statements" className="font-medium text-blue-600 hover:underline">
             Upload statements →
           </Link>
@@ -58,21 +88,34 @@ export function CashPosition({ years, months }: { years: Set<string>; months: Se
   const last = pts[pts.length - 1];
   const low = pts.reduce<(typeof pts)[number] | null>((m, p) => (!m || p.balance < m.balance ? p : m), null);
   const change = first && last ? last.balance - first.balance : 0;
+  const multi = data.accounts.length > 1;
 
-  const data = {
+  const chartData = {
     labels: pts.map((p) => short(p.date)),
     datasets: [
       {
-        label: 'Balance',
+        label: multi ? 'Total cash' : data.accounts[0]!.account,
         data: pts.map((p) => p.balance),
         borderColor: '#3b5bdb',
         backgroundColor: 'rgba(59,91,219,.08)',
         fill: true,
-        tension: 0.2,
-        borderWidth: 2,
+        borderWidth: 2.5,
         pointRadius: pts.length > 60 ? 0 : 2,
         stepped: 'after' as const,
       },
+      ...(multi
+        ? data.accounts.map((a, i) => ({
+            label: a.account,
+            data: pts.map((p) => on(a.points, p.date)),
+            borderColor: ACCOUNT_COLORS[i % ACCOUNT_COLORS.length],
+            backgroundColor: 'transparent',
+            fill: false,
+            borderWidth: 1.5,
+            borderDash: [5, 4],
+            pointRadius: 0,
+            stepped: 'after' as const,
+          }))
+        : []),
     ],
   };
   const options = {
@@ -81,25 +124,31 @@ export function CashPosition({ years, months }: { years: Set<string>; months: Se
     animation: false,
     interaction: { mode: 'index', intersect: false },
     plugins: {
-      legend: { display: false },
+      legend: { display: multi, position: 'top', labels: { boxWidth: 12, font: { size: 11 } } },
       datalabels: { display: false },
-      tooltip: { callbacks: { label: (c: { parsed: { y: number } }) => usd(c.parsed.y) } },
+      tooltip: { callbacks: { label: (c: { dataset: { label: string }; parsed: { y: number } }) => `${c.dataset.label}: ${usd(c.parsed.y)}` } },
     },
     scales: {
       x: { ticks: { maxTicksLimit: 8, font: { size: 11 } }, grid: { display: false } },
-      y: { ticks: { callback: (v: number | string) => { const k = Number(v) / 1000; return '$' + (Number.isInteger(k) ? k : k.toFixed(1)) + 'k'; }, font: { size: 11 } } },
+      y: {
+        ticks: {
+          callback: (v: number | string) => {
+            const k = Number(v) / 1000;
+            return '$' + (Number.isInteger(k) ? k : k.toFixed(1)) + 'k';
+          },
+          font: { size: 11 },
+        },
+      },
     },
   } as unknown as ChartOptions<'line'>;
 
   return (
     <Card data-testid="cash-position">
-      <div className="mb-3 flex flex-wrap items-baseline gap-x-6 gap-y-1">
-        <h2 className="mr-auto font-semibold">
-          Cash position <span className="text-sm font-normal text-gray-500">· {acct.account}</span>
-        </h2>
+      <div className="mb-2 flex flex-wrap items-baseline gap-x-6 gap-y-1">
+        <h2 className="mr-auto font-semibold">Cash position</h2>
         <div className="text-sm text-gray-500">
-          Now <strong className="text-base text-gray-900 tabular" data-testid="cash-latest">{usd(acct.latest!.balance)}</strong>{' '}
-          <span className="text-xs">({short(acct.latest!.date)})</span>
+          {multi ? 'Total now' : 'Now'} <strong className="text-base text-gray-900 tabular" data-testid="cash-latest">{usd(total.latest!.balance)}</strong>{' '}
+          <span className="text-xs">({short(total.latest!.date)})</span>
         </div>
         {first && last && (
           <div className="text-sm text-gray-500">
@@ -112,12 +161,51 @@ export function CashPosition({ years, months }: { years: Set<string>; months: Se
           </div>
         )}
       </div>
+      <div className="mb-3 flex flex-wrap items-center gap-2 text-xs" data-testid="cash-accounts">
+        {data.accounts.map((a) =>
+          editing === a.account ? (
+            <span key={a.account} className="flex items-center gap-1">
+              <input
+                aria-label={`New name for ${a.account}`}
+                className="w-36 rounded border border-gray-300 px-1.5 py-0.5"
+                value={name}
+                autoFocus
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void rename(a.account);
+                  if (e.key === 'Escape') setEditing(null);
+                }}
+              />
+              <button className="font-medium text-blue-600" onClick={() => void rename(a.account)}>
+                Save
+              </button>
+              <button className="text-gray-400" onClick={() => setEditing(null)}>
+                Cancel
+              </button>
+            </span>
+          ) : (
+            <button
+              key={a.account}
+              title="Rename (to another account's name to merge them)"
+              onClick={() => {
+                setEditing(a.account);
+                setName(a.account);
+              }}
+              className="rounded-full bg-gray-100 px-2.5 py-1 text-gray-700 hover:bg-gray-200"
+            >
+              {a.account} <strong className="tabular">{a.latest ? usd(a.latest.balance) : '—'}</strong>
+              {a.latest && <span className="text-gray-400"> · {short(a.latest.date)}</span>} ✎
+            </button>
+          ),
+        )}
+        {error && <span className="text-red-600">{error}</span>}
+      </div>
       {pts.length ? (
         <div className="relative h-56" data-testid="cash-chart">
-          <Chart type="line" data={data} options={options} />
+          <Chart type="line" data={chartData} options={options} />
         </div>
       ) : (
-        <p className="text-sm text-gray-500">No balances recorded for the selected months. Pick other months above, or upload those checking statements.</p>
+        <p className="text-sm text-gray-500">No balances recorded for the selected months. Pick other months above, or upload those statements.</p>
       )}
     </Card>
   );
