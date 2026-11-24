@@ -6,13 +6,15 @@
 //              payments and moves between your own accounts. Left out of
 //              everything, so the same money isn't counted as spending on one
 //              account and income on the other.
-//   Income     money in to an income category: the W2 Income group, any
-//              category mapped to a property as rent (property_category_map
-//              role 'income'), and uncategorized deposits.
+//   Income     income categories net: the W2 Income group and categories
+//              mapped to a property as rent (property_category_map role
+//              'income'). Money out of them (taxes owed, a deposit returned)
+//              reduces income rather than counting as spending. Uncategorized
+//              deposits count as income too.
 //   Spending   everything else that isn't a transfer, net: a refund in a
-//              spending category takes it off spending. Money out of an income
-//              category (e.g. taxes owed) is spending too. Mortgage / PITI,
-//              repairs and other property costs count as spending.
+//              spending category takes it off spending. Uncategorized money
+//              out is spending. Mortgage / PITI, repairs and other property
+//              costs count as spending.
 //   Cash flow  income − spending (= the sum of every non-transfer amount).
 //
 // Plain JS with no server dependencies so the browser bundle can import it.
@@ -24,7 +26,7 @@ export const TRANSFER_CATEGORY = /\btransfers?\b/i;
 export const INCOME_GROUPS = ['W2 Income'];
 
 export const DEFINITIONS = {
-  income: 'Money in to income categories (W2 Income, property rent) and uncategorized deposits. Card payments and transfers between your own accounts are netted out.',
+  income: 'Take-home: income categories (W2 Income, property rent) net of money taken back out of them, such as taxes owed, plus uncategorized deposits. Card payments and transfers between your own accounts are netted out.',
   spending: 'What you bought, net of refunds: every purchase on your cards and accounts, including mortgage/PITI and property costs. Paying the card bill is netted out, so nothing is counted twice.',
   cash_flow: 'Income minus spending. Card payments and transfers between your own accounts are netted out.',
 };
@@ -55,7 +57,12 @@ export function classify(row, ctx) {
   const kind = categoryKind(categoryOf(row), ctx);
   const a = amountOf(row);
   if (kind === 'transfer') return { kind, income: 0, spending: 0 };
-  if (kind === 'income') return a > 0 ? { kind, income: a, spending: 0 } : { kind, income: 0, spending: -a };
+  if (kind === 'income') {
+    // Uncategorized: money in is income, money out is spending. Real income
+    // categories are netted: money out of them (e.g. taxes) reduces income.
+    if (categoryOf(row) === 'Uncategorized' && a < 0) return { kind: 'spending', income: 0, spending: -a };
+    return { kind, income: a, spending: 0 };
+  }
   return { kind, income: 0, spending: -a };
 }
 

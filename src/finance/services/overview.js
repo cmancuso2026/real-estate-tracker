@@ -74,7 +74,7 @@ export async function getOverview(knex, opts = {}) {
     month: totals(monthRows, mctx),
     ytd: totals(ytdRows, mctx),
     definitions: DEFINITIONS,
-    cash: await cashSummary(knex),
+    cash: await cashSummary(knex, { asOf: end }),
     top_groups: { month: spendingByGroup(monthRows, mctx, 5), ytd: spendingByGroup(ytdRows, mctx, 5) },
     latest_uploads: sourceSpan
       .map((s) => {

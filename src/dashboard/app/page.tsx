@@ -162,7 +162,7 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
             </Card>
           ))}
         </div>
-        <CashCard cash={f.cash} />
+        <CashCard cash={f.cash} monthName={monthLabel(o.month)} />
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <Card>
             <Label>Top spending groups</Label>
@@ -237,12 +237,13 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
         <SectionHead title="Real estate" href="/properties" cta="My Properties" />
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <Card>
-            <Label>Properties</Label>
-            <div className="mt-1 text-3xl font-bold tabular" data-testid="re-properties">
-              {re.properties}
+            <Label>Units rented</Label>
+            <div className="mt-1 text-3xl font-bold tabular" data-testid="re-units-rented">
+              {re.occupied_units}/{re.rental_units}
             </div>
-            <div className="mt-1 text-xs text-gray-500">
-              {re.units} units · {re.rental_units} rented out
+            <div className="mt-1 text-xs text-gray-500" data-testid="re-properties">
+              across {re.properties} {re.properties === 1 ? 'property' : 'properties'}
+              {re.units > re.rental_units && ` · ${re.units - re.rental_units} unit${re.units - re.rental_units === 1 ? '' : 's'} you live in`}
             </div>
           </Card>
           <Card>
@@ -251,7 +252,9 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
               {pct(re.occupancy)}
             </div>
             <div className="mt-1 text-xs text-gray-500">
-              {re.occupied_units} of {re.rental_units} rental units have a tenant
+              {re.rental_units - re.occupied_units === 0
+                ? 'every rental unit has a tenant'
+                : `${re.rental_units - re.occupied_units} vacant unit${re.rental_units - re.occupied_units === 1 ? '' : 's'}`}
             </div>
           </Card>
           <Card>
@@ -390,7 +393,8 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
 }
 
 type Cash = {
-  latest: { date: string; balance: number };
+  latest: { date: string; balance: number } | null;
+  before_history?: string;
   change_30d: number | null;
   change_ytd: number | null;
   month_ends: { month: string; balance: number }[];
@@ -398,7 +402,7 @@ type Cash = {
 } | null;
 
 /** Cash position: total cash now (checking + savings), how it moved, and a 12-month trend (month-end balances). */
-function CashCard({ cash }: { cash: Cash }) {
+function CashCard({ cash, monthName }: { cash: Cash; monthName: string }) {
   const usd = (n: number) => (n < 0 ? '-$' : '$') + Math.abs(Math.round(n)).toLocaleString('en-US');
   const signed = (n: number | null | undefined) =>
     n == null ? '—' : <span className={n >= 0 ? 'text-green-700' : 'text-red-600'}>{(n >= 0 ? '+' : '') + usd(n)}</span>;
@@ -415,6 +419,15 @@ function CashCard({ cash }: { cash: Cash }) {
       </Card>
     );
   }
+  if (!cash.latest) {
+    return (
+      <Card>
+        <Label>Cash position</Label>
+        <p className="mt-1 text-sm text-gray-500">No balances recorded by the end of {monthName}; your statement history starts {cash.before_history}.</p>
+      </Card>
+    );
+  }
+  const latest = cash.latest;
   const pts = cash.month_ends ?? [];
   const min = Math.min(...pts.map((p) => p.balance));
   const max = Math.max(...pts.map((p) => p.balance));
@@ -432,9 +445,9 @@ function CashCard({ cash }: { cash: Cash }) {
       <div className="flex flex-wrap items-center justify-between gap-4" data-testid="cash-card">
         <div>
           <Label>Cash position{cash.accounts.length > 1 ? ' · total' : ''}</Label>
-          <div className="mt-1 text-3xl font-bold tabular">{usd(cash.latest.balance)}</div>
+          <div className="mt-1 text-3xl font-bold tabular" data-testid="cash-total">{usd(latest.balance)}</div>
           <div className="mt-1 text-xs text-gray-500">
-            as of {cash.latest.date} · 30 days {signed(cash.change_30d)} · this year {signed(cash.change_ytd)}
+            as of {latest.date} · 30 days before {signed(cash.change_30d)} · since Jan 1 {signed(cash.change_ytd)}
           </div>
           {cash.accounts.length > 1 && (
             <div className="mt-1 text-xs text-gray-500">

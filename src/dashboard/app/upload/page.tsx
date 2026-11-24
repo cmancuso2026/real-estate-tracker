@@ -15,6 +15,7 @@ interface UploadResult {
   files_parsed: number;
   recategorized: number;
   needs_property: number;
+  relabeled?: number;
   rent: { matched: number; already_recorded: number; needs_unit: number };
   by_source: { source: string; new_rows: number; skipped: number }[];
   errors: { filename: string; error: string }[];
@@ -199,7 +200,8 @@ function StatementsUpload() {
         </div>
         <p className="text-xs text-gray-400">
           &ldquo;Detect from the file&rdquo; recognizes each bank from its columns. Amex Gold and Amex Blue files look the
-          same, so pick the card when uploading Amex Blue (detected Amex files are labeled Amex Gold).
+          same, so pick the card the first time you upload each one. After that the app knows the card by its account number, and
+          picking a card also fixes the label on transactions already uploaded from that file.
         </p>
 
         {error && (
@@ -231,6 +233,12 @@ function StatementsUpload() {
             {result.rent.already_recorded > 0 && ` · ${result.rent.already_recorded} rent payment(s) were already recorded by hand`}
             {result.recategorized > 0 && ` · ${result.recategorized} older uncategorized transaction(s) categorized from history`}
           </div>
+          {(result.relabeled ?? 0) > 0 && (
+            <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800" data-testid="upload-relabeled">
+              {result.relabeled} transaction(s) already here from this file were relabeled to {result.by_source.map((s) => s.source).join(' / ')}.
+              The card is remembered by its account number, so next time “Detect from the file” labels it right too.
+            </div>
+          )}
           {result.errors.length > 0 && (
             <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
               {result.errors.length} file(s) skipped:
