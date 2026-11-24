@@ -1,0 +1,9 @@
+Description,,Summary Amt.
+Beginning balance as of 10/01/2026,,"20,000.00"
+Ending balance as of 10/31/2026,,"20,012.40"
+
+Date,Description,Amount,Running Bal.
+10/01/2026,Beginning balance as of 10/01/2026,,"20,000.00"
+10/20/2026,ONLINE BANKING TRANSFER FROM CHK,"3,000.00","23,000.00"
+10/25/2026,OVERDRAFT PROTECTION TO CHK,"-3,000.00","20,000.00"
+10/31/2026,INTEREST EARNED,12.40,"20,012.40"

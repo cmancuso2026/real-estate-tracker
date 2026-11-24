@@ -389,20 +389,25 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
   );
 }
 
-type Cash = { account: string; latest: { date: string; balance: number } | null; change_30d?: number | null; change_ytd?: number | null; month_ends?: { month: string; balance: number }[] };
+type Cash = {
+  latest: { date: string; balance: number };
+  change_30d: number | null;
+  change_ytd: number | null;
+  month_ends: { month: string; balance: number }[];
+  accounts: { account: string; latest: { date: string; balance: number } | null }[];
+} | null;
 
-/** Cash position: the checking balance now, how it moved, and a 12-month trend (month-end balances). */
-function CashCard({ cash }: { cash: Cash[] }) {
-  const a = cash?.[0];
+/** Cash position: total cash now (checking + savings), how it moved, and a 12-month trend (month-end balances). */
+function CashCard({ cash }: { cash: Cash }) {
   const usd = (n: number) => (n < 0 ? '-$' : '$') + Math.abs(Math.round(n)).toLocaleString('en-US');
   const signed = (n: number | null | undefined) =>
     n == null ? '—' : <span className={n >= 0 ? 'text-green-700' : 'text-red-600'}>{(n >= 0 ? '+' : '') + usd(n)}</span>;
-  if (!a?.latest) {
+  if (!cash) {
     return (
       <Card>
         <Label>Cash position</Label>
         <p className="mt-1 text-sm text-gray-500">
-          Upload Bank of America checking statements to track your balance over time.{' '}
+          Upload Bank of America checking and savings statements to track your cash over time.{' '}
           <Link href="/upload?kind=statements" className="text-blue-600 hover:underline">
             Upload →
           </Link>
@@ -410,7 +415,7 @@ function CashCard({ cash }: { cash: Cash[] }) {
       </Card>
     );
   }
-  const pts = a.month_ends ?? [];
+  const pts = cash.month_ends ?? [];
   const min = Math.min(...pts.map((p) => p.balance));
   const max = Math.max(...pts.map((p) => p.balance));
   const W = 240;
@@ -426,14 +431,24 @@ function CashCard({ cash }: { cash: Cash[] }) {
     <Card>
       <div className="flex flex-wrap items-center justify-between gap-4" data-testid="cash-card">
         <div>
-          <Label>Cash position · {a.account}</Label>
-          <div className="mt-1 text-3xl font-bold tabular">{usd(a.latest.balance)}</div>
+          <Label>Cash position{cash.accounts.length > 1 ? ' · total' : ''}</Label>
+          <div className="mt-1 text-3xl font-bold tabular">{usd(cash.latest.balance)}</div>
           <div className="mt-1 text-xs text-gray-500">
-            as of {a.latest.date} · 30 days {signed(a.change_30d)} · this year {signed(a.change_ytd)}
+            as of {cash.latest.date} · 30 days {signed(cash.change_30d)} · this year {signed(cash.change_ytd)}
           </div>
+          {cash.accounts.length > 1 && (
+            <div className="mt-1 text-xs text-gray-500">
+              {cash.accounts.map((a, i) => (
+                <span key={a.account}>
+                  {i > 0 && ' · '}
+                  {a.account} {a.latest ? usd(a.latest.balance) : '—'}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
         {pts.length > 1 && (
-          <Link href="/finance" title="Month-end balances, last 12 months — open the full chart" className="text-blue-600">
+          <Link href="/finance" title="Month-end total cash, last 12 months — open the full chart" className="text-blue-600">
             <svg viewBox={`0 0 ${W} ${H}`} className="h-12 w-60" aria-label="Month-end balance trend">
               <path d={path} fill="none" stroke="currentColor" strokeWidth="2" />
             </svg>
