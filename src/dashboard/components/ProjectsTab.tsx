@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { TradePicker, TradePills } from './TradePicker';
 import { ProjectTxnPicker, type CandidateTxn } from './ProjectTxnPicker';
+import { QuoteImport, type CollectedQuote } from './QuoteImport';
 import { useTrades } from '@/lib/useTrades';
 import { describeRecurring, type Frequency } from '@/lib/recurring';
 
@@ -171,168 +172,6 @@ function StarInput({ value, onChange, label }: { value: number | null | undefine
           className={`text-lg leading-none ${value && n <= value ? 'text-amber-500' : 'text-gray-300 hover:text-amber-300'}`}>★</button>
       ))}
     </span>
-  );
-}
-
-// ── Vendor import (side-by-side confirmation) ───────────────────────────────────
-function VendorImport({ vendors, prefillProjectName, onCancel, onConfirm, onVendorCreated }: {
-  vendors: VendorOption[];
-  prefillProjectName?: string;
-  onCancel: () => void;
-  onConfirm: (result: { vendor_id: number; quoted_cost: number | null; notes: string | null }) => Promise<void> | void;
-  onVendorCreated: () => void;
-}) {
-  const { trades, label: tradeLabel } = useTrades();
-  const [parsing, setParsing] = useState(false);
-  const [error, setError] = useState('');
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [pastedText, setPastedText] = useState('');
-  const [extracted, setExtracted] = useState<VendorQuoteExtracted | null>(null);
-  const [createVendor, setCreateVendor] = useState(true);
-  const [matchedVendorId, setMatchedVendorId] = useState('');
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
-
-  function applyExtraction(data: VendorQuoteExtracted) {
-    setExtracted(data);
-    const match = data.vendor_name
-      ? vendors.find(v => v.name.toLowerCase().trim() === data.vendor_name!.toLowerCase().trim())
-      : undefined;
-    if (match) { setMatchedVendorId(String(match.id)); setCreateVendor(false); }
-    else { setMatchedVendorId(''); setCreateVendor(true); }
-  }
-
-  async function send(form: FormData) {
-    setParsing(true); setError('');
-    try {
-      const res = await fetch('/api/v2/upload', { method: 'POST', body: form });
-      const data = await res.json();
-      if (!res.ok) { setError(data.error ?? 'Parse failed'); return; }
-      applyExtraction(data.extracted as VendorQuoteExtracted);
-    } catch { setError('Upload error'); }
-    finally { setParsing(false); }
-  }
-  function handleFile(file: File) {
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    setPreviewUrl(file.type === 'application/pdf' ? URL.createObjectURL(file) : null);
-    const form = new FormData(); form.append('file', file); form.append('type', 'vendor_quote');
-    send(form);
-  }
-  function parsePastedText() {
-    if (!pastedText.trim()) return;
-    setPreviewUrl(null);
-    const form = new FormData(); form.append('text', pastedText); form.append('type', 'vendor_quote');
-    send(form);
-  }
-  function patch(p: Partial<VendorQuoteExtracted>) { setExtracted(prev => (prev ? { ...prev, ...p } : prev)); }
-
-  async function confirm() {
-    if (!extracted || saving) return;
-    setSaving(true);
-    try {
-      let vendorId: number | null;
-      if (createVendor) {
-        const res = await fetch('/api/v2/vendors', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: extracted.vendor_name ?? 'Unknown Vendor', trades: [extracted.trade ?? 'general'],
-            phone: extracted.vendor_phone ?? null, email: extracted.vendor_email ?? null,
-          }),
-        });
-        const v = await res.json();
-        vendorId = v?.id ?? null;
-        onVendorCreated();
-      } else {
-        vendorId = matchedVendorId ? parseInt(matchedVendorId) : null;
-      }
-      if (!vendorId) { setError('Select or create a vendor'); setSaving(false); return; }
-      await onConfirm({ vendor_id: vendorId, quoted_cost: extracted.quoted_cost ?? null, notes: extracted.scope_of_work ?? null });
-    } finally { setSaving(false); }
-  }
-
-  return (
-    <div className="rounded-xl border-2 border-blue-300 bg-blue-50 p-5">
-      <div className="mb-3 flex items-center justify-between">
-        <h3 className="font-semibold text-blue-800">Import Quote from PDF / Email</h3>
-        <button onClick={onCancel} className="text-xs text-gray-400 hover:text-gray-600">Cancel</button>
-      </div>
-
-      {!extracted ? (
-        <div className="space-y-3">
-          <label className={`flex cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-blue-300 px-4 py-8 text-sm text-blue-600 hover:bg-blue-100/50 ${parsing ? 'opacity-50' : ''}`}>
-            {parsing ? 'Parsing…' : 'Drop a quote, invoice, or email (PDF / .eml / .txt)'}
-            <input type="file" accept=".pdf,.eml,.txt,image/*" className="hidden" disabled={parsing}
-              onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ''; }} />
-          </label>
-          <div className="text-center text-xs text-gray-400">or paste email/quote text here</div>
-          <textarea value={pastedText} onChange={e => setPastedText(e.target.value)} rows={4}
-            placeholder="Paste the contractor email or quote text…"
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
-          <button onClick={parsePastedText} disabled={parsing || !pastedText.trim()}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
-            {parsing ? 'Parsing…' : 'Parse'}
-          </button>
-          {error && <p className="text-sm text-red-600">{error}</p>}
-        </div>
-      ) : (
-        <div className="grid gap-4 lg:grid-cols-2">
-          {/* LEFT: source preview */}
-          <div className="min-h-[300px] overflow-hidden rounded-lg border border-gray-200 bg-white">
-            {previewUrl
-              ? <iframe src={previewUrl} className="h-[500px] w-full" title="Quote preview" />
-              : <pre className="max-h-[500px] overflow-auto whitespace-pre-wrap p-4 text-xs text-gray-600">{pastedText || 'No preview available'}</pre>}
-          </div>
-
-          {/* RIGHT: editable extracted fields */}
-          <div className="space-y-3">
-            {extracted.confidence_notes && (
-              <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">⚠ {extracted.confidence_notes}</p>
-            )}
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Vendor Name" value={extracted.vendor_name ?? ''} onChange={v => patch({ vendor_name: v })} />
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-500">Trade</label>
-                <select value={extracted.trade ?? 'general'} onChange={e => patch({ trade: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
-                  {trades.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
-                </select>
-              </div>
-              <Field label="Phone" value={extracted.vendor_phone ?? ''} onChange={v => patch({ vendor_phone: v })} />
-              <Field label="Email" value={extracted.vendor_email ?? ''} onChange={v => patch({ vendor_email: v })} />
-              <Field label="Project Name" value={extracted.project_name ?? prefillProjectName ?? ''} onChange={v => patch({ project_name: v })} />
-              <Field label="Quoted Cost ($)" type="number" value={extracted.quoted_cost?.toString() ?? ''} onChange={v => patch({ quoted_cost: v ? parseFloat(v) : null })} />
-              <Field label="Quote Date" type="date" value={extracted.quote_date ?? ''} onChange={v => patch({ quote_date: v })} />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-500">Scope of Work</label>
-              <textarea value={extracted.scope_of_work ?? ''} onChange={e => patch({ scope_of_work: e.target.value })} rows={2}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
-            </div>
-
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={createVendor} onChange={e => setCreateVendor(e.target.checked)} />
-              Create new vendor record
-            </label>
-            {!createVendor && (
-              <select value={matchedVendorId} onChange={e => setMatchedVendorId(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
-                <option value="">Select existing vendor…</option>
-                {vendors.map(v => <option key={v.id} value={v.id}>{v.name} ({tradeLabel(v.trade)})</option>)}
-              </select>
-            )}
-            {error && <p className="text-sm text-red-600">{error}</p>}
-            <div className="flex gap-2">
-              <button onClick={confirm} disabled={saving || (!createVendor && !matchedVendorId)}
-                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
-                {saving ? 'Saving…' : 'Confirm & Add Quote'}
-              </button>
-              <button onClick={() => { setExtracted(null); setError(''); }} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">Re-upload</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -546,6 +385,7 @@ function NewProjectPanel({ id, units, vendors, seed, onClose, onCreated, onVendo
   const [quoteCostVal, setQuoteCostVal] = useState('');
   const [quoteNotes, setQuoteNotes] = useState('');
   const [showImport, setShowImport] = useState(false);
+  const [imported, setImported] = useState<CollectedQuote[]>([]);
   const [saving, setSaving] = useState(false);
 
   async function create() {
@@ -576,6 +416,12 @@ function NewProjectPanel({ id, units, vendors, seed, onClose, onCreated, onVendo
         await fetch('/api/v2/project-quotes', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ work_order_id: project.id, vendor_id: parseInt(quoteVendor), quoted_cost: quoteCostVal ? parseFloat(quoteCostVal) : null, notes: quoteNotes || null }),
+        });
+      }
+      for (const q of imported) {
+        await fetch('/api/v2/project-quotes', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ work_order_id: project.id, vendor_id: q.vendor_id, quoted_cost: q.quoted_cost, notes: q.notes }),
         });
       }
       const notes: string[] = [];
@@ -634,7 +480,17 @@ function NewProjectPanel({ id, units, vendors, seed, onClose, onCreated, onVendo
       </div>
 
       <div>
-        <p className="mb-2 text-xs font-medium text-gray-500">First Quote (optional)</p>
+        <p className="mb-2 text-xs font-medium text-gray-500">Quotes (optional)</p>
+        {imported.length > 0 && (
+          <ul className="mb-2 space-y-1 text-sm" data-testid="imported-quotes">
+            {imported.map((q, n) => (
+              <li key={`${q.vendor_id}-${n}`} className="flex items-center justify-between rounded-lg bg-white px-3 py-1.5">
+                <span><span className="font-medium">{q.vendor_name}</span> <span className="text-gray-500">· {fmt$(q.quoted_cost)}{q.notes ? ` · ${q.notes}` : ''}</span></span>
+                <button onClick={() => setImported(list => list.filter((_, k) => k !== n))} className="text-xs text-gray-400 hover:text-red-600">Remove</button>
+              </li>
+            ))}
+          </ul>
+        )}
         {!showImport ? (
           <>
             <div className="grid grid-cols-2 gap-3">
@@ -646,16 +502,11 @@ function NewProjectPanel({ id, units, vendors, seed, onClose, onCreated, onVendo
               <Field label="" value={quoteCostVal} onChange={setQuoteCostVal} type="number" placeholder="Quoted cost ($)" />
             </div>
             {quoteVendor && <div className="mt-2"><Field label="" value={quoteNotes} onChange={setQuoteNotes} placeholder="Notes (optional)" /></div>}
-            <button onClick={() => setShowImport(true)} className="mt-2 text-xs text-blue-600 hover:underline">Import from PDF/email instead</button>
+            <button onClick={() => setShowImport(true)} className="mt-2 text-xs text-blue-600 hover:underline">Import quotes from PDFs / emails (one or several)</button>
           </>
         ) : (
-          <VendorImport vendors={vendors} prefillProjectName={name} onCancel={() => setShowImport(false)} onVendorCreated={onVendorCreated}
-            onConfirm={({ vendor_id, quoted_cost, notes }) => {
-              setQuoteVendor(String(vendor_id));
-              setQuoteCostVal(quoted_cost != null ? String(quoted_cost) : '');
-              setQuoteNotes(notes ?? '');
-              setShowImport(false);
-            }} />
+          <QuoteImport title="Import quotes for this project" onCancel={() => setShowImport(false)}
+            collect={(qs) => { setImported(list => [...list, ...qs]); setShowImport(false); onVendorCreated(); }} />
         )}
       </div>
 
@@ -932,19 +783,12 @@ function ProjectDetail({ project, units, vendors, onChanged, onVendorCreated }: 
             <input value={addNotes} onChange={e => setAddNotes(e.target.value)} placeholder="Notes"
               className="flex-1 min-w-[120px] rounded-lg border border-gray-300 px-3 py-2 text-sm" />
             <button onClick={addQuote} disabled={!addVendor} className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">+ Add Quote</button>
-            <button onClick={() => setShowImport(true)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50">Import from PDF/email</button>
+            <button onClick={() => setShowImport(true)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50">Import quotes from PDFs / emails</button>
           </div>
         ) : (
           <div className="mt-3">
-            <VendorImport vendors={vendors} prefillProjectName={projName(project)} onCancel={() => setShowImport(false)} onVendorCreated={onVendorCreated}
-              onConfirm={async ({ vendor_id, quoted_cost, notes }) => {
-                await fetch('/api/v2/project-quotes', {
-                  method: 'POST', headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ work_order_id: project.id, vendor_id, quoted_cost, notes }),
-                });
-                setShowImport(false);
-                await onChanged();
-              }} />
+            <QuoteImport projectId={project.id} title={`Import quotes for ${projName(project)}`} onCancel={() => setShowImport(false)}
+              onDone={async () => { setShowImport(false); onVendorCreated(); await onChanged(); }} />
           </div>
         )}
       </div>
