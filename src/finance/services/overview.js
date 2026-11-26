@@ -10,6 +10,7 @@
 //   finance figures  the shared definition in lib/metrics.js (same as /finance and
 //                    /api/finance/summary): transfers between your accounts left out,
 //                    refunds netted against spending
+import { rentForMonth, sumRent } from '../lib/rentMonth.js';
 import { mergedTaxonomy } from '../lib/categoryStore.js';
 import { unattributedCount } from '../lib/attribution.js';
 import { propertyCashFlow } from '../lib/cashflow.js';
@@ -59,7 +60,7 @@ export async function getOverview(knex, opts = {}) {
     knex('units').select('id', 'property_id', 'unit_label', 'is_owner_unit'),
     knex('tenants').where({ is_active: true }).select('id', 'unit_id', 'first_name', 'last_name'),
     knex('leases').select('id', 'unit_id', 'tenant_id', 'start_date', 'end_date', 'rent_amount'),
-    knex('rent_collections').whereBetween('due_date', [start, end]).select('unit_id', 'amount_due', 'amount_paid'),
+    knex('rent_collections').whereBetween('due_date', [start, end]).select('unit_id', 'due_date', 'amount_due', 'amount_paid'),
     knex('insurance_policies').select('id', 'property_id', 'carrier', 'policy_type', 'expiration_date'),
     knex('property_category_map').select('category', 'property_id', 'role', 'confirmed'),
     unattributedCount(knex),
@@ -101,10 +102,17 @@ export async function getOverview(knex, opts = {}) {
   }
   const occupied = rental.filter((u) => activeTenantByUnit.has(u.id));
   const rentRoll = occupied.reduce((s, u) => s + Number(latestLease.get(u.id)?.rent_amount || 0), 0);
-  const rentRows = rent.filter((r) => unitById.get(r.unit_id) && !unitById.get(r.unit_id).is_owner_unit);
-  const due = rentRows.reduce((s, r) => s + Number(r.amount_due || 0), 0);
-  const collected = rentRows.reduce((s, r) => s + Number(r.amount_paid || 0), 0);
-  const outstanding = rentRows.reduce((s, r) => s + Math.max(0, Number(r.amount_due || 0) - Number(r.amount_paid || 0)), 0);
+  // Rent this month, per unit (lib/rentMonth.js): due from the lease in force,
+  // collected = every payment that month (a split payment is several rows).
+  const rentByUnit = rentForMonth({
+    unitIds: rental.map((u) => u.id),
+    leases,
+    rows: rent,
+    start,
+    end,
+    occupied: new Set(occupied.map((u) => u.id)),
+  });
+  const { due, collected, outstanding } = sumRent(rentByUnit);
   const addressOf = new Map(props.map((p) => [p.id, p.address]));
   const expiringLeases = occupied
     .map((u) => ({ u, l: latestLease.get(u.id), t: activeTenantByUnit.get(u.id) }))
@@ -148,8 +156,7 @@ export async function getOverview(knex, opts = {}) {
     const pu = units.filter((u) => u.property_id === p.id);
     const pr = pu.filter((u) => !u.is_owner_unit);
     const po = pr.filter((u) => activeTenantByUnit.has(u.id));
-    const ids = new Set(pr.map((u) => u.id));
-    const prRent = rentRows.filter((r) => ids.has(r.unit_id));
+    const prRent = sumRent(rentByUnit, pr.map((u) => u.id));
     const f = flow.get(p.id) || { month: zero, ytd: zero };
     return {
       id: p.id,
@@ -159,8 +166,8 @@ export async function getOverview(knex, opts = {}) {
       occupied_units: po.length,
       occupancy: pr.length ? r2(po.length / pr.length) : null,
       scheduled_rent: po.reduce((s, u) => s + Number(latestLease.get(u.id)?.rent_amount || 0), 0),
-      rent_collected: prRent.reduce((s, r) => s + Number(r.amount_paid || 0), 0),
-      rent_due: prRent.reduce((s, r) => s + Number(r.amount_due || 0), 0),
+      rent_collected: prRent.collected,
+      rent_due: prRent.due,
       cash_flow: { month: f.month, ytd: f.ytd },
       mapped_categories: mappings.filter((m) => m.property_id === p.id).map((m) => m.category).sort(),
     };

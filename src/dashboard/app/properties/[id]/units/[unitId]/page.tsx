@@ -82,13 +82,24 @@ export default function UnitDetailPage() {
   if (!unit) return <div className="py-20 text-center text-gray-400">Unit not found.</div>;
 
   // Rent summary stats
-  const paid = rent.filter(r => r.amount_paid != null);
-  const onTime = paid.filter(r => !r.is_late && !r.is_partial).length;
-  const late = paid.filter(r => r.is_late).length;
-  const partial = paid.filter(r => r.is_partial).length;
-  const unpaid = rent.filter(r => r.amount_paid == null).length;
-  const totalPaid = paid.reduce((s, r) => s + (r.amount_paid ?? 0), 0);
-  const totalExpected = rent.reduce((s, r) => s + r.amount_due, 0);
+  // One entry per month: a split payment is several rows, each carrying the
+  // full rent as amount_due — count the rent once, add up the payments.
+  const months = new Map<string, { due: number; paid: number; any: boolean; late: boolean }>();
+  for (const r of rent) {
+    const k = String(r.due_date).slice(0, 7);
+    const m = months.get(k) ?? { due: 0, paid: 0, any: false, late: false };
+    m.due = Math.max(m.due, r.amount_due);
+    if (r.amount_paid != null) { m.paid += r.amount_paid; m.any = true; }
+    m.late = m.late || !!r.is_late;
+    months.set(k, m);
+  }
+  const monthList = [...months.values()];
+  const onTime = monthList.filter(m => m.any && !m.late && m.paid >= m.due).length;
+  const late = monthList.filter(m => m.any && m.late).length;
+  const partial = monthList.filter(m => m.any && m.paid < m.due).length;
+  const unpaid = monthList.filter(m => !m.any).length;
+  const totalPaid = monthList.reduce((s, m) => s + m.paid, 0);
+  const totalExpected = monthList.reduce((s, m) => s + m.due, 0);
 
   const days = daysUntil(unit.lease_end_date);
   const today = new Date().toISOString().slice(0, 10);

@@ -6,6 +6,7 @@ import { classify, financeTotals, loadMetricsContext, spendingByGroup } from '..
 import { unattributedCount } from '../lib/attribution.js';
 import { getProjectSpend } from '../services/attribution.js';
 import { allocationsByTxn } from '../lib/allocations.js';
+import { rentForMonth } from '../lib/rentMonth.js';
 import { PERIODS } from './catalog.js';
 
 const r2 = (n) => Math.round(Number(n) * 100) / 100;
@@ -266,14 +267,22 @@ export async function buildSection(knex, key, today) {
         return section('Open projects', ps.length ? ps.map((p) => `${p.name}: quote ${p.quote ? money(p.quote) : '—'} · actual ${money(p.actual)}${p.quote && p.actual > p.quote ? ' ⚠️ over' : ''}`) : ['No open projects.']);
       }
       case 'rent_status': {
-        const month = today.slice(0, 7);
-        const rows = await knex('rent_collections as rc')
-          .leftJoin('units as u', 'u.id', 'rc.unit_id')
-          .whereBetween('rc.due_date', [`${month}-01`, `${month}-31`])
-          .orderBy('u.unit_label')
-          .select('u.unit_label', 'rc.amount_due', 'rc.amount_paid', 'rc.paid_date');
-        if (!rows.length) return section('Rent this month', ['No rent recorded for this month yet.']);
-        return section('Rent this month', rows.map((r) => `Unit ${r.unit_label}: ${r.paid_date ? `paid ${money(r.amount_paid ?? r.amount_due)} on ${shortDate(r.paid_date)}` : `*unpaid* (${money(r.amount_due)} due)`}`));
+        // Same rule as the Overview (lib/rentMonth.js): due from the lease, every payment added up.
+        const from = `${today.slice(0, 7)}-01`;
+        const to = `${today.slice(0, 7)}-31`; // compared as text, so -31 covers every month
+        const [units, leases, rows, tenants] = await Promise.all([
+          knex('units').select('id', 'unit_label', 'is_owner_unit').orderBy('unit_label'),
+          knex('leases').select('unit_id', 'start_date', 'end_date', 'rent_amount'),
+          knex('rent_collections').whereBetween('due_date', [from, to]).select('unit_id', 'due_date', 'amount_due', 'amount_paid'),
+          knex('tenants').where({ is_active: true }).select('unit_id'),
+        ]);
+        const rental = units.filter((u) => !u.is_owner_unit);
+        const byUnit = rentForMonth({ unitIds: rental.map((u) => Number(u.id)), leases, rows, start: from, end: to, occupied: new Set(tenants.map((t) => Number(t.unit_id))) });
+        const lines = rental
+          .map((u) => ({ u, r: byUnit.get(Number(u.id)) }))
+          .filter(({ r }) => r && r.due > 0)
+          .map(({ u, r }) => `Unit ${u.unit_label}: ${r.status === 'paid' ? `paid ${money(r.collected)}${r.payments > 1 ? ` (${r.payments} payments)` : ''}` : r.collected > 0 ? `*partial* ${money(r.collected)} of ${money(r.due)}` : `*unpaid* (${money(r.due)} due)`}`);
+        return section('Rent this month', lines.length ? lines : ['No rent due this month.']);
       }
       case 'upcoming_expirations': {
         const leases = await evaluateCondition(knex, { metric: 'lease_expiring', days: 60 }, today);
