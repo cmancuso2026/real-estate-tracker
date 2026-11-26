@@ -4,13 +4,12 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 export const ADMIN_SECTIONS = [
+  { href: '/admin/notifications', label: 'Notifications' },
   { href: '/admin/categories', label: 'Categories and groups' },
   { href: '/admin/trades', label: 'Trades' },
-  { href: '/admin/notifications', label: 'Notifications' },
-  { href: '/admin/property-mapping', label: 'Property mapping' },
   { href: '/admin/merchant-rules', label: 'Merchant rules' },
+  { href: '/admin/property-mapping', label: 'Property mapping' },
   { href: '/admin/attribution', label: 'Attribution' },
-  { href: '/admin/rent-backfill', label: 'Rent from uploads' },
   { href: '/admin/investor-profile', label: 'Investor profile' },
   { href: '/admin/change-log', label: 'Change log' },
 ];

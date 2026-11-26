@@ -262,24 +262,41 @@ export async function reorderGroup(knex, { name, direction }) {
   });
 }
 
+export const SORT_PERIODS = { '3m': 'the last 3 months', '12m': 'the last 12 months', ytd: 'this year', all: 'all time' };
+
+/** First day counted for a sort period (null = all time). */
+export function sortPeriodStart(period, today = new Date().toISOString().slice(0, 10)) {
+  const [y, m] = today.split('-').map(Number);
+  if (period === 'ytd') return `${y}-01-01`;
+  if (period === '3m' || period === '12m') {
+    const back = period === '3m' ? 2 : 11; // this month plus the ones before it
+    const d = new Date(Date.UTC(y, m - 1 - back, 1));
+    return d.toISOString().slice(0, 10);
+  }
+  return null;
+}
+
 /**
  * Sort presets by total amount: put groups and/or the categories inside every
- * group in order of how much money went through them (all time, the size of
- * each category's net total; a group's is the sum of its categories), smallest
- * first ('asc') or largest first ('desc'); ties go A→Z. Leave one out to keep
- * its current order. Your own up/down order is replaced for what you sort.
+ * group in order of their net total (money in positive, money out negative)
+ * over a period. Ascending puts the smallest number first, so the biggest
+ * spending comes first and income last; descending is the reverse. A group's
+ * total is the sum of its categories; ties go A→Z. Leave one out to keep its
+ * current order. Your own up/down order is replaced for what you sort.
  */
-export async function sortTaxonomy(knex, { groups, categories }) {
+export async function sortTaxonomy(knex, { groups, categories, period = '3m', today } = {}) {
   const ok = (v) => v == null || v === '' || v === 'asc' || v === 'desc';
   if (!ok(groups) || !ok(categories)) throw httpError(400, 'groups / categories must be asc or desc');
   if (!groups && !categories) throw httpError(400, 'Pick groups and/or categories to sort');
-  const word = (d) => (d === 'desc' ? 'largest total first' : 'smallest total first');
+  if (!(period in SORT_PERIODS)) throw httpError(400, `period must be one of: ${Object.keys(SORT_PERIODS).join(', ')}`);
+  const word = (d) => (d === 'desc' ? 'descending' : 'ascending');
   const what = [groups && `groups ${word(groups)}`, categories && `categories ${word(categories)}`].filter(Boolean).join(', ');
-  const plan = { summary: `Sort ${what}`, changes: {}, before: null, after: { groups: groups || null, categories: categories || null } };
+  const plan = { summary: `Sort ${what} by total over ${SORT_PERIODS[period]}`, changes: {}, before: null, after: { groups: groups || null, categories: categories || null, period } };
   return runOp(knex, 'taxonomy.sort', false, plan, async (trx) => {
-    const sums = new Map(
-      (await trx('transactions').select('category').sum({ total: 'amount' }).groupBy('category')).map((r) => [r.category, Math.abs(Number(r.total) || 0)]),
-    );
+    const since = sortPeriodStart(period, today);
+    const q = trx('transactions').select('category').sum({ total: 'amount' }).groupBy('category');
+    if (since) q.where('date', '>=', since);
+    const sums = new Map((await q).map((r) => [r.category, Number(r.total) || 0]));
     const cmp = (dir) => (a, b) => (dir === 'desc' ? b.total - a.total : a.total - b.total) || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
     const gs = await trx('category_groups').select('id', 'name');
     const catsOf = new Map();

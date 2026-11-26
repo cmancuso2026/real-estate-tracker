@@ -233,6 +233,15 @@ export default function NotificationsPage() {
   );
 }
 
+/**
+ * A labelled field. Defined at module level: a component declared inside
+ * another one is a new type on every render, so React would remount its input
+ * after each keystroke (and drop focus).
+ */
+function L({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+  return <label className={`block text-xs text-gray-500 ${className}`}>{children}</label>;
+}
+
 /** The alert form (new or edit), with a live preview of the message. */
 function RuleForm({ draft, setDraft, data, onCancel, onSaved }: {
   draft: Draft; setDraft: (d: Draft) => void; data: AdminData; onCancel: () => void; onSaved: (msg: string) => Promise<void>;
@@ -270,7 +279,6 @@ function RuleForm({ draft, setDraft, data, onCancel, onSaved }: {
     }
   }
   const pill = (on: boolean) => `rounded-full px-3 py-1 text-xs font-medium ${on ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`;
-  const L = ({ children, className = '' }: { children: React.ReactNode; className?: string }) => <label className={`block text-xs text-gray-500 ${className}`}>{children}</label>;
 
   return (
     <div className="space-y-4 rounded-lg border border-blue-200 bg-blue-50/40 p-4" data-testid="rule-form">

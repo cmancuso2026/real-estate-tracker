@@ -27,6 +27,14 @@ export async function GET(req: NextRequest) {
   try {
     const rows = await query(
       `SELECT v.*, ${VENDOR_TRADES_SQL} AS trades, ${VENDOR_RATING_SQL},
+              -- projects per trade (a project counts under each of its trades), and ones with no trade
+              (SELECT COALESCE(json_object_agg(x.trade, x.n), '{}') FROM (
+                 SELECT pt.trade, COUNT(DISTINCT pq.work_order_id)::int AS n
+                 FROM project_quotes pq JOIN project_trades pt ON pt.work_order_id = pq.work_order_id
+                 WHERE pq.vendor_id = v.id GROUP BY pt.trade) x) AS projects_by_trade,
+              (SELECT COUNT(DISTINCT pq.work_order_id) FROM project_quotes pq
+                 WHERE pq.vendor_id = v.id
+                   AND NOT EXISTS (SELECT 1 FROM project_trades pt WHERE pt.work_order_id = pq.work_order_id))::int AS untagged_projects,
               COUNT(wo.id)::int               AS total_jobs,
               COUNT(wo.id) FILTER (WHERE wo.status = 'completed')::int AS completed_jobs,
               ROUND(AVG(wo.rating) FILTER (WHERE wo.rating IS NOT NULL), 1) AS avg_internal_rating,

@@ -96,8 +96,10 @@ export function ProjectTxnPicker({
   );
   const filtered = Object.entries(f).some(([k, v]) => (k === 'scope' ? v !== 'available' : !!v));
 
-  const Row = ({ t, faded = false }: { t: CandidateTxn; faded?: boolean }) => (
-    <tr className={`cursor-pointer hover:bg-gray-50 ${selected.includes(t.id) ? 'bg-blue-50/60' : ''} ${faded ? 'opacity-70' : ''}`} onClick={() => toggle(t.id)} data-testid={`txn-candidate-${t.id}`}>
+  // A render function, not a component: a component declared inside this one
+  // would remount every row on each render.
+  const row = (t: CandidateTxn, faded = false, key: string | number = t.id) => (
+    <tr key={key} className={`cursor-pointer hover:bg-gray-50 ${selected.includes(t.id) ? 'bg-blue-50/60' : ''} ${faded ? 'opacity-70' : ''}`} onClick={() => toggle(t.id)} data-testid={`txn-candidate-${t.id}`}>
       <td className="px-2 py-1.5"><input type="checkbox" aria-label={`Select ${t.description}`} checked={selected.includes(t.id)} onChange={() => toggle(t.id)} onClick={(e) => e.stopPropagation()} /></td>
       <td className="whitespace-nowrap px-2 py-1.5 text-gray-500">{day(t.date)}</td>
       <td className="max-w-[16rem] truncate px-2 py-1.5" title={t.description}>{t.description}</td>
@@ -157,8 +159,8 @@ export function ProjectTxnPicker({
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
-            {hiddenPicked.map((t) => <Row key={`p${t.id}`} t={t} faded />)}
-            {rows.map((t) => <Row key={t.id} t={t} />)}
+            {hiddenPicked.map((t) => row(t, true, `p${t.id}`))}
+            {rows.map((t) => row(t))}
           </tbody>
         </table>
         {!loading && !rows.length && !hiddenPicked.length && (
