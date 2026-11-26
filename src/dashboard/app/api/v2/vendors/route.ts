@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
+import { normalizeTrades, setVendorTrades, VENDOR_TRADES_SQL } from '@/lib/vendor-trades';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,13 +14,19 @@ export async function GET(req: NextRequest) {
   let idx = 1;
 
   if (activeOnly) { conditions.push(`v.is_active = TRUE`); }
-  if (search)     { conditions.push(`(v.name ILIKE $${idx} OR v.trade ILIKE $${idx++})`); values.push(`%${search}%`); }
+  if (search) {
+    conditions.push(`(v.name ILIKE $${idx} OR v.trade ILIKE $${idx} OR EXISTS (
+      SELECT 1 FROM vendor_trades vt LEFT JOIN trades t ON t.key = vt.trade
+      WHERE vt.vendor_id = v.id AND (vt.trade ILIKE $${idx} OR t.label ILIKE $${idx})))`);
+    idx += 1;
+    values.push(`%${search}%`);
+  }
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
   try {
     const rows = await query(
-      `SELECT v.*,
+      `SELECT v.*, ${VENDOR_TRADES_SQL} AS trades,
               COUNT(wo.id)::int               AS total_jobs,
               COUNT(wo.id) FILTER (WHERE wo.status = 'completed')::int AS completed_jobs,
               ROUND(AVG(wo.rating) FILTER (WHERE wo.rating IS NOT NULL), 1) AS avg_internal_rating,
@@ -39,7 +46,7 @@ export async function GET(req: NextRequest) {
     // the page still loads rather than hanging on a 500.
     console.error('Vendors enriched query failed, falling back to core fields:', err);
     const rows = await query(
-      `SELECT v.*,
+      `SELECT v.*, ARRAY[v.trade] AS trades,
               0 AS total_jobs, 0 AS completed_jobs,
               NULL AS avg_internal_rating, NULL AS total_spend, 0 AS project_count
        FROM vendors v
@@ -53,10 +60,13 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { name, trade, phone, email, website, manual_rating, manual_notes } = body;
+  const { name, phone, email, website, manual_rating, manual_notes } = body;
+  // trades: string[] (several allowed); trade: the older single value.
+  const trades = normalizeTrades(body.trades ?? body.trade);
+  const trade = trades[0];
 
   if (!name || !trade) {
-    return NextResponse.json({ error: 'name and trade are required' }, { status: 400 });
+    return NextResponse.json({ error: 'name and at least one trade are required' }, { status: 400 });
   }
 
   // Optionally look up Google Places if GOOGLE_PLACES_API_KEY is set
@@ -100,5 +110,7 @@ export async function POST(req: NextRequest) {
       manual_rating ?? null, manual_notes ?? null,
     ]
   );
-  return NextResponse.json(rows[0], { status: 201 });
+  const vendor = rows[0] as { id: number };
+  await setVendorTrades(vendor.id, trades);
+  return NextResponse.json({ ...vendor, trades }, { status: 201 });
 }

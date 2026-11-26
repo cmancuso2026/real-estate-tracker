@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
+import { normalizeTrades, setVendorTrades, VENDOR_TRADES_SQL } from '@/lib/vendor-trades';
 
 export const dynamic = 'force-dynamic';
 
 // GET /api/v2/vendors/[id] — vendor record plus its project quotes (for the expandable row).
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const vendorRows = await query(`SELECT * FROM vendors WHERE id = $1`, [id]);
+  const vendorRows = await query(`SELECT v.*, ${VENDOR_TRADES_SQL} AS trades FROM vendors v WHERE v.id = $1`, [id]);
   if (!vendorRows.length) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   let quotes: unknown[] = [];
@@ -34,7 +35,11 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const body = await req.json();
-  const { name, trade, phone, email, manual_notes, manual_rating, is_active } = body;
+  const { name, phone, email, manual_notes, manual_rating, is_active } = body;
+  // trades: string[] replaces the vendor's trades; vendors.trade follows the first.
+  const trades = body.trades !== undefined || body.trade !== undefined ? normalizeTrades(body.trades ?? body.trade) : null;
+  if (trades && !trades.length) return NextResponse.json({ error: 'Pick at least one trade' }, { status: 400 });
+  const trade = trades ? trades[0] : null;
 
   const rows = await query(
     `UPDATE vendors SET
@@ -53,7 +58,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     ]
   );
   if (!rows.length) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  return NextResponse.json(rows[0]);
+  if (trades) await setVendorTrades(Number(id), trades);
+  const [out] = await query(`SELECT v.*, ${VENDOR_TRADES_SQL} AS trades FROM vendors v WHERE v.id = $1`, [id]);
+  return NextResponse.json(out);
 }
 
 // DELETE /api/v2/vendors/[id]

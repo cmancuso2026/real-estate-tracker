@@ -1326,7 +1326,17 @@ export default function PropertyDetailPage() {
 
       {/* ── PROJECTS ── */}
       {tab==='projects' && (
-        <ProjectsTab id={id} units={units} />
+        <ProjectsTab
+          id={id}
+          units={units}
+          seed={searchParams.get('newProject') ? {
+            txnId: searchParams.get('txn') ? Number(searchParams.get('txn')) : undefined,
+            name: searchParams.get('name') ?? undefined,
+            amount: searchParams.get('amt') ? Number(searchParams.get('amt')) : undefined,
+            date: searchParams.get('date') ?? undefined,
+          } : null}
+          focusProjectId={searchParams.get('project') ? Number(searchParams.get('project')) : null}
+        />
       )}
 
       {/* ── REPAIRS & SPEND (finance transactions linked to this property) ── */}

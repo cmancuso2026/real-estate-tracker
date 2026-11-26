@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
+import { normalizeTrades, PROJECT_TRADES_SQL, setProjectTrades } from '@/lib/vendor-trades';
 
 export const dynamic = 'force-dynamic';
 
-// GET /api/v2/work-orders?propertyId=1&status=open&vendorId=3
+// GET /api/v2/work-orders?propertyId=1&status=open&vendorId=3&trade=plumbing
+// Each project carries its trades, units, quotes (with vendor contact and
+// rating) and recurring costs.
 export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
   const conditions: string[] = [];
@@ -13,6 +16,7 @@ export async function GET(req: NextRequest) {
   if (params.get('propertyId')) { conditions.push(`wo.property_id = $${idx++}`); values.push(params.get('propertyId')); }
   if (params.get('status'))     { conditions.push(`wo.status = $${idx++}`);       values.push(params.get('status')); }
   if (params.get('vendorId'))   { conditions.push(`wo.vendor_id = $${idx++}`);    values.push(params.get('vendorId')); }
+  if (params.get('trade'))      { conditions.push(`EXISTS (SELECT 1 FROM project_trades pt WHERE pt.work_order_id = wo.id AND pt.trade = $${idx++})`); values.push(params.get('trade')); }
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
@@ -23,16 +27,21 @@ export async function GET(req: NextRequest) {
             v.phone AS vendor_phone,
             p.address AS property_address,
             u.unit_label,
+            ${PROJECT_TRADES_SQL} AS trades,
             COALESCE((
               SELECT json_agg(json_build_object('unit_id', pu.unit_id, 'unit_label', uu.unit_label, 'cost_share', pu.cost_share))
               FROM project_units pu JOIN units uu ON uu.id = pu.unit_id
               WHERE pu.work_order_id = wo.id
             ), '[]') AS units,
             COALESCE((
-              SELECT json_agg(json_build_object('id', pq.id, 'vendor_id', pq.vendor_id, 'vendor_name', vv.name, 'vendor_trade', vv.trade, 'quoted_cost', pq.quoted_cost, 'final_cost', pq.final_cost, 'is_selected', pq.is_selected, 'notes', pq.notes) ORDER BY pq.is_selected DESC, pq.created_at)
+              SELECT json_agg(json_build_object('id', pq.id, 'vendor_id', pq.vendor_id, 'vendor_name', vv.name, 'vendor_trade', vv.trade, 'vendor_phone', vv.phone, 'vendor_email', vv.email, 'vendor_rating', vv.manual_rating, 'quoted_cost', pq.quoted_cost, 'final_cost', pq.final_cost, 'is_selected', pq.is_selected, 'notes', pq.notes) ORDER BY pq.is_selected DESC, pq.created_at)
               FROM project_quotes pq JOIN vendors vv ON vv.id = pq.vendor_id
               WHERE pq.work_order_id = wo.id
-            ), '[]') AS quotes
+            ), '[]') AS quotes,
+            COALESCE((
+              SELECT json_agg(json_build_object('id', rc.id, 'description', rc.description, 'frequency', rc.frequency, 'amount', COALESCE(rc.amount, rc.monthly_amount), 'monthly_amount', rc.monthly_amount, 'start_date', rc.start_date, 'end_date', rc.end_date, 'is_active', rc.is_active) ORDER BY rc.id)
+              FROM recurring_costs rc WHERE rc.work_order_id = wo.id
+            ), '[]') AS recurring
      FROM work_orders wo
      LEFT JOIN vendors v          ON v.id = wo.vendor_id
      JOIN owned_properties p ON p.id = wo.property_id
@@ -52,6 +61,7 @@ export async function POST(req: NextRequest) {
     rating, review_notes, source, attachment_url,
     project_name, is_recurring,
   } = body;
+  const trades = normalizeTrades(body.trades);
 
   if (!property_id) {
     return NextResponse.json({ error: 'property_id is required' }, { status: 400 });
@@ -74,5 +84,7 @@ export async function POST(req: NextRequest) {
       project_name ?? null, is_recurring ?? false,
     ]
   );
-  return NextResponse.json(rows[0], { status: 201 });
+  const wo = rows[0] as { id: number };
+  if (trades.length) await setProjectTrades(wo.id, trades);
+  return NextResponse.json({ ...wo, trades }, { status: 201 });
 }

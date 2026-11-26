@@ -1,10 +1,18 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { TradePicker, TradePills } from './TradePicker';
+import { ProjectTxnPicker, type CandidateTxn } from './ProjectTxnPicker';
+import { useTrades } from '@/lib/useTrades';
+import { describeRecurring, type Frequency } from '@/lib/recurring';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 interface UnitLite { id: number; unit_label: string; }
 interface AssignedUnit { unit_id: number; unit_label: string; cost_share: number | string | null; }
+interface RecurringRow {
+  id: number; description: string; frequency: Frequency; amount: number | string;
+  monthly_amount: number | string; start_date: string | null; end_date: string | null; is_active: boolean;
+}
 interface Quote {
   id: number; vendor_id: number; vendor_name: string; vendor_trade: string | null;
   quoted_cost: number | string | null; final_cost: number | string | null;
@@ -17,6 +25,9 @@ interface Project {
   property_id: number;
   status: ProjectStatus;
   is_recurring: boolean;
+  trades?: string[];
+  rating?: number | null;
+  recurring?: RecurringRow[];
   /** Starting cost (whole dollars), e.g. set when a project is created from a transaction. */
   quoted_cost?: number | string | null;
   created_at: string;
@@ -34,11 +45,9 @@ interface VendorQuoteExtracted {
 type ProjectStatus = 'received' | 'open' | 'completed';
 
 const STATUSES: ProjectStatus[] = ['received', 'open', 'completed'];
-const TRADES = ['plumbing', 'hvac', 'electrical', 'roofing', 'appliance', 'landscaping', 'pest_control', 'general', 'other'];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const capitalize = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '');
-const tradeLabel = (s: string | null | undefined) => (s ? s.split('_').map(capitalize).join(' ') : '—');
 function num(n: number | string | null | undefined): number { const v = Number(n); return Number.isFinite(v) ? v : 0; }
 function fmt$(n: number | string | null | undefined) {
   if (n == null || n === '') return '—';
@@ -97,6 +106,73 @@ function Field({ label, value, onChange, type = 'text', placeholder = '' }: {
   );
 }
 
+async function sendJson<T = unknown>(url: string, method: string, body?: unknown): Promise<T> {
+  const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((data as { error?: string }).error ?? `Request failed (${res.status})`);
+  return data as T;
+}
+
+/** Link transactions to a project; returns a note about any that were skipped. */
+async function linkTxns(projectId: number, ids: number[]): Promise<string | null> {
+  if (!ids.length) return null;
+  const r = await sendJson<{ skipped: { description: string; reason: string }[] }>(`/api/finance/projects/${projectId}/transactions`, 'POST', { ids });
+  return r.skipped.length ? `Not linked: ${r.skipped.map((x) => `${x.description} (${x.reason.toLowerCase()})`).join(', ')}` : null;
+}
+
+// ── Recurring cost form (monthly / yearly, amount, start / end) ─────────────────
+interface RecurringDraft { frequency: Frequency; amount: string; start: string; end: string; description: string; }
+const emptyRecurring = (): RecurringDraft => ({ frequency: 'monthly', amount: '', start: new Date().toISOString().slice(0, 10), end: '', description: '' });
+function RecurringFields({ draft, setDraft, placeholder }: { draft: RecurringDraft; setDraft: (d: RecurringDraft) => void; placeholder: string }) {
+  const input = 'rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm';
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-5" data-testid="recurring-fields">
+      <label className="col-span-2 text-xs text-gray-500 sm:col-span-5">
+        Description
+        <input className={`${input} mt-1 block w-full`} value={draft.description} placeholder={placeholder} onChange={(e) => setDraft({ ...draft, description: e.target.value })} />
+      </label>
+      <label className="text-xs text-gray-500">
+        Frequency
+        <select aria-label="Frequency" className={`${input} mt-1 block w-full`} value={draft.frequency} onChange={(e) => setDraft({ ...draft, frequency: e.target.value as Frequency })}>
+          <option value="monthly">Monthly</option>
+          <option value="yearly">Yearly</option>
+        </select>
+      </label>
+      <label className="text-xs text-gray-500">
+        Amount ($ {draft.frequency === 'yearly' ? 'per year' : 'per month'})
+        <input aria-label="Recurring amount" type="number" min="0" step="0.01" className={`${input} mt-1 block w-full`} value={draft.amount} onChange={(e) => setDraft({ ...draft, amount: e.target.value })} />
+      </label>
+      <label className="text-xs text-gray-500">
+        Start date
+        <input aria-label="Start date" type="date" className={`${input} mt-1 block w-full`} value={draft.start} onChange={(e) => setDraft({ ...draft, start: e.target.value })} />
+      </label>
+      <label className="text-xs text-gray-500">
+        End date <span className="text-gray-400">(optional)</span>
+        <input aria-label="End date" type="date" className={`${input} mt-1 block w-full`} value={draft.end} min={draft.start || undefined} onChange={(e) => setDraft({ ...draft, end: e.target.value })} />
+      </label>
+      {draft.frequency === 'yearly' && draft.amount && (
+        <p className="self-end pb-2 text-xs text-gray-400">≈ {fmt$(Math.round((Number(draft.amount) / 12) * 100) / 100)} / month in cash flow</p>
+      )}
+    </div>
+  );
+}
+const recurringBody = (d: RecurringDraft, fallbackName: string) => ({
+  description: d.description.trim() || fallbackName, frequency: d.frequency, amount: parseFloat(d.amount),
+  start_date: d.start || null, end_date: d.end || null,
+});
+
+function StarInput({ value, onChange, label }: { value: number | null | undefined; onChange: (n: number | null) => void; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-0.5" role="radiogroup" aria-label={label}>
+      {[1, 2, 3, 4, 5].map((n) => (
+        <button key={n} type="button" role="radio" aria-checked={value === n} aria-label={`${n} star${n > 1 ? 's' : ''}`}
+          onClick={(e) => { e.stopPropagation(); onChange(value === n ? null : n); }}
+          className={`text-lg leading-none ${value && n <= value ? 'text-amber-500' : 'text-gray-300 hover:text-amber-300'}`}>★</button>
+      ))}
+    </span>
+  );
+}
+
 // ── Vendor import (side-by-side confirmation) ───────────────────────────────────
 function VendorImport({ vendors, prefillProjectName, onCancel, onConfirm, onVendorCreated }: {
   vendors: VendorOption[];
@@ -105,6 +181,7 @@ function VendorImport({ vendors, prefillProjectName, onCancel, onConfirm, onVend
   onConfirm: (result: { vendor_id: number; quoted_cost: number | null; notes: string | null }) => Promise<void> | void;
   onVendorCreated: () => void;
 }) {
+  const { trades, label: tradeLabel } = useTrades();
   const [parsing, setParsing] = useState(false);
   const [error, setError] = useState('');
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -158,7 +235,7 @@ function VendorImport({ vendors, prefillProjectName, onCancel, onConfirm, onVend
         const res = await fetch('/api/v2/vendors', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            name: extracted.vendor_name ?? 'Unknown Vendor', trade: extracted.trade ?? 'general',
+            name: extracted.vendor_name ?? 'Unknown Vendor', trades: [extracted.trade ?? 'general'],
             phone: extracted.vendor_phone ?? null, email: extracted.vendor_email ?? null,
           }),
         });
@@ -217,7 +294,7 @@ function VendorImport({ vendors, prefillProjectName, onCancel, onConfirm, onVend
                 <label className="mb-1 block text-xs font-medium text-gray-500">Trade</label>
                 <select value={extracted.trade ?? 'general'} onChange={e => patch({ trade: e.target.value })}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
-                  {TRADES.map(t => <option key={t} value={t}>{tradeLabel(t)}</option>)}
+                  {trades.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
                 </select>
               </div>
               <Field label="Phone" value={extracted.vendor_phone ?? ''} onChange={v => patch({ vendor_phone: v })} />
@@ -298,13 +375,18 @@ function UnitAssigner({ units, draft, setDraft }: {
 }
 
 // ── Main component ──────────────────────────────────────────────────────────────
-export function ProjectsTab({ id, units }: { id: string; units: UnitLite[] }) {
+/** Arriving from Finance → "New project": the transaction to start from. */
+export interface NewProjectSeed { txnId?: number; name?: string; amount?: number; date?: string; }
+
+export function ProjectsTab({ id, units, seed, focusProjectId }: { id: string; units: UnitLite[]; seed?: NewProjectSeed | null; focusProjectId?: number | null }) {
+  const { label: tradeLabel } = useTrades();
   const [projects, setProjects] = useState<Project[]>([]);
   const [vendors, setVendors] = useState<VendorOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [unitFilter, setUnitFilter] = useState<string>('all');
-  const [expandedId, setExpandedId] = useState<number | null>(null);
-  const [showNew, setShowNew] = useState(false);
+  const [expandedId, setExpandedId] = useState<number | null>(focusProjectId ?? null);
+  const [showNew, setShowNew] = useState(!!seed);
+  const [notice, setNotice] = useState<string | null>(null);
   const [actuals, setActuals] = useState<Record<number, ActualSpend>>({});
 
   const loadProjects = useCallback(async () => {
@@ -375,12 +457,19 @@ export function ProjectsTab({ id, units }: { id: string; units: UnitLite[] }) {
         </div>
       )}
 
+      {notice && (
+        <div className="flex items-start justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">
+          <span>{notice}</span>
+          <button onClick={() => setNotice(null)} className="text-xs text-amber-600 hover:text-amber-800">Dismiss</button>
+        </div>
+      )}
+
       {/* New project flow */}
       {showNew && (
         <NewProjectPanel
-          id={id} units={units} vendors={vendors}
+          id={id} units={units} vendors={vendors} seed={seed ?? null}
           onClose={() => setShowNew(false)}
-          onCreated={async () => { setShowNew(false); await loadProjects(); await loadVendors(); }}
+          onCreated={async (projectId, note) => { setShowNew(false); setNotice(note); setExpandedId(projectId); await loadProjects(); await loadVendors(); }}
           onVendorCreated={loadVendors}
         />
       )}
@@ -394,7 +483,7 @@ export function ProjectsTab({ id, units }: { id: string; units: UnitLite[] }) {
         ) : visibleProjects.map(p => {
           const sel = selectedQuote(p);
           return (
-            <div key={p.id} className="overflow-hidden rounded-xl border border-gray-200">
+            <div key={p.id} id={`project-${p.id}`} className="overflow-hidden rounded-xl border border-gray-200">
               <button onClick={() => setExpandedId(expandedId === p.id ? null : p.id)}
                 className="flex w-full items-center justify-between gap-4 p-4 text-left hover:bg-gray-50">
                 <div className="min-w-0 flex-1">
@@ -402,10 +491,14 @@ export function ProjectsTab({ id, units }: { id: string; units: UnitLite[] }) {
                     <span className="font-medium">{projName(p)}</span>
                     <StatusBadge status={p.status} />
                     {p.is_recurring && <span className="rounded-full bg-purple-100 px-2 py-0.5 text-xs text-purple-700">Recurring</span>}
+                    {(p.trades ?? []).length > 0 && <TradePills keys={p.trades ?? []} label={tradeLabel} />}
                     {p.units.map(u => (
                       <span key={u.unit_id} className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500">{u.unit_label}</span>
                     ))}
                   </div>
+                  {p.description && p.project_name && (
+                    <p className="mt-1 line-clamp-2 text-xs text-gray-500">{p.description}</p>
+                  )}
                   <p className="mt-1 text-xs text-gray-400">
                     {p.quotes.length} quote{p.quotes.length === 1 ? '' : 's'}
                     {' · '}{sel ? `${sel.vendor_name} — ${fmt$(quoteCost(sel))}` : 'No vendor selected'}
@@ -429,12 +522,22 @@ export function ProjectsTab({ id, units }: { id: string; units: UnitLite[] }) {
 }
 
 // ── New project panel ───────────────────────────────────────────────────────────
-function NewProjectPanel({ id, units, vendors, onClose, onCreated, onVendorCreated }: {
-  id: string; units: UnitLite[]; vendors: VendorOption[];
-  onClose: () => void; onCreated: () => Promise<void> | void; onVendorCreated: () => void;
+function NewProjectPanel({ id, units, vendors, seed, onClose, onCreated, onVendorCreated }: {
+  id: string; units: UnitLite[]; vendors: VendorOption[]; seed: NewProjectSeed | null;
+  onClose: () => void; onCreated: (projectId: number, note: string | null) => Promise<void> | void; onVendorCreated: () => void;
 }) {
-  const [name, setName] = useState('');
-  const [status, setStatus] = useState<ProjectStatus>('received');
+  const { trades, label: tradeLabel } = useTrades();
+  const [name, setName] = useState(seed?.name ?? '');
+  const [description, setDescription] = useState('');
+  const [projectTrades, setProjectTrades] = useState<string[]>([]);
+  const [txnIds, setTxnIds] = useState<number[]>(seed?.txnId ? [seed.txnId] : []);
+  const [recurring, setRecurring] = useState(false);
+  const [recDraft, setRecDraft] = useState<RecurringDraft>(emptyRecurring);
+  const [error, setError] = useState<string | null>(null);
+  const seedTxn: CandidateTxn[] = seed?.txnId
+    ? [{ id: seed.txnId, description: seed.name ?? 'Transaction', amount: seed.amount ?? 0, date: seed.date ?? '', category: '', source: '' }]
+    : [];
+  const [status, setStatus] = useState<ProjectStatus>(seed ? 'open' : 'received');
   const [draft, setDraft] = useState<Record<number, UnitDraft>>(
     () => Object.fromEntries(units.map(u => [u.id, { checked: true, share: '' }])),
   );
@@ -446,16 +549,21 @@ function NewProjectPanel({ id, units, vendors, onClose, onCreated, onVendorCreat
 
   async function create() {
     if (!name.trim() || saving) return;
+    if (recurring && !(Number(recDraft.amount) > 0)) { setError('Enter the recurring amount (or untick Recurring).'); return; }
     setSaving(true);
+    setError(null);
     try {
       const selectedUnits = units.filter(u => draft[u.id]?.checked)
         .map(u => ({ unit_id: u.id, cost_share: draft[u.id]?.share ? parseFloat(draft[u.id]!.share) : null }));
       const res = await fetch('/api/v2/work-orders', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ project_name: name.trim(), property_id: parseInt(id), status, unit_id: selectedUnits[0]?.unit_id ?? null }),
+        body: JSON.stringify({
+          project_name: name.trim(), description: description.trim() || null, trades: projectTrades,
+          property_id: parseInt(id), status, unit_id: selectedUnits[0]?.unit_id ?? null, is_recurring: recurring,
+        }),
       });
       const project = await res.json();
-      if (!res.ok || !project?.id) { setSaving(false); return; }
+      if (!res.ok || !project?.id) { setError(project?.error ?? 'Could not create the project'); setSaving(false); return; }
 
       if (selectedUnits.length > 0) {
         await fetch('/api/v2/project-units', {
@@ -469,7 +577,22 @@ function NewProjectPanel({ id, units, vendors, onClose, onCreated, onVendorCreat
           body: JSON.stringify({ work_order_id: project.id, vendor_id: parseInt(quoteVendor), quoted_cost: quoteCostVal ? parseFloat(quoteCostVal) : null, notes: quoteNotes || null }),
         });
       }
-      await onCreated();
+      const notes: string[] = [];
+      if (recurring) {
+        try {
+          await sendJson('/api/v2/recurring-costs', 'POST', {
+            property_id: parseInt(id), work_order_id: project.id, vendor_id: quoteVendor ? parseInt(quoteVendor) : null,
+            ...recurringBody(recDraft, name.trim()),
+          });
+        } catch (e) { notes.push(`Recurring cost not saved: ${(e as Error).message}`); }
+      }
+      try {
+        const skipped = await linkTxns(project.id, txnIds);
+        if (skipped) notes.push(skipped);
+      } catch (e) { notes.push(`Transactions not linked: ${(e as Error).message}`); }
+      await onCreated(project.id, notes.length ? `Project created. ${notes.join(' ')}` : null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally { setSaving(false); }
   }
 
@@ -481,6 +604,18 @@ function NewProjectPanel({ id, units, vendors, onClose, onCreated, onVendorCreat
       </div>
 
       <Field label="Project Name *" value={name} onChange={setName} placeholder="e.g. Roof Repair" />
+
+      <div>
+        <label className="mb-1 block text-xs font-medium text-gray-500">Description</label>
+        <textarea aria-label="Project description" value={description} onChange={e => setDescription(e.target.value)} rows={2}
+          placeholder="Scope, what was found, anything worth remembering…"
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
+      </div>
+
+      <div>
+        <p className="mb-2 text-xs font-medium text-gray-500">Categories <span className="font-normal text-gray-400">(pick all that apply · edit the list in Admin → Trades)</span></p>
+        <TradePicker trades={trades} value={projectTrades} onChange={setProjectTrades} label={tradeLabel} ariaLabel="Project categories" />
+      </div>
 
       <div>
         <p className="mb-2 text-xs font-medium text-gray-500">Assign Units (cost split %, blank = even)</p>
@@ -523,6 +658,20 @@ function NewProjectPanel({ id, units, vendors, onClose, onCreated, onVendorCreat
         )}
       </div>
 
+      <div>
+        <p className="mb-2 text-xs font-medium text-gray-500">Transactions already paid <span className="font-normal text-gray-400">(optional — link what you&apos;ve spent so far)</span></p>
+        <ProjectTxnPicker propertyId={id} selected={txnIds} onChange={setTxnIds} preload={seedTxn} />
+      </div>
+
+      <div className="rounded-lg bg-white/70 p-3">
+        <label className="flex items-center gap-2 text-sm font-medium">
+          <input type="checkbox" checked={recurring} onChange={e => setRecurring(e.target.checked)} />
+          Recurring cost (e.g. lawn care, pest control)
+        </label>
+        {recurring && <div className="mt-3"><RecurringFields draft={recDraft} setDraft={setRecDraft} placeholder={name.trim() || 'Defaults to the project name'} /></div>}
+      </div>
+
+      {error && <p className="text-sm text-red-600">{error}</p>}
       <button onClick={create} disabled={saving || !name.trim()}
         className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
         {saving ? 'Creating…' : 'Create Project'}
@@ -536,7 +685,23 @@ function ProjectDetail({ project, units, vendors, onChanged, onVendorCreated }: 
   project: Project; units: UnitLite[]; vendors: VendorOption[];
   onChanged: () => Promise<void> | void; onVendorCreated: () => void;
 }) {
+  const { trades, label: tradeLabel } = useTrades();
   const [name, setName] = useState(projName(project));
+  const [description, setDescription] = useState(project.description ?? '');
+  const [linked, setLinked] = useState<CandidateTxn[] | null>(null);
+  const [linking, setLinking] = useState(false);
+  const [toLink, setToLink] = useState<number[]>([]);
+  const [linkNote, setLinkNote] = useState<string | null>(null);
+  const [recDraft, setRecDraft] = useState<RecurringDraft>(emptyRecurring);
+  const [recError, setRecError] = useState<string | null>(null);
+
+  const loadLinked = useCallback(async () => {
+    try {
+      const r = await sendJson<{ transactions: CandidateTxn[] }>(`/api/finance/projects/${project.id}/transactions`, 'GET');
+      setLinked(r.transactions);
+    } catch { setLinked([]); }
+  }, [project.id]);
+  useEffect(() => { void loadLinked(); }, [loadLinked]);
   const [draft, setDraft] = useState<Record<number, UnitDraft>>({});
   const [savingUnits, setSavingUnits] = useState(false);
   const [showImport, setShowImport] = useState(false);
@@ -544,8 +709,6 @@ function ProjectDetail({ project, units, vendors, onChanged, onVendorCreated }: 
   const [addCost, setAddCost] = useState('');
   const [addNotes, setAddNotes] = useState('');
   const [finalDrafts, setFinalDrafts] = useState<Record<number, string>>({});
-  const [recurringDesc, setRecurringDesc] = useState('');
-  const [recurringAmt, setRecurringAmt] = useState('');
 
   useEffect(() => {
     const seed: Record<number, UnitDraft> = {};
@@ -598,19 +761,33 @@ function ProjectDetail({ project, units, vendors, onChanged, onVendorCreated }: 
     await onChanged();
   }
   async function saveRecurring() {
-    if (!recurringAmt) return;
-    const winner = selectedQuote(project);
-    await fetch('/api/v2/recurring-costs', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        property_id: project.property_id,
-        vendor_id: winner?.vendor_id ?? null,
-        description: recurringDesc.trim() || projName(project),
-        monthly_amount: parseFloat(recurringAmt),
-      }),
-    });
-    await patchProject({ is_recurring: true });
-    setRecurringDesc(''); setRecurringAmt('');
+    if (!(Number(recDraft.amount) > 0)) { setRecError('Enter an amount'); return; }
+    setRecError(null);
+    try {
+      await sendJson('/api/v2/recurring-costs', 'POST', {
+        property_id: project.property_id, work_order_id: project.id,
+        vendor_id: selectedQuote(project)?.vendor_id ?? null,
+        ...recurringBody(recDraft, projName(project)),
+      });
+      setRecDraft(emptyRecurring());
+      await patchProject({ is_recurring: true });
+    } catch (e) { setRecError((e as Error).message); }
+  }
+  async function deleteRecurring(rid: number) {
+    if (!confirm('Delete this recurring cost?')) return;
+    await fetch(`/api/v2/recurring-costs/${rid}`, { method: 'DELETE' });
+    await onChanged();
+  }
+  async function linkSelected() {
+    try {
+      setLinkNote(await linkTxns(project.id, toLink));
+      setToLink([]); setLinking(false);
+      await loadLinked(); await onChanged();
+    } catch (e) { setLinkNote((e as Error).message); }
+  }
+  async function unlink(tid: number) {
+    await sendJson(`/api/finance/projects/${project.id}/transactions`, 'DELETE', { ids: [tid] });
+    await loadLinked(); await onChanged();
   }
 
   return (
@@ -623,6 +800,27 @@ function ProjectDetail({ project, units, vendors, onChanged, onVendorCreated }: 
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
         </div>
         <button onClick={deleteProject} className="text-xs text-red-400 hover:text-red-600">Delete project</button>
+      </div>
+
+      {/* Description */}
+      <div>
+        <label className="mb-1 block text-xs font-medium text-gray-500">Description</label>
+        <textarea aria-label="Project description" value={description} rows={2} onChange={e => setDescription(e.target.value)}
+          onBlur={() => { if (description !== (project.description ?? '')) patchProject({ description }); }}
+          placeholder="Scope, what was found, anything worth remembering…"
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
+      </div>
+
+      {/* Categories + my rating */}
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-[200px] flex-1">
+          <p className="mb-2 text-xs font-medium text-gray-500">Categories</p>
+          <TradePicker trades={trades} value={project.trades ?? []} onChange={next => patchProject({ trades: next })} label={tradeLabel} ariaLabel="Project categories" />
+        </div>
+        <div>
+          <p className="mb-1 text-xs font-medium text-gray-500">My rating</p>
+          <StarInput value={project.rating ?? null} onChange={n => patchProject({ rating: n })} label="My rating" />
+        </div>
       </div>
 
       {/* Status */}
@@ -710,19 +908,59 @@ function ProjectDetail({ project, units, vendors, onChanged, onVendorCreated }: 
         )}
       </div>
 
+      {/* Linked transactions */}
+      <div data-testid={`project-txns-${project.id}`}>
+        <div className="mb-2 flex items-center justify-between">
+          <p className="text-xs font-medium text-gray-500">Transactions {linked && linked.length > 0 && <span className="font-normal text-gray-400">({linked.length} · {fmt$(-linked.reduce((s, t) => s + Number(t.amount), 0))} spent)</span>}</p>
+          <button onClick={() => { setLinking(v => !v); setToLink([]); }} className="text-xs text-blue-600 hover:underline">{linking ? 'Cancel' : '+ Link transactions'}</button>
+        </div>
+        {linkNote && <p className="mb-2 text-xs text-amber-700">{linkNote}</p>}
+        {linking && (
+          <div className="mb-3 space-y-2">
+            <ProjectTxnPicker propertyId={project.property_id} projectId={project.id} selected={toLink} onChange={setToLink} />
+            <button onClick={linkSelected} disabled={!toLink.length} className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
+              Link {toLink.length || ''} transaction{toLink.length === 1 ? '' : 's'}
+            </button>
+          </div>
+        )}
+        {linked === null ? <p className="text-xs text-gray-400">Loading…</p> : linked.length === 0 ? (
+          <p className="text-xs text-gray-400">No transactions linked yet.</p>
+        ) : (
+          <div className="divide-y divide-gray-100 rounded-lg border border-gray-200 text-xs">
+            {linked.map(t => (
+              <div key={t.id} className="flex items-center gap-3 px-3 py-1.5">
+                <span className="w-20 shrink-0 text-gray-500">{new Date(String(t.date).slice(0, 10) + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}</span>
+                <span className="min-w-0 flex-1 truncate" title={t.description}>{t.description}</span>
+                <span className="shrink-0 text-gray-400">{t.category}</span>
+                <span className={`w-24 shrink-0 text-right tabular ${Number(t.amount) < 0 ? 'text-red-600' : 'text-green-700'}`}>{fmt$(Math.abs(Number(t.amount)))}</span>
+                <button onClick={() => void unlink(t.id)} className="shrink-0 text-gray-400 hover:text-red-600" title="Take off this project (stays on the property)">Unlink</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Recurring cost */}
       <div className="rounded-lg bg-gray-50 p-4">
         <label className="flex items-center gap-2 text-sm font-medium">
           <input type="checkbox" checked={project.is_recurring} onChange={() => patchProject({ is_recurring: !project.is_recurring })} />
-          Mark as recurring cost
+          Recurring cost
         </label>
+        {(project.recurring ?? []).length > 0 && (
+          <ul className="mt-3 space-y-1 text-sm">
+            {(project.recurring ?? []).map(r => (
+              <li key={r.id} className="flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-1.5">
+                <span><span className="font-medium">{r.description}</span> <span className="text-gray-500">· {describeRecurring(r)}</span></span>
+                <button onClick={() => void deleteRecurring(r.id)} className="text-xs text-red-400 hover:text-red-600">Delete</button>
+              </li>
+            ))}
+          </ul>
+        )}
         {project.is_recurring && (
-          <div className="mt-3 flex flex-wrap items-end gap-2">
-            <input value={recurringDesc} onChange={e => setRecurringDesc(e.target.value)} placeholder="Description (defaults to project name)"
-              className="flex-1 min-w-[160px] rounded-lg border border-gray-300 px-3 py-2 text-sm" />
-            <input type="number" value={recurringAmt} onChange={e => setRecurringAmt(e.target.value)} placeholder="$/mo"
-              className="w-28 rounded-lg border border-gray-300 px-3 py-2 text-sm" />
-            <button onClick={saveRecurring} disabled={!recurringAmt} className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">Save recurring cost</button>
+          <div className="mt-3 space-y-2">
+            <RecurringFields draft={recDraft} setDraft={setRecDraft} placeholder={projName(project)} />
+            {recError && <p className="text-xs text-red-600">{recError}</p>}
+            <button onClick={saveRecurring} disabled={!recDraft.amount} className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">Add recurring cost</button>
           </div>
         )}
       </div>

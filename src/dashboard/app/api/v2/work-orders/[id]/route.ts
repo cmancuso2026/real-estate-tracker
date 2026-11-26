@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
+import { normalizeTrades, PROJECT_TRADES_SQL, setProjectTrades } from '@/lib/vendor-trades';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,7 +9,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const rows = await query(
-    `SELECT wo.*, p.address AS property_address
+    `SELECT wo.*, p.address AS property_address, ${PROJECT_TRADES_SQL} AS trades
      FROM work_orders wo
      LEFT JOIN owned_properties p ON p.id = wo.property_id
      WHERE wo.id = $1`,
@@ -36,7 +37,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   return NextResponse.json({ ...rows[0], quotes });
 }
 
-// PATCH /api/v2/work-orders/[id] — update project/work-order fields.
+// PATCH /api/v2/work-orders/[id] — update project/work-order fields. `trades`
+// (string[]) replaces the project's trades; `description: ''` clears it.
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const body = await req.json();
@@ -57,7 +59,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
        vendor_id      = COALESCE($7, vendor_id),
        quoted_cost    = COALESCE($8, quoted_cost),
        actual_cost    = COALESCE($9, actual_cost),
-       rating         = COALESCE($10, rating),
+       rating         = CASE WHEN $14 THEN $10 ELSE rating END,
        review_notes   = COALESCE($11, review_notes),
        date_completed = COALESCE($12, date_completed),
        updated_at     = to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')
@@ -68,9 +70,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       category ?? null, description ?? null, unit_id ?? null, vendor_id ?? null,
       quoted_cost ?? null, actual_cost ?? null, rating ?? null, review_notes ?? null,
       date_completed ?? null, id,
+      // rating: null clears it, so only touch it when the body has it.
+      'rating' in body,
     ]
   );
   if (!rows.length) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  if (body.trades !== undefined) await setProjectTrades(Number(id), normalizeTrades(body.trades));
   return NextResponse.json(rows[0]);
 }
 
