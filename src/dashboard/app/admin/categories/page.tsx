@@ -63,11 +63,13 @@ export default function AdminCategoriesPage() {
     else next.add(id);
     saveCollapsed(next);
   };
+  const [sortPeriod, setSortPeriod] = useState<'3m' | '12m' | 'ytd' | 'all'>('3m');
+  const PERIOD_LABEL = { '3m': 'the last 3 months', '12m': 'the last 12 months', ytd: 'this year', all: 'all time' } as const;
   async function sortPreset(groupsDir: 'asc' | 'desc' | null, catsDir: 'asc' | 'desc' | null) {
-    const word = (d: string) => (d === 'desc' ? 'descending (largest total first)' : 'ascending (smallest total first)');
+    const word = (d: string) => (d === 'desc' ? 'descending (income first)' : 'ascending (biggest spending first)');
     const what = [groupsDir && `groups ${word(groupsDir)}`, catsDir && `categories in every group ${word(catsDir)}`].filter(Boolean).join(' and ');
-    if (!confirm(`Sort ${what} by total amount? This replaces the order you set with the arrows.`)) return;
-    await direct({ op: 'sort', groups: groupsDir, categories: catsDir });
+    if (!confirm(`Sort ${what}, by total over ${PERIOD_LABEL[sortPeriod]}? This replaces the order you set with the arrows.`)) return;
+    await direct({ op: 'sort', groups: groupsDir, categories: catsDir, period: sortPeriod });
   }
 
   const load = useCallback(async () => {
@@ -198,7 +200,16 @@ export default function AdminCategoriesPage() {
       </div>
 
       <div className={`${card} flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3`} data-testid="order-toolbar">
-        <span className="text-sm font-medium text-gray-700">Sort by total amount</span>
+        <span className="text-sm font-medium text-gray-700">Sort by total</span>
+        <label className="flex items-center gap-1 text-xs text-gray-500">
+          over
+          <select aria-label="Sort period" className={`${input} py-0.5 text-xs`} value={sortPeriod} onChange={(e) => setSortPeriod(e.target.value as typeof sortPeriod)}>
+            <option value="3m">last 3 months</option>
+            <option value="12m">last 12 months</option>
+            <option value="ytd">this year</option>
+            <option value="all">all time</option>
+          </select>
+        </label>
         <span className="flex items-center gap-1 text-xs text-gray-500">
           Groups
           <button className={btn} onClick={() => void sortPreset('asc', null)}>Ascending</button>
@@ -219,7 +230,7 @@ export default function AdminCategoriesPage() {
           <button className={btn} onClick={() => saveCollapsed(new Set())}>Expand all</button>
         </span>
         <p className="w-full text-xs text-gray-400">
-          Ascending puts the smallest total first; descending the largest (all-time, by how much money went through each). Or set your own order with the ↑ ↓ arrows on each group and category. Collapse the groups to see and reorder just the groups.
+          Totals are money in minus money out, as on the Categories page: ascending puts the biggest spending first and income last; descending the reverse. Or set your own order with the ↑ ↓ arrows on each group and category. Collapse the groups to see and reorder just the groups.
           This order is used in every category dropdown and list.
         </p>
       </div>

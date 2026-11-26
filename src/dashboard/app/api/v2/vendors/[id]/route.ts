@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
-import { normalizeTrades, setVendorTrades, VENDOR_RATING_SQL, VENDOR_TRADES_SQL } from '@/lib/vendor-trades';
+import { normalizeTrades, PROJECT_TRADES_SQL, setVendorTrades, VENDOR_RATING_SQL, VENDOR_TRADES_SQL } from '@/lib/vendor-trades';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,7 +17,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       `SELECT pq.id, pq.work_order_id, pq.quoted_cost, pq.final_cost,
               pq.is_selected, pq.notes, pq.status AS quote_status,
               wo.project_name, wo.description, wo.status, wo.property_id,
-              wo.rating, wo.review_notes,
+              wo.rating, wo.review_notes, ${PROJECT_TRADES_SQL} AS trades,
               p.address AS property_address
        FROM project_quotes pq
        JOIN work_orders wo ON wo.id = pq.work_order_id
