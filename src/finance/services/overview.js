@@ -137,6 +137,17 @@ export async function getOverview(knex, opts = {}) {
     }))
     .sort((a, b) => a.expiration_date.localeCompare(b.expiration_date));
 
+  // Cash flow per property (rent, PITI, expenses) for the month and YTD.
+  const flow = propertyCashFlow(await withAllocations(knex, ytdRows), mappings, { month });
+  // PITI this month: the PITI categories mapped to each property (negative
+  // amounts = paid), shown as a positive total with each property's part.
+  const pitiByProperty = props.map((p) => ({ property_id: p.id, address: p.address, amount: r2(-(flow.get(p.id)?.month.piti ?? 0)) }));
+  const pitiMonth = {
+    total: r2(pitiByProperty.reduce((s, x) => s + x.amount, 0)),
+    ytd: r2(-props.reduce((s, p) => s + (flow.get(p.id)?.ytd.piti ?? 0), 0)),
+    by_property: pitiByProperty,
+  };
+
   const realEstate = {
     properties: props.length,
     units: units.length,
@@ -145,12 +156,12 @@ export async function getOverview(knex, opts = {}) {
     occupancy: rental.length ? r2(occupied.length / rental.length) : null,
     rent_roll: rentRoll,
     rent_this_month: { due, collected, outstanding },
+    piti_this_month: pitiMonth,
     expiring_leases: expiringLeases,
     expiring_policies: expiringPolicies,
   };
 
   // ── Per property ────────────────────────────────────────────────────────
-  const flow = propertyCashFlow(await withAllocations(knex, ytdRows), mappings, { month });
   const zero = { rent: 0, piti: 0, expenses: 0, net: 0, count: 0 };
   const propertiesTable = props.map((p) => {
     const pu = units.filter((u) => u.property_id === p.id);

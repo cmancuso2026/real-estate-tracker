@@ -258,11 +258,14 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
             </div>
           </Card>
           <Card>
-            <Label>Monthly rent roll</Label>
-            <div className="mt-1 text-3xl font-bold tabular" data-testid="re-rentroll">
-              {money(re.rent_roll, false)}
+            <Label>PITI {isCurrent ? 'this month' : `in ${monthLabel(o.month).split(' ')[0]}`}</Label>
+            <div className="mt-1 text-3xl font-bold tabular" data-testid="re-piti">
+              {money(re.piti_this_month.total, false)}
             </div>
-            <div className="mt-1 text-xs text-gray-500">scheduled, from current leases</div>
+            <div className="mt-1 text-xs text-gray-500" data-testid="re-piti-split">
+              {re.piti_this_month.by_property.map((p) => `${p.address.split(' ')[0]} ${money(p.amount, false)}`).join(' · ')}
+            </div>
+            <div className="mt-0.5 text-[11px] text-gray-400">YTD {money(re.piti_this_month.ytd, false)}</div>
           </Card>
           <Card>
             <Label>Rent {isCurrent ? 'this month' : `in ${monthLabel(o.month).split(' ')[0]}`}</Label>
