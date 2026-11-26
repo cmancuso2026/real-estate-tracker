@@ -12,6 +12,9 @@ interface Vendor {
   manual_rating: number | null; manual_notes: string | null;
   total_jobs: number; completed_jobs: number; avg_internal_rating: number | null; total_spend: number | null;
   project_count: number | null;
+  /** Average of "My rating" on the vendor's projects (null when none are rated). */
+  avg_project_rating?: number | string | null;
+  rated_projects?: number;
   is_active: boolean;
 }
 
@@ -19,7 +22,8 @@ interface VendorQuote {
   id: number; work_order_id: number; quoted_cost: number | null; final_cost: number | null;
   is_selected: boolean; notes: string | null;
   project_name: string | null; description: string | null; status: string | null;
-  property_address: string | null;
+  property_address: string | null; property_id?: number;
+  rating?: number | null; review_notes?: string | null; quote_status?: string | null;
 }
 interface WorkOrderOption { id: number; project_name: string | null; description: string | null; property_address: string | null; }
 
@@ -82,8 +86,10 @@ function VendorsPageInner() {
   const [justCreated, setJustCreated] = useState<{ id: number; name: string } | null>(null);
   const [promptCreateProject, setPromptCreateProject] = useState(false);
 
+  // Only the first load shows "Loading…": later refreshes (after a save) keep
+  // the table, and any open vendor / project panel, on screen.
   const load = async (q = '') => {
-    setLoading(true);
+    if (!vendors.length) setLoading(true);
     try {
       const [vRes, sRes] = await Promise.all([
         fetch(`/api/v2/vendors${q ? `?search=${encodeURIComponent(q)}` : ''}`),
@@ -338,7 +344,10 @@ function VendorsPageInner() {
                               : <span className="text-xs text-gray-400">Not found</span>
                             }
                           </td>
-                          <td className="px-5 py-3"><Stars rating={v.manual_rating} /></td>
+                          <td className="px-5 py-3" title={v.avg_project_rating != null ? `Average of ${v.rated_projects} rated project${v.rated_projects === 1 ? '' : 's'}` : 'Overall rating (no rated projects yet)'}>
+                            <Stars rating={v.avg_project_rating != null ? Number(v.avg_project_rating) : v.manual_rating} />
+                            {v.avg_project_rating != null && <span className="ml-1 text-xs text-gray-400">{Number(v.avg_project_rating).toFixed(1)}</span>}
+                          </td>
                           <td className="px-5 py-3 tabular">{v.project_count ?? 0}</td>
                           <td className="px-5 py-3 tabular">{v.completed_jobs}/{v.total_jobs}</td>
                           <td className="px-5 py-3 tabular">{fmt$(v.total_spend)}</td>
@@ -505,7 +514,12 @@ function VendorImportPanel({ onCancel, onDone }: { onCancel: () => void; onDone:
   );
 }
 
-// ── Expandable vendor detail: edit fields, manage projects, delete ────────────────
+// ── Expandable vendor detail ──────────────────────────────────────────────────────
+// Top: name and trades, with phone, email and the vendor's rating (the average
+// of your project ratings) at the top right. Middle: the vendor's projects,
+// each with its own rating and notes. Bottom: the vendor's details, or, when
+// you click a project, that project's editor (rating, notes, status, and this
+// vendor's quote) with a Save button.
 function VendorDetail({ vendor, onSaved, onDeleted }: { vendor: Vendor; onSaved: () => void; onDeleted: () => void }) {
   const { trades, label: tradeLabel } = useTrades();
   const [form, setForm] = useState({
@@ -514,12 +528,11 @@ function VendorDetail({ vendor, onSaved, onDeleted }: { vendor: Vendor; onSaved:
     manual_notes: vendor.manual_notes ?? '', manual_rating: vendor.manual_rating ?? 0,
   });
   const [quotes, setQuotes] = useState<VendorQuote[]>([]);
+  const [rating, setRating] = useState<{ avg: number | null; count: number }>({ avg: vendor.avg_project_rating != null ? Number(vendor.avg_project_rating) : null, count: vendor.rated_projects ?? 0 });
   const [loadingQuotes, setLoadingQuotes] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
-
-  // Which project row is expanded to show all competing quotes (by work_order_id)
-  const [expandedProjectId, setExpandedProjectId] = useState<number | null>(null);
+  const [openQuoteId, setOpenQuoteId] = useState<number | null>(null);
 
   // Assign-to-project UI
   const [assigning, setAssigning] = useState(false);
@@ -536,6 +549,7 @@ function VendorDetail({ vendor, onSaved, onDeleted }: { vendor: Vendor; onSaved:
       if (res.ok) {
         const data = await res.json();
         setQuotes(Array.isArray(data.quotes) ? data.quotes : []);
+        setRating({ avg: data.avg_project_rating != null ? Number(data.avg_project_rating) : null, count: data.rated_projects ?? 0 });
       }
     } catch (e) {
       console.error('Failed to load vendor detail:', e);
@@ -576,172 +590,288 @@ function VendorDetail({ vendor, onSaved, onDeleted }: { vendor: Vendor; onSaved:
       }
     } catch (e) { console.error('Failed to load projects:', e); }
   };
-
   const closeAssign = () => { setAssigning(false); setCreatingProject(false); setAssignWoId(''); setAssignCost(''); };
-
   const submitAssign = async () => {
     if (!assignWoId) return;
     setAssignSaving(true);
     try {
       await fetch('/api/v2/project-quotes', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          work_order_id: Number(assignWoId), vendor_id: vendor.id,
-          quoted_cost: assignCost ? parseFloat(assignCost) : null,
-        }),
+        body: JSON.stringify({ work_order_id: Number(assignWoId), vendor_id: vendor.id, quoted_cost: assignCost ? parseFloat(assignCost) : null }),
       });
-      setAssigning(false); setAssignWoId(''); setAssignCost('');
+      closeAssign();
       loadDetail();
       onSaved();
     } finally { setAssignSaving(false); }
   };
 
-  const woLabel = (w: WorkOrderOption) =>
-    `${w.project_name || w.description || `Project #${w.id}`}${w.property_address ? ` — ${w.property_address}` : ''}`;
+  const woLabel = (w: WorkOrderOption) => `${w.project_name || w.description || `Project #${w.id}`}${w.property_address ? ` — ${w.property_address}` : ''}`;
   const quoteLabel = (q: VendorQuote) => q.project_name || q.description || `Project #${q.work_order_id}`;
+  const open = quotes.find((q) => q.id === openQuoteId) ?? null;
+  const shownRating = rating.avg ?? (vendor.manual_rating || null);
 
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
-      {/* LEFT: editable fields */}
-      <div>
-        <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">Vendor Details</h4>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="mb-1 block text-xs text-gray-500">Name</label>
-            <input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
-          </div>
-          <div className="col-span-2">
-            <label className="mb-1 block text-xs text-gray-500">Trades <span className="text-gray-400">(pick all that apply)</span></label>
-            <TradePicker trades={trades} value={form.trades} onChange={next => setForm(p => ({ ...p, trades: next }))} label={tradeLabel} />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs text-gray-500">Phone</label>
-            <input value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs text-gray-500">Email</label>
-            <input value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs text-gray-500">My Rating</label>
-            <select value={form.manual_rating} onChange={e => setForm(p => ({ ...p, manual_rating: Number(e.target.value) }))}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
-              <option value={0}>—</option>
-              {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{'★'.repeat(n)}</option>)}
-            </select>
-          </div>
+    <div className="space-y-5" data-testid={`vendor-detail-${vendor.id}`}>
+      {/* Header: name + trades; contact and rating top right */}
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <div className="text-lg font-semibold">{vendor.name}</div>
+          <div className="mt-1"><TradePills keys={vendorTrades(vendor)} label={tradeLabel} /></div>
         </div>
-        <div className="mt-3">
-          <label className="mb-1 block text-xs text-gray-500">Notes</label>
-          <textarea value={form.manual_notes} onChange={e => setForm(p => ({ ...p, manual_notes: e.target.value }))} rows={2}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
-        </div>
-        <div className="mt-4 flex gap-2">
-          <button onClick={save} disabled={saving || !form.trades.length}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
-            {saving ? 'Saving…' : 'Save'}
-          </button>
-          <button onClick={remove} disabled={deleting}
-            className="rounded-lg border border-red-300 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50">
-            {deleting ? 'Deleting…' : 'Delete'}
-          </button>
+        <div className="text-right text-sm" data-testid="vendor-contact">
+          {vendor.phone && <div><a href={`tel:${vendor.phone}`} className="text-blue-600 hover:underline">📞 {vendor.phone}</a></div>}
+          {vendor.email && <div><a href={`mailto:${vendor.email}`} className="text-blue-600 hover:underline">✉ {vendor.email}</a></div>}
+          <div className="mt-1" data-testid="vendor-rating">
+            <Stars rating={shownRating} />
+            <span className="ml-1 text-xs text-gray-500">
+              {rating.avg != null ? `${rating.avg.toFixed(1)} · average of ${rating.count} rated project${rating.count === 1 ? '' : 's'}` : vendor.manual_rating ? 'overall rating (no rated projects yet)' : 'no ratings yet'}
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* RIGHT: projects */}
+      {/* Projects */}
       <div>
-        <div className="mb-3 flex items-center justify-between">
-          <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Projects</h4>
-          {!assigning && (
-            <button onClick={openAssign} className="text-xs font-medium text-blue-600 hover:text-blue-700">+ Assign to Project</button>
-          )}
+        <div className="mb-2 flex items-center justify-between">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Projects <span className="font-normal normal-case text-gray-400">— click one to see and edit it</span></h4>
+          {!assigning && <button onClick={openAssign} className="text-xs font-medium text-blue-600 hover:text-blue-700">+ Assign to Project</button>}
         </div>
-
         {assigning && (
           creatingProject ? (
-            <div className="mb-3">
-              <CreateProjectInline
-                vendorId={vendor.id}
-                onCreated={() => { closeAssign(); loadDetail(); onSaved(); }}
-                onCancel={() => setCreatingProject(false)}
-              />
+            <div className="mb-3 max-w-md">
+              <CreateProjectInline vendorId={vendor.id} onCreated={() => { closeAssign(); loadDetail(); onSaved(); }} onCancel={() => setCreatingProject(false)} />
             </div>
           ) : (
-            <div className="mb-3 rounded-lg border border-blue-200 bg-blue-50 p-3">
-              <label className="mb-1 block text-xs text-gray-500">Project</label>
-              <select value={assignWoId} onChange={e => setAssignWoId(e.target.value)}
-                className="mb-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
-                <option value="">Select a project…</option>
-                {workOrders.map(w => <option key={w.id} value={w.id}>{woLabel(w)}</option>)}
-              </select>
-              <button onClick={() => setCreatingProject(true)}
-                className="mb-2 text-xs font-medium text-green-700 hover:text-green-800">+ Create New Project</button>
-              <label className="mb-1 block text-xs text-gray-500">Quoted Cost ($)</label>
-              <input type="number" value={assignCost} onChange={e => setAssignCost(e.target.value)}
-                className="mb-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
-              <div className="flex gap-2">
-                <button onClick={submitAssign} disabled={assignSaving || !assignWoId}
-                  className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50">
-                  {assignSaving ? 'Saving…' : 'Assign'}
-                </button>
-                <button onClick={closeAssign}
-                  className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs hover:bg-gray-50">Cancel</button>
-              </div>
+            <div className="mb-3 flex flex-wrap items-end gap-2 rounded-lg border border-blue-200 bg-blue-50 p-3">
+              <label className="text-xs text-gray-500">Project
+                <select value={assignWoId} onChange={e => setAssignWoId(e.target.value)} className="mt-1 block rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                  <option value="">Select a project…</option>
+                  {workOrders.map(w => <option key={w.id} value={w.id}>{woLabel(w)}</option>)}
+                </select>
+              </label>
+              <label className="text-xs text-gray-500">Quoted Cost ($)
+                <input type="number" value={assignCost} onChange={e => setAssignCost(e.target.value)} className="mt-1 block w-32 rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+              </label>
+              <button onClick={submitAssign} disabled={assignSaving || !assignWoId} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50">{assignSaving ? 'Saving…' : 'Assign'}</button>
+              <button onClick={() => setCreatingProject(true)} className="rounded-lg border border-green-300 px-3 py-2 text-xs font-medium text-green-700 hover:bg-green-50">+ Create New Project</button>
+              <button onClick={closeAssign} className="rounded-lg border border-gray-300 px-3 py-2 text-xs hover:bg-gray-50">Cancel</button>
             </div>
           )
         )}
-
         {loadingQuotes ? (
           <p className="text-sm text-gray-400">Loading projects…</p>
         ) : quotes.length === 0 ? (
           <p className="text-sm text-gray-400">No projects assigned yet.</p>
         ) : (
-          <div className="overflow-hidden rounded-lg border border-gray-200">
+          <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
             <table className="w-full text-xs">
               <thead className="bg-gray-100">
-                <tr>
-                  {['Project', 'Quoted', 'Final', 'Status'].map(h => (
-                    <th key={h} className="px-3 py-2 text-left font-medium text-gray-500">{h}</th>
-                  ))}
-                </tr>
+                <tr>{['Project', 'Status', 'Quoted', 'Final', 'My rating', 'Notes'].map(h => <th key={h} className="px-3 py-2 text-left font-medium text-gray-500">{h}</th>)}</tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {quotes.map(q => (
-                  <Fragment key={q.id}>
-                    <tr
-                      onClick={() => setExpandedProjectId(id => (id === q.work_order_id ? null : q.work_order_id))}
-                      className={`cursor-pointer hover:bg-gray-100 ${expandedProjectId === q.work_order_id ? 'bg-gray-100' : ''}`}
-                    >
-                      <td className="px-3 py-2">
-                        <span className="mr-1 inline-block text-gray-400">{expandedProjectId === q.work_order_id ? '▾' : '▸'}</span>
-                        {quoteLabel(q)}
-                        {q.is_selected && <span className="ml-1 text-green-600">✓</span>}
-                        {q.property_address && <span className="ml-4 block text-gray-400">{q.property_address}</span>}
-                      </td>
-                      <td className="px-3 py-2 tabular">{fmt$(q.quoted_cost)}</td>
-                      <td className="px-3 py-2 tabular">{fmt$(q.final_cost)}</td>
-                      <td className="px-3 py-2 text-gray-500">{q.status ? capitalize(q.status) : '—'}</td>
-                    </tr>
-                    {expandedProjectId === q.work_order_id && (
-                      <tr className="bg-gray-50">
-                        <td colSpan={4} className="px-3 py-3">
-                          <ProjectQuotes
-                            workOrderId={q.work_order_id}
-                            projectLabel={quoteLabel(q)}
-                            onChanged={() => { loadDetail(); onSaved(); }}
-                          />
-                        </td>
-                      </tr>
-                    )}
-                  </Fragment>
+                  <tr key={q.id} onClick={() => setOpenQuoteId(id => (id === q.id ? null : q.id))}
+                    className={`cursor-pointer hover:bg-blue-50/60 ${openQuoteId === q.id ? 'bg-blue-50' : ''}`} data-testid={`vendor-project-${q.work_order_id}`}>
+                    <td className="px-3 py-2">
+                      <span className="font-medium">{quoteLabel(q)}</span>
+                      {q.is_selected && <span className="ml-1 rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] text-green-700">did the work</span>}
+                      {q.property_address && <span className="block text-gray-400">{q.property_address}</span>}
+                    </td>
+                    <td className="px-3 py-2 text-gray-500">{q.status ? capitalize(q.status) : '—'}</td>
+                    <td className="px-3 py-2 tabular">{fmt$(q.quoted_cost)}</td>
+                    <td className="px-3 py-2 tabular">{fmt$(q.final_cost)}</td>
+                    <td className="px-3 py-2"><Stars rating={q.rating ?? null} /></td>
+                    <td className="max-w-[18rem] px-3 py-2 text-gray-500">
+                      <span className="line-clamp-2" title={[q.review_notes, q.description].filter(Boolean).join(' — ')}>{q.review_notes || q.description || '—'}</span>
+                    </td>
+                  </tr>
                 ))}
               </tbody>
             </table>
           </div>
         )}
+      </div>
+
+      {/* Lower half: the clicked project, or the vendor's details */}
+      {open ? (
+        <VendorProjectPanel key={open.id} quote={open} vendorName={vendor.name}
+          onClose={() => setOpenQuoteId(null)}
+          onSaved={() => { loadDetail(); onSaved(); }} />
+      ) : (
+        <div className="rounded-lg border border-gray-200 bg-white p-4">
+          <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">Vendor details</h4>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-xs text-gray-500">Name</label>
+              <input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-gray-500">Overall rating <span className="text-gray-400">(used until a project is rated)</span></label>
+              <select value={form.manual_rating} onChange={e => setForm(p => ({ ...p, manual_rating: Number(e.target.value) }))} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
+                <option value={0}>—</option>
+                {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{'★'.repeat(n)}</option>)}
+              </select>
+            </div>
+            <div className="col-span-2">
+              <label className="mb-1 block text-xs text-gray-500">Trades <span className="text-gray-400">(pick all that apply)</span></label>
+              <TradePicker trades={trades} value={form.trades} onChange={next => setForm(p => ({ ...p, trades: next }))} label={tradeLabel} />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-gray-500">Phone</label>
+              <input value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-gray-500">Email</label>
+              <input value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
+            </div>
+          </div>
+          <div className="mt-3">
+            <label className="mb-1 block text-xs text-gray-500">Notes about this vendor</label>
+            <textarea value={form.manual_notes} onChange={e => setForm(p => ({ ...p, manual_notes: e.target.value }))} rows={2} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
+          </div>
+          <div className="mt-4 flex gap-2">
+            <button onClick={save} disabled={saving || !form.trades.length} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">{saving ? 'Saving…' : 'Save'}</button>
+            <button onClick={remove} disabled={deleting} className="rounded-lg border border-red-300 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50">{deleting ? 'Deleting…' : 'Delete'}</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── One project, from the vendor's side: the project's rating, notes, status and
+// description, and this vendor's quote. Everything saves together.
+interface ProjectFull {
+  id: number; project_name: string | null; description: string | null; status: string; property_id: number; property_address: string | null;
+  rating: number | null; review_notes: string | null;
+  quotes: { id: number; vendor_id: number; vendor_name: string; quoted_cost: number | null; final_cost: number | null; is_selected: boolean; status: string | null; notes: string | null }[];
+}
+function VendorProjectPanel({ quote, vendorName, onClose, onSaved }: { quote: VendorQuote; vendorName: string; onClose: () => void; onSaved: () => void }) {
+  const [p, setP] = useState<ProjectFull | null>(null);
+  const [edit, setEdit] = useState<null | {
+    status: string; description: string; rating: number | null; review_notes: string;
+    quoted: string; final: string; notes: string; quote_status: string; selected: boolean;
+  }>(null);
+  const [initial, setInitial] = useState<string>('');
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const load = async () => {
+    const res = await fetch(`/api/v2/work-orders/${quote.work_order_id}`);
+    if (!res.ok) { setMsg('Couldn’t load this project.'); return; }
+    const data: ProjectFull = await res.json();
+    setP(data);
+    const mine = data.quotes.find((q) => q.id === quote.id);
+    const e = {
+      status: data.status, description: data.description ?? '', rating: data.rating ?? null, review_notes: data.review_notes ?? '',
+      quoted: mine?.quoted_cost != null ? String(Number(mine.quoted_cost)) : '', final: mine?.final_cost != null ? String(Number(mine.final_cost)) : '',
+      notes: mine?.notes ?? '', quote_status: mine?.status ?? 'received', selected: !!mine?.is_selected,
+    };
+    setEdit(e);
+    setInitial(JSON.stringify(e));
+  };
+  useEffect(() => { void load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [quote.id]);
+
+  if (!p || !edit) return <div className="rounded-lg border border-blue-200 bg-white p-4 text-sm text-gray-400">{msg ?? 'Loading project…'}</div>;
+  const dirty = JSON.stringify(edit) !== initial;
+  const set = (x: Partial<typeof edit>) => { setEdit({ ...edit, ...x }); setMsg(null); };
+  const inp = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none';
+
+  async function save() {
+    if (!edit) return;
+    setSaving(true);
+    setMsg(null);
+    try {
+      const a = await fetch(`/api/v2/work-orders/${p!.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: edit.status, description: edit.description, rating: edit.rating, review_notes: edit.review_notes }),
+      });
+      const b = await fetch(`/api/v2/project-quotes/${quote.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          quoted_cost: edit.quoted === '' ? null : Number(edit.quoted), final_cost: edit.final === '' ? null : Number(edit.final),
+          notes: edit.notes, status: edit.quote_status, ...(edit.selected ? { is_selected: true } : { is_selected: false }),
+        }),
+      });
+      if (!a.ok || !b.ok) throw new Error('Couldn’t save — try again.');
+      await load();
+      setMsg('Saved.');
+      onSaved();
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const others = p.quotes.filter((q) => q.id !== quote.id);
+  return (
+    <div className="space-y-4 rounded-lg border-2 border-blue-200 bg-white p-4" data-testid="vendor-project-panel">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-base font-semibold">{p.project_name || p.description || `Project #${p.id}`}</div>
+          <div className="text-xs text-gray-500">
+            {p.property_address ?? ''} · <a href={`/properties/${p.property_id}?tab=projects&project=${p.id}`} className="text-blue-600 hover:underline">Open in the property’s Projects tab →</a>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className={`text-xs ${dirty ? 'font-medium text-amber-700' : msg === 'Saved.' ? 'text-green-700' : msg ? 'text-red-600' : 'text-gray-400'}`}>{dirty ? 'Unsaved changes' : msg ?? ''}</span>
+          <button onClick={() => void save()} disabled={!dirty || saving} className="rounded-lg bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-40">{saving ? 'Saving…' : 'Save'}</button>
+          <button onClick={onClose} className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50">{dirty ? 'Discard & close' : 'Close'}</button>
+        </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="space-y-3">
+          <h5 className="text-xs font-semibold uppercase tracking-wide text-gray-500">The project</h5>
+          <div className="flex flex-wrap items-center gap-4">
+            <div>
+              <span className="mb-1 block text-xs text-gray-500">My rating for this project</span>
+              <span className="inline-flex" role="radiogroup" aria-label="Project rating">
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <button key={n} type="button" role="radio" aria-checked={edit.rating === n} aria-label={`${n} star${n > 1 ? 's' : ''}`}
+                    onClick={() => set({ rating: edit.rating === n ? null : n })}
+                    className={`text-xl leading-none ${edit.rating && n <= edit.rating ? 'text-amber-500' : 'text-gray-300 hover:text-amber-300'}`}>★</button>
+                ))}
+              </span>
+            </div>
+            <label className="text-xs text-gray-500">Project status
+              <select aria-label="Project status" value={edit.status} onChange={(e) => set({ status: e.target.value })} className="mt-1 block rounded-lg border border-gray-300 px-2 py-1.5 text-sm">
+                {PROJECT_STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+              </select>
+            </label>
+          </div>
+          <label className="block text-xs text-gray-500">Rating notes
+            <textarea aria-label="Rating notes" rows={2} value={edit.review_notes} onChange={(e) => set({ review_notes: e.target.value })} placeholder="How did the work go?" className={`${inp} mt-1`} />
+          </label>
+          <label className="block text-xs text-gray-500">Description
+            <textarea aria-label="Project description" rows={2} value={edit.description} onChange={(e) => set({ description: e.target.value })} className={`${inp} mt-1`} />
+          </label>
+        </div>
+        <div className="space-y-3">
+          <h5 className="text-xs font-semibold uppercase tracking-wide text-gray-500">{vendorName}’s quote</h5>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="text-xs text-gray-500">Quoted ($)<input aria-label="Quoted" type="number" value={edit.quoted} onChange={(e) => set({ quoted: e.target.value })} className={`${inp} mt-1`} /></label>
+            <label className="text-xs text-gray-500">Final ($)<input aria-label="Final" type="number" value={edit.final} onChange={(e) => set({ final: e.target.value })} className={`${inp} mt-1`} /></label>
+            <label className="text-xs text-gray-500">Quote status
+              <select aria-label="Quote status" value={edit.quote_status} onChange={(e) => set({ quote_status: e.target.value })} className={`${inp} mt-1`}>
+                {PROJECT_STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+              </select>
+            </label>
+            <label className="flex items-end gap-2 pb-2 text-sm">
+              <input type="checkbox" checked={edit.selected} onChange={(e) => set({ selected: e.target.checked })} /> {vendorName} did the work (chosen quote)
+            </label>
+          </div>
+          <label className="block text-xs text-gray-500">Quote notes
+            <textarea aria-label="Quote notes" rows={2} value={edit.notes} onChange={(e) => set({ notes: e.target.value })} className={`${inp} mt-1`} />
+          </label>
+          {others.length > 0 && (
+            <div className="text-xs text-gray-500">
+              <span className="font-medium">Other quotes:</span>{' '}
+              {others.map((o) => `${o.vendor_name} ${fmt$(o.quoted_cost)}${o.is_selected ? ' (chosen)' : ''}`).join(' · ')}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -825,100 +955,6 @@ function CreateProjectInline({ vendorId, onCreated, onCancel }: { vendorId: numb
         <button onClick={onCancel}
           className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs hover:bg-gray-50">Cancel</button>
       </div>
-    </div>
-  );
-}
-
-// ── All competing quotes on a single project, with inline per-quote status ────────
-interface ProjectQuoteRow {
-  id: number; vendor_id: number; vendor_name: string; vendor_trade: string | null;
-  quoted_cost: number | null; final_cost: number | null;
-  is_selected: boolean; status: string | null;
-}
-
-function ProjectQuotes({ workOrderId, projectLabel, onChanged }: { workOrderId: number; projectLabel: string; onChanged: () => void }) {
-  const { label: tradeLabel } = useTrades();
-  const [rows, setRows] = useState<ProjectQuoteRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [savingId, setSavingId] = useState<number | null>(null);
-
-  const load = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/v2/work-orders/${workOrderId}`);
-      if (res.ok) {
-        const data = await res.json();
-        setRows(Array.isArray(data.quotes) ? data.quotes : []);
-      }
-    } catch (e) {
-      console.error('Failed to load project quotes:', e);
-    } finally {
-      setLoading(false);
-    }
-  };
-  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [workOrderId]);
-
-  const updateStatus = async (quoteId: number, status: string) => {
-    setRows(prev => prev.map(r => (r.id === quoteId ? { ...r, status } : r))); // optimistic
-    setSavingId(quoteId);
-    try {
-      await fetch(`/api/v2/project-quotes/${quoteId}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status }),
-      });
-      onChanged();
-    } finally { setSavingId(null); }
-  };
-
-  return (
-    <div>
-      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-        All Quotes — {projectLabel}
-      </p>
-      {loading ? (
-        <p className="text-xs text-gray-400">Loading quotes…</p>
-      ) : rows.length === 0 ? (
-        <p className="text-xs text-gray-400">No quotes on this project yet.</p>
-      ) : (
-        <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-          <table className="w-full text-xs">
-            <thead className="bg-gray-100">
-              <tr>
-                {['Vendor', 'Quoted', 'Final', 'Status', 'Selected'].map(h => (
-                  <th key={h} className="px-3 py-2 text-left font-medium text-gray-500">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {rows.map(r => (
-                <tr key={r.id}>
-                  <td className="px-3 py-2">
-                    {r.vendor_name}
-                    {r.vendor_trade && <span className="block text-gray-400">{tradeLabel(r.vendor_trade)}</span>}
-                  </td>
-                  <td className="px-3 py-2 tabular">{fmt$(r.quoted_cost)}</td>
-                  <td className="px-3 py-2 tabular">{fmt$(r.final_cost)}</td>
-                  <td className="px-3 py-2">
-                    <select
-                      value={r.status ?? 'received'}
-                      disabled={savingId === r.id}
-                      onChange={e => updateStatus(r.id, e.target.value)}
-                      className="rounded-md border border-gray-300 px-2 py-1 text-xs focus:border-blue-500 focus:outline-none disabled:opacity-50"
-                    >
-                      {PROJECT_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-                    </select>
-                  </td>
-                  <td className="px-3 py-2">
-                    {r.is_selected
-                      ? <span className="rounded-full bg-green-100 px-2 py-0.5 text-green-700">✓ Selected</span>
-                      : <span className="text-gray-300">—</span>}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
     </div>
   );
 }

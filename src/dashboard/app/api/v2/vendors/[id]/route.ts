@@ -1,21 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
-import { normalizeTrades, setVendorTrades, VENDOR_TRADES_SQL } from '@/lib/vendor-trades';
+import { normalizeTrades, setVendorTrades, VENDOR_RATING_SQL, VENDOR_TRADES_SQL } from '@/lib/vendor-trades';
 
 export const dynamic = 'force-dynamic';
 
-// GET /api/v2/vendors/[id] — vendor record plus its project quotes (for the expandable row).
+// GET /api/v2/vendors/[id] — vendor record (with its average project rating) plus its
+// project quotes, each with the project's own rating and notes (for the expandable row).
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const vendorRows = await query(`SELECT v.*, ${VENDOR_TRADES_SQL} AS trades FROM vendors v WHERE v.id = $1`, [id]);
+  const vendorRows = await query(`SELECT v.*, ${VENDOR_TRADES_SQL} AS trades, ${VENDOR_RATING_SQL} FROM vendors v WHERE v.id = $1`, [id]);
   if (!vendorRows.length) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   let quotes: unknown[] = [];
   try {
     quotes = await query(
       `SELECT pq.id, pq.work_order_id, pq.quoted_cost, pq.final_cost,
-              pq.is_selected, pq.notes,
-              wo.project_name, wo.description, wo.status,
+              pq.is_selected, pq.notes, pq.status AS quote_status,
+              wo.project_name, wo.description, wo.status, wo.property_id,
+              wo.rating, wo.review_notes,
               p.address AS property_address
        FROM project_quotes pq
        JOIN work_orders wo ON wo.id = pq.work_order_id

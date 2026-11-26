@@ -59,6 +59,19 @@ test('projects: link, candidates, splits and unlink (pg-mem)', async () => {
     assert.deepEqual(await allocs(ids['SPLIT LUMBER']), [[a.id, -100, null], [b.id, -100, null]]);
     assert.deepEqual((await listProjectTransactions(knex, { id: roof.id })).transactions.map((t) => t.description), ['ROOFER DEPOSIT']);
 
+    // Same filters as the Transactions page, plus scope.
+    const f = (q) => projectCandidates(knex, { propertyId: a.id, projectId: roof.id, ...q }).then((r) => r.transactions.map((t) => t.description).sort());
+    assert.deepEqual(await f({ scope: 'unassigned' }), ['HOME DEPOT']);
+    assert.deepEqual(await f({ scope: 'property' }), ['SPLIT LUMBER']);
+    assert.deepEqual(await f({ year: '2026', months: '5', search: 'depot' }), ['HOME DEPOT']);
+    assert.deepEqual(await f({ year: '2025' }), []);
+    assert.deepEqual(await f({ source: 'Amex Gold' }), []);
+    assert.deepEqual(await f({ group: 'Investments' }), ['HOME DEPOT', 'SPLIT LUMBER']);
+    assert.deepEqual(await f({ category: 'Groceries' }), []);
+    const facets = (await projectCandidates(knex, { propertyId: a.id })).facets;
+    assert.deepEqual([facets.years, facets.sources], [['2026'], ['Bank of America']]);
+    assert.ok(facets.groups.find((g) => g.name === 'Investments').categories.includes('Repairs'));
+
     await assert.rejects(linkProjectTransactions(knex, { id: 9999 }, { ids: [ids['HOME DEPOT']] }), /Project 9999 not found/);
     await assert.rejects(linkProjectTransactions(knex, { id: roof.id }, { ids: [] }), /non-empty "ids"/);
     await assert.rejects(projectCandidates(knex, {}), /propertyId is required/);

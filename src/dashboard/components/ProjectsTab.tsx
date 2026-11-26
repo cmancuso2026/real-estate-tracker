@@ -27,6 +27,7 @@ interface Project {
   is_recurring: boolean;
   trades?: string[];
   rating?: number | null;
+  review_notes?: string | null;
   recurring?: RecurringRow[];
   /** Starting cost (whole dollars), e.g. set when a project is created from a transaction. */
   quoted_cost?: number | string | null;
@@ -483,7 +484,7 @@ export function ProjectsTab({ id, units, seed, focusProjectId }: { id: string; u
         ) : visibleProjects.map(p => {
           const sel = selectedQuote(p);
           return (
-            <div key={p.id} id={`project-${p.id}`} className="overflow-hidden rounded-xl border border-gray-200">
+            <div key={p.id} id={`project-${p.id}`} className="overflow-clip rounded-xl border border-gray-200">
               <button onClick={() => setExpandedId(expandedId === p.id ? null : p.id)}
                 className="flex w-full items-center justify-between gap-4 p-4 text-left hover:bg-gray-50">
                 <div className="min-w-0 flex-1">
@@ -686,8 +687,15 @@ function ProjectDetail({ project, units, vendors, onChanged, onVendorCreated }: 
   onChanged: () => Promise<void> | void; onVendorCreated: () => void;
 }) {
   const { trades, label: tradeLabel } = useTrades();
-  const [name, setName] = useState(projName(project));
-  const [description, setDescription] = useState(project.description ?? '');
+  // Edits are kept here until Save (or Discard).
+  const fromProject = useCallback(() => ({
+    name: projName(project), description: project.description ?? '', trades: project.trades ?? [],
+    rating: project.rating ?? null, review_notes: project.review_notes ?? '', status: project.status,
+  }), [project]);
+  const [edit, setEdit] = useState(fromProject);
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState<string | null>(null);
+  useEffect(() => { setEdit(fromProject()); }, [fromProject]);
   const [linked, setLinked] = useState<CandidateTxn[] | null>(null);
   const [linking, setLinking] = useState(false);
   const [toLink, setToLink] = useState<number[]>([]);
@@ -703,36 +711,71 @@ function ProjectDetail({ project, units, vendors, onChanged, onVendorCreated }: 
   }, [project.id]);
   useEffect(() => { void loadLinked(); }, [loadLinked]);
   const [draft, setDraft] = useState<Record<number, UnitDraft>>({});
-  const [savingUnits, setSavingUnits] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [addVendor, setAddVendor] = useState('');
   const [addCost, setAddCost] = useState('');
   const [addNotes, setAddNotes] = useState('');
   const [finalDrafts, setFinalDrafts] = useState<Record<number, string>>({});
 
-  useEffect(() => {
+  const unitSeed = useCallback(() => {
     const seed: Record<number, UnitDraft> = {};
     for (const u of units) {
       const a = project.units.find(x => x.unit_id === u.id);
       seed[u.id] = { checked: !!a, share: a?.cost_share != null ? String(num(a.cost_share)) : '' };
     }
-    setDraft(seed);
+    return seed;
   }, [project.units, units]);
+  useEffect(() => { setDraft(unitSeed()); }, [unitSeed]);
+
+  const base = fromProject();
+  const fieldsDirty = JSON.stringify(edit) !== JSON.stringify(base);
+  const unitsDirty = JSON.stringify(draft) !== JSON.stringify(unitSeed());
+  const finalsDirty = Object.entries(finalDrafts).some(([qid, v]) => {
+    const q = project.quotes.find(x => x.id === Number(qid));
+    return q && v !== (q.final_cost != null ? String(num(q.final_cost)) : '');
+  });
+  const dirty = fieldsDirty || unitsDirty || finalsDirty;
+  const setE = (p: Partial<typeof edit>) => { setEdit(e => ({ ...e, ...p })); setSaveMsg(null); };
+
+  async function saveAll() {
+    if (!edit.name.trim()) { setSaveMsg('The project needs a name.'); return; }
+    setSaving(true);
+    setSaveMsg(null);
+    try {
+      if (fieldsDirty) {
+        await sendJson(`/api/v2/work-orders/${project.id}`, 'PATCH', {
+          project_name: edit.name.trim(), description: edit.description, trades: edit.trades,
+          rating: edit.rating, review_notes: edit.review_notes, status: edit.status,
+        });
+      }
+      if (unitsDirty) {
+        const selected = units.filter(u => draft[u.id]?.checked)
+          .map(u => ({ unit_id: u.id, cost_share: draft[u.id]?.share ? parseFloat(draft[u.id]!.share) : null }));
+        await sendJson('/api/v2/project-units', 'POST', { work_order_id: project.id, units: selected });
+      }
+      for (const [qid, v] of Object.entries(finalDrafts)) {
+        await sendJson(`/api/v2/project-quotes/${qid}`, 'PATCH', { final_cost: v ? parseFloat(v) : null });
+      }
+      setFinalDrafts({});
+      await onChanged();
+      setSaveMsg('Saved.');
+    } catch (e) {
+      setSaveMsg(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+  function discard() {
+    setEdit(base);
+    setDraft(unitSeed());
+    setFinalDrafts({});
+    setSaveMsg(null);
+  }
 
   async function patchProject(patch: Record<string, unknown>) {
     await fetch(`/api/v2/work-orders/${project.id}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch),
     });
-    await onChanged();
-  }
-  async function saveUnits() {
-    setSavingUnits(true);
-    const selected = units.filter(u => draft[u.id]?.checked)
-      .map(u => ({ unit_id: u.id, cost_share: draft[u.id]?.share ? parseFloat(draft[u.id]!.share) : null }));
-    await fetch('/api/v2/project-units', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ work_order_id: project.id, units: selected }),
-    });
-    setSavingUnits(false);
     await onChanged();
   }
   async function addQuote() {
@@ -796,7 +839,7 @@ function ProjectDetail({ project, units, vendors, onChanged, onVendorCreated }: 
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="flex-1 min-w-[200px]">
           <label className="mb-1 block text-xs font-medium text-gray-500">Project Name</label>
-          <input value={name} onChange={e => setName(e.target.value)} onBlur={() => { if (name.trim() && name.trim() !== projName(project)) patchProject({ project_name: name.trim() }); }}
+          <input aria-label="Project name" value={edit.name} onChange={e => setE({ name: e.target.value })}
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
         </div>
         <button onClick={deleteProject} className="text-xs text-red-400 hover:text-red-600">Delete project</button>
@@ -805,8 +848,7 @@ function ProjectDetail({ project, units, vendors, onChanged, onVendorCreated }: 
       {/* Description */}
       <div>
         <label className="mb-1 block text-xs font-medium text-gray-500">Description</label>
-        <textarea aria-label="Project description" value={description} rows={2} onChange={e => setDescription(e.target.value)}
-          onBlur={() => { if (description !== (project.description ?? '')) patchProject({ description }); }}
+        <textarea aria-label="Project description" value={edit.description} rows={2} onChange={e => setE({ description: e.target.value })}
           placeholder="Scope, what was found, anything worth remembering…"
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
       </div>
@@ -815,11 +857,14 @@ function ProjectDetail({ project, units, vendors, onChanged, onVendorCreated }: 
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-[200px] flex-1">
           <p className="mb-2 text-xs font-medium text-gray-500">Categories</p>
-          <TradePicker trades={trades} value={project.trades ?? []} onChange={next => patchProject({ trades: next })} label={tradeLabel} ariaLabel="Project categories" />
+          <TradePicker trades={trades} value={edit.trades} onChange={next => setE({ trades: next })} label={tradeLabel} ariaLabel="Project categories" />
         </div>
-        <div>
-          <p className="mb-1 text-xs font-medium text-gray-500">My rating</p>
-          <StarInput value={project.rating ?? null} onChange={n => patchProject({ rating: n })} label="My rating" />
+        <div className="w-full sm:w-72">
+          <p className="mb-1 text-xs font-medium text-gray-500">My rating <span className="font-normal text-gray-400">(counts toward the vendor’s rating)</span></p>
+          <StarInput value={edit.rating} onChange={n => setE({ rating: n })} label="My rating" />
+          <textarea aria-label="Rating notes" value={edit.review_notes} rows={2} onChange={e => setE({ review_notes: e.target.value })}
+            placeholder="How did the work go? (shown on the vendor page)"
+            className="mt-1 w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs focus:border-blue-500 focus:outline-none" />
         </div>
       </div>
 
@@ -828,18 +873,15 @@ function ProjectDetail({ project, units, vendors, onChanged, onVendorCreated }: 
         <p className="mb-2 text-xs font-medium text-gray-500">Status</p>
         <div className="flex gap-2">
           {STATUSES.map(s => (
-            <button key={s} onClick={() => patchProject({ status: s })}
-              className={`rounded-full px-3 py-1 text-xs font-medium ${project.status === s ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'}`}>{capitalize(s)}</button>
+            <button key={s} onClick={() => setE({ status: s })}
+              className={`rounded-full px-3 py-1 text-xs font-medium ${edit.status === s ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'}`}>{capitalize(s)}</button>
           ))}
         </div>
       </div>
 
       {/* Units */}
       <div>
-        <div className="mb-2 flex items-center justify-between">
-          <p className="text-xs font-medium text-gray-500">Units Assigned (cost split %, blank = even)</p>
-          <button onClick={saveUnits} disabled={savingUnits} className="text-xs text-blue-600 hover:underline disabled:opacity-50">{savingUnits ? 'Saving…' : 'Save units'}</button>
-        </div>
+        <p className="mb-2 text-xs font-medium text-gray-500">Units Assigned (cost split %, blank = even)</p>
         <UnitAssigner units={units} draft={draft} setDraft={setDraft} />
       </div>
 
@@ -862,9 +904,8 @@ function ProjectDetail({ project, units, vendors, onChanged, onVendorCreated }: 
                   </td>
                   <td className="px-3 py-2 tabular">{fmt$(q.quoted_cost)}</td>
                   <td className="px-3 py-2">
-                    <input type="number" defaultValue={q.final_cost != null ? String(num(q.final_cost)) : ''}
+                    <input type="number" aria-label={`Final cost: ${q.vendor_name}`} value={finalDrafts[q.id] ?? (q.final_cost != null ? String(num(q.final_cost)) : '')}
                       onChange={e => setFinalDrafts(p => ({ ...p, [q.id]: e.target.value }))}
-                      onBlur={() => { if (finalDrafts[q.id] != null) patchQuote(q.id, { final_cost: finalDrafts[q.id] ? parseFloat(finalDrafts[q.id]!) : null }); }}
                       placeholder="—" className="w-24 rounded border border-gray-300 px-2 py-1 text-xs" />
                   </td>
                   <td className="px-3 py-2 text-xs text-gray-500 max-w-[160px] truncate" title={q.notes ?? ''}>{q.notes ?? '—'}</td>
@@ -964,6 +1005,17 @@ function ProjectDetail({ project, units, vendors, onChanged, onVendorCreated }: 
           </div>
         )}
       </div>
+
+      {/* Save bar, pinned to the bottom of the screen while the project is open: saves the name, description, categories, rating, notes, status, units and final costs together. */}
+      <div className={`sticky bottom-0 z-10 -mx-5 -mb-5 flex flex-wrap items-center justify-end gap-2 border-t px-5 py-2 shadow-[0_-2px_6px_rgba(0,0,0,0.04)] ${dirty ? 'border-amber-200 bg-amber-50' : 'border-gray-100 bg-white'}`} data-testid={`project-save-${project.id}`}>
+        <span className={`mr-auto text-xs ${dirty ? 'font-medium text-amber-800' : saveMsg === 'Saved.' ? 'text-green-700' : saveMsg ? 'text-red-600' : 'text-gray-400'}`}>
+          {saveMsg && !dirty ? saveMsg : dirty ? 'Unsaved changes' : 'No changes'}
+          {saveMsg && dirty && saveMsg !== 'Saved.' ? ` — ${saveMsg}` : ''}
+        </span>
+        <button onClick={discard} disabled={!dirty || saving} className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-40">Discard</button>
+        <button onClick={() => void saveAll()} disabled={!dirty || saving} className="rounded-lg bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-40">{saving ? 'Saving…' : 'Save'}</button>
+      </div>
+
     </div>
   );
 }
