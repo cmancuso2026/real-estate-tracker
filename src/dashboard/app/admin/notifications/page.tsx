@@ -5,7 +5,7 @@ import { financeApi } from '@/components/finance/api';
 import { CADENCES, METRICS, PERIODS, SECTIONS, WEEKDAYS } from '@finance/alerts/catalog.js';
 
 interface Channel { id: number; name: string; slack_channel: string | null; is_default: boolean; has_webhook: boolean; webhook_hint: string | null; method: string | null }
-interface Condition { metric: string; op?: string; threshold?: number; account?: string; days?: number; percent?: number; period?: string; group?: string; category?: string; direction?: string }
+interface Condition { metric: string; op?: string; threshold?: number; account?: string; days?: number; percent?: number; period?: string; group?: string; category?: string; direction?: string; property_id?: number; breakdown?: string; threshold_scope?: string }
 interface Rule {
   id: number; name: string; prompt: string | null; enabled: boolean; kind: 'condition' | 'summary'; cadence: string; send_time: string;
   weekday: number | null; month_day: number | null; timezone: string; condition: Condition | null; include: string[]; message: string | null;
@@ -16,6 +16,7 @@ interface AdminData {
   rules: Rule[]; channels: Channel[]; log: LogRow[];
   connection: { bot_token: boolean; default_webhook: boolean; interpreter: boolean };
   accounts: string[]; groups: { name: string; categories: string[] }[];
+  properties: { id: number; name: string }[];
 }
 type Draft = Omit<Rule, 'id' | 'enabled' | 'channel_name' | 'summary' | 'schedule' | 'last_sent_at' | 'timezone'> & { id?: number; condition: Condition | null };
 
@@ -112,10 +113,10 @@ export default function NotificationsPage() {
         <h3 className="font-semibold">New alert</h3>
         <textarea
           aria-label="Describe the alert"
-          rows={2}
+          rows={3}
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="e.g. Send me a Slack notification anytime cash position drops below 30k, to #cash-alerts, and include my account balances"
+          placeholder={"e.g. Send me a Slack notification anytime cash position drops below 30k, to #cash-alerts, and include my account balances\n     Each month, show me repair spend by investment property if the total is over $2,000"}
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
         />
         <div className="flex flex-wrap items-center gap-2">
@@ -337,6 +338,22 @@ function RuleForm({ draft, setDraft, data, onCancel, onSaved }: {
               </select>
             </L>
           )}
+          {meta.params.includes('property') && (
+            <L>Property
+              <select aria-label="Property" className={`${input} mt-1 block max-w-[14rem]`} value={cond.property_id ?? ''}
+                onChange={(e) => setCond({ property_id: e.target.value ? Number(e.target.value) : undefined, ...(e.target.value ? { breakdown: undefined, threshold_scope: undefined } : {}) })}>
+                <option value="">All (and none)</option>
+                {data.properties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </L>
+          )}
+          {meta.params.includes('breakdown') && !cond.property_id && (
+            <label className="flex items-center gap-2 self-end pb-2 text-sm">
+              <input type="checkbox" aria-label="Show by property" checked={cond.breakdown === 'property'}
+                onChange={(e) => setCond(e.target.checked ? { breakdown: 'property', threshold_scope: cond.threshold_scope ?? 'total' } : { breakdown: undefined, threshold_scope: undefined })} />
+              Show it by property
+            </label>
+          )}
           {meta.type === 'level' && (
             <L>Is
               <select aria-label="Comparison" className={`${input} mt-1 block`} value={cond.op ?? 'below'} onChange={(e) => setCond({ op: e.target.value })}>
@@ -348,6 +365,14 @@ function RuleForm({ draft, setDraft, data, onCancel, onSaved }: {
           {(meta.type === 'level' || cond.metric === 'large_transaction') && (
             <L>{cond.metric === 'large_transaction' ? 'At least ($)' : meta.unit === 'count' ? 'Count' : 'Amount ($)'}
               <input aria-label="Threshold" type="number" className={`${input} mt-1 block w-32`} value={cond.threshold ?? ''} onChange={(e) => setCond({ threshold: e.target.value === '' ? undefined : Number(e.target.value) })} />
+            </L>
+          )}
+          {cond.breakdown === 'property' && (
+            <L>The amount is for
+              <select aria-label="Threshold applies to" className={`${input} mt-1 block`} value={cond.threshold_scope ?? 'total'} onChange={(e) => setCond({ threshold_scope: e.target.value })}>
+                <option value="total">the total</option>
+                <option value="each">any one property</option>
+              </select>
             </L>
           )}
           {meta.params.includes('days') && (

@@ -2,9 +2,10 @@
 // same logic as the dashboard (balances, metrics, attribution) so an alert and
 // the page it points to always agree.
 import { balanceOn, getBalances } from '../lib/balances.js';
-import { financeTotals, loadMetricsContext, spendingByGroup } from '../lib/metrics.js';
+import { classify, financeTotals, loadMetricsContext, spendingByGroup } from '../lib/metrics.js';
 import { unattributedCount } from '../lib/attribution.js';
 import { getProjectSpend } from '../services/attribution.js';
+import { allocationsByTxn } from '../lib/allocations.js';
 import { PERIODS } from './catalog.js';
 
 const r2 = (n) => Math.round(Number(n) * 100) / 100;
@@ -31,6 +32,11 @@ export function periodRange(period, today) {
       return [addDays(today, -6), today];
     case 'last_30_days':
       return [addDays(today, -29), today];
+    case 'last_month': {
+      const firstThis = `${today.slice(0, 7)}-01`;
+      const last = addDays(firstThis, -1);
+      return [`${last.slice(0, 7)}-01`, last];
+    }
     case 'this_month':
     default:
       return [`${today.slice(0, 7)}-01`, today];
@@ -49,7 +55,37 @@ async function periodTotals(knex, { period, group, category }, today) {
   const rows = (await txnsBetween(knex, from, to)).filter(
     (r) => (!category || r.category === category) && (!group || ctx.groupOf(r.category) === group),
   );
-  return { ...financeTotals(rows, ctx), from, to };
+  return { ...financeTotals(rows, ctx), from, to, rows, ctx };
+}
+
+/**
+ * Spending (or income) per property: each transaction's spending / income
+ * split by its allocations (a split counts its share on each property); what
+ * isn't on a property goes to `null`. → [{ property_id, name, amount }],
+ * largest first.
+ */
+export async function byProperty(knex, rows, ctx, kind) {
+  const allocs = await allocationsByTxn(knex, rows.map((r) => r.id));
+  const props = new Map((await knex('owned_properties').select('id', 'address')).map((p) => [Number(p.id), p.address]));
+  const sums = new Map();
+  const add = (pid, v) => sums.set(pid, (sums.get(pid) ?? 0) + v);
+  for (const r of rows) {
+    const c = classify(r, ctx);
+    const part = kind === 'income' ? c.income : c.spending;
+    if (!part) continue;
+    const a = allocs.get(Number(r.id)) || [];
+    let shared = 0;
+    for (const x of a) {
+      const share = r.amount ? x.amount / r.amount : 0;
+      shared += share;
+      add(x.property_id, part * share);
+    }
+    if (shared < 0.9999) add(null, part * (1 - shared));
+  }
+  return [...sums.entries()]
+    .map(([pid, v]) => ({ property_id: pid, name: pid == null ? 'Not on a property' : props.get(pid) ?? `Property ${pid}`, amount: r2(v) }))
+    .filter((x) => Math.abs(x.amount) >= 0.005)
+    .sort((a, b) => b.amount - a.amount);
 }
 
 /**
@@ -83,10 +119,30 @@ export async function evaluateCondition(knex, c, today) {
     case 'spending':
     case 'income': {
       const t = await periodTotals(knex, c, today);
-      const v = c.metric === 'spending' ? t.spending : t.income;
       const per = PERIODS.find((p) => p.key === c.period)?.label ?? c.period;
       const scope = [c.group, c.category].filter(Boolean).join(' / ');
-      return { value: v, triggered: cmp(v), detail: `${c.metric === 'spending' ? 'Spending' : 'Income'}${scope ? ` on ${scope}` : ''} ${per}: *${money(v)}*.` };
+      const label = `${c.metric === 'spending' ? 'Spending' : 'Income'}${scope ? ` on ${scope}` : ''} ${per} (${shortDate(t.from)} – ${shortDate(t.to)})`;
+      if (!c.property_id && !c.breakdown) {
+        const v = c.metric === 'spending' ? t.spending : t.income;
+        return { value: v, triggered: cmp(v), detail: `${label}: *${money(v)}*.` };
+      }
+      const split = await byProperty(knex, t.rows, t.ctx, c.metric);
+      if (c.property_id) {
+        const row = split.find((x) => x.property_id === c.property_id);
+        const name = row?.name ?? (await knex('owned_properties').where({ id: c.property_id }).first('address'))?.address ?? `Property ${c.property_id}`;
+        const v = row?.amount ?? 0;
+        return { value: v, triggered: cmp(v), detail: `${label} at ${name}: *${money(v)}*.` };
+      }
+      const total = r2(split.reduce((s, x) => s + x.amount, 0));
+      const each = c.threshold_scope === 'each';
+      const hits = split.filter((x) => x.property_id != null && cmp(x.amount));
+      const triggered = each ? hits.length > 0 : cmp(total);
+      const lines = split.map((x) => `• ${x.name}: *${money(x.amount)}*${each && x.property_id != null && cmp(x.amount) ? ' ⚠️' : ''}`);
+      return {
+        value: each ? (hits[0]?.amount ?? 0) : total,
+        triggered,
+        detail: `${label}: *${money(total)}* in total${lines.length ? `, by property:\n${lines.join('\n')}` : ' (nothing yet)'}`,
+      };
     }
     case 'needs_property': {
       const v = await unattributedCount(knex);
@@ -187,6 +243,11 @@ export async function buildSection(knex, key, today) {
         const rows = (await txnsBetween(knex, from, to)).map((r) => ({ ...r, group: ctx.groupOf(r.category) }));
         const top = spendingByGroup(rows, ctx, 8);
         return section('Spending by group this month', top.length ? top.map((g) => `${g.group ?? g.name ?? g.key}: ${money(g.spending ?? g.total ?? g.amount)}`) : ['Nothing yet this month.']);
+      }
+      case 'spending_by_property': {
+        const t = await periodTotals(knex, { period: 'this_month' }, today);
+        const split = await byProperty(knex, t.rows, t.ctx, 'spending');
+        return section('Spending by property this month', split.length ? split.map((x) => `${x.name}: ${money(x.amount)}`) : ['Nothing yet this month.']);
       }
       case 'top_transactions': {
         const rows = (await txnsBetween(knex, addDays(today, -6), today)).filter((r) => r.amount < 0).sort((a, b) => a.amount - b.amount).slice(0, 5);

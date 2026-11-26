@@ -3,26 +3,24 @@
 import { useEffect, useRef, useState } from 'react';
 import { TradePicker } from './TradePicker';
 import { useTrades } from '@/lib/useTrades';
+import { mergeQuotes, type VendorQuoteExtracted } from '@/lib/quote-merge';
 
 // Quotes from PDFs / emails: drop one or several at once. Each is read by the
 // AI parser and gets its own card to check; saving creates each vendor (or
 // uses the existing one with the same name) and adds the quotes to a project
 // — the one you pick, the project you're in, or (new project) hands them back.
 
-interface VendorQuoteExtracted {
-  vendor_name: string | null; vendor_phone: string | null; vendor_email: string | null;
-  trade: string | null; project_name: string | null; quoted_cost: number | null;
-  scope_of_work: string | null; quote_date: string | null; confidence_notes: string | null;
-}
 interface WorkOrderOption { id: number; project_name: string | null; description: string | null; property_address: string | null }
 /** A quote ready to add to a project: its vendor already exists. */
 export interface CollectedQuote { vendor_id: number; vendor_name: string; quoted_cost: number | null; notes: string | null }
 
+/** One file (or pasted text) behind a quote; a combined quote has several. */
+interface Source { name: string; previewUrl: string | null; text?: string; data?: VendorQuoteExtracted }
 interface ImportItem {
   key: string;
-  file: string;
-  previewUrl: string | null;
-  text?: string;
+  sources: Source[];
+  /** Ticked to combine with other cards into one quote. */
+  picked: boolean;
   status: 'reading' | 'ready' | 'error' | 'saved';
   error?: string;
   data?: VendorQuoteExtracted;
@@ -72,7 +70,9 @@ export function QuoteImport({ onCancel, onDone, projectId: fixedProjectId, colle
       setProjects(Array.isArray(w) ? w : []);
     })();
   }, []);
-  useEffect(() => () => { items.forEach(i => i.previewUrl && URL.revokeObjectURL(i.previewUrl)); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  useEffect(() => () => { items.forEach(i => i.sources.forEach(x => x.previewUrl && URL.revokeObjectURL(x.previewUrl))); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  // Several files dropped together: separate quotes, or one quote in several files.
+  const [asOne, setAsOne] = useState(false);
 
   const patch = (key: string, p: Partial<ImportItem>) => setItems(list => list.map(i => (i.key === key ? { ...i, ...p } : i)));
   const patchData = (key: string, p: Partial<VendorQuoteExtracted>) => setItems(list => list.map(i => (i.key === key && i.data ? { ...i, data: { ...i.data, ...p } } : i)));
@@ -87,17 +87,50 @@ export function QuoteImport({ onCancel, onDone, projectId: fixedProjectId, colle
       const data = json.extracted as VendorQuoteExtracted;
       await vendorsLoaded.current; // match against the full vendor list
       const m = matchVendor(data.vendor_name);
-      patch(item.key, { status: 'ready', data, trades: data.trade ? [data.trade] : [], vendorId: m ? String(m.id) : '' });
+      patch(item.key, { status: 'ready', data, sources: item.sources.map((x) => ({ ...x, data })), trades: data.trade ? [data.trade] : [], vendorId: m ? String(m.id) : '' });
+      return data;
     } catch (e) {
       patch(item.key, { status: 'error', error: e instanceof Error ? e.message : String(e) });
+      return null;
     }
+  }
+
+  /** Cards → one quote (in the first card's place). */
+  function combine(keys: string[]) {
+    setItems(list => {
+      const parts = list.filter(i => keys.includes(i.key) && i.status === 'ready' && i.data);
+      if (parts.length < 2) return list;
+      // A single-file card uses its (possibly edited) fields; an already-combined one, each file's reading.
+      const data = mergeQuotes(parts.flatMap(i => (i.sources.length === 1 ? [i.data!] : i.sources.map(x => x.data ?? i.data!))));
+      const m = matchVendor(data.vendor_name);
+      const merged: ImportItem = {
+        key: `${parts[0]!.key}+${parts.length}`, sources: parts.flatMap(i => i.sources), picked: false, status: 'ready', data,
+        trades: [...new Set(parts.flatMap(i => i.trades))], vendorId: m ? String(m.id) : parts[0]!.vendorId, showSource: false,
+      };
+      const at = list.findIndex(i => i.key === parts[0]!.key);
+      const rest = list.filter(i => !parts.some(x => x.key === i.key));
+      rest.splice(at, 0, merged);
+      return rest;
+    });
+  }
+  /** A combined card back into one card per file. */
+  function split(key: string) {
+    setItems(list => list.flatMap(i => {
+      if (i.key !== key || i.sources.length < 2) return [i];
+      return i.sources.map((x, n) => {
+        const data = x.data ?? i.data!;
+        const m = matchVendor(data.vendor_name);
+        return { key: `${key}/${n}`, sources: [x], picked: false, status: 'ready' as const, data, trades: data.trade ? [data.trade] : [], vendorId: m ? String(m.id) : '', showSource: false };
+      });
+    }));
   }
   async function addFiles(files: FileList | File[]) {
     const list = [...files];
     const fresh: ImportItem[] = list.map((f, n) => ({
-      key: `${Date.now()}-${n}-${f.name}`, file: f.name, status: 'reading', trades: [], vendorId: '', showSource: false,
-      previewUrl: f.type === 'application/pdf' ? URL.createObjectURL(f) : null,
+      key: `${Date.now()}-${n}-${f.name}`, sources: [{ name: f.name, previewUrl: f.type === 'application/pdf' ? URL.createObjectURL(f) : null }],
+      picked: false, status: 'reading', trades: [], vendorId: '', showSource: false,
     }));
+    const together = asOne && list.length > 1;
     setItems(prev => [...prev, ...fresh]);
     setSummary(null);
     // One at a time: keeps the parser (and its rate limits) happy.
@@ -105,13 +138,14 @@ export function QuoteImport({ onCancel, onDone, projectId: fixedProjectId, colle
       const form = new FormData(); form.append('file', list[n]!); form.append('type', 'vendor_quote');
       await read(fresh[n]!, form);
     }
+    if (together) combine(fresh.map(f => f.key));
   }
   async function addText() {
     if (!pastedText.trim()) return;
-    const item: ImportItem = { key: `${Date.now()}-text`, file: 'Pasted text', text: pastedText, previewUrl: null, status: 'reading', trades: [], vendorId: '', showSource: false };
+    const item: ImportItem = { key: `${Date.now()}-text`, sources: [{ name: 'Pasted text', text: pastedText, previewUrl: null }], picked: false, status: 'reading', trades: [], vendorId: '', showSource: false };
     setItems(prev => [...prev, item]);
     setPastedText('');
-    const form = new FormData(); form.append('text', item.text!); form.append('type', 'vendor_quote');
+    const form = new FormData(); form.append('text', item.sources[0]!.text!); form.append('type', 'vendor_quote');
     await read(item, form);
   }
 
@@ -151,7 +185,7 @@ export function QuoteImport({ onCancel, onDone, projectId: fixedProjectId, colle
         }
         patch(i.key, { status: 'saved', vendorId: String(vendorId) });
       } catch (e) {
-        failed.push(`${i.data?.vendor_name || i.file}: ${e instanceof Error ? e.message : String(e)}`);
+        failed.push(`${i.data?.vendor_name || i.sources[0]?.name}: ${e instanceof Error ? e.message : String(e)}`);
       }
     }
     setSaving(false);
@@ -168,6 +202,13 @@ export function QuoteImport({ onCancel, onDone, projectId: fixedProjectId, colle
         <button onClick={onCancel} className="text-xs text-gray-400 hover:text-gray-600">Cancel</button>
       </div>
 
+      <div className="flex flex-wrap items-center gap-2 text-sm text-gray-700" role="radiogroup" aria-label="Several files are">
+        <span className="text-xs text-gray-500">When I pick several files, they are:</span>
+        {([[false, 'Separate quotes'], [true, 'One quote (e.g. quote + addendum)']] as const).map(([v, label]) => (
+          <button key={label} type="button" role="radio" aria-checked={asOne === v} onClick={() => setAsOne(v)}
+            className={`rounded-full px-3 py-1 text-xs font-medium ${asOne === v ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'}`}>{label}</button>
+        ))}
+      </div>
       <label
         className="flex cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-blue-300 bg-white/50 px-4 py-6 text-sm text-blue-600 hover:bg-blue-100/50"
         onDragOver={e => e.preventDefault()}
@@ -193,23 +234,38 @@ export function QuoteImport({ onCancel, onDone, projectId: fixedProjectId, colle
             </select>
           </label>}
 
+          {items.filter(i => i.status === 'ready').length > 1 && (
+            <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600" data-testid="combine-bar">
+              <span>Several files belong to one quote? Tick them and</span>
+              <button type="button" disabled={items.filter(i => i.picked && i.status === 'ready').length < 2}
+                onClick={() => combine(items.filter(i => i.picked).map(i => i.key))}
+                className="rounded-lg border border-blue-300 bg-white px-2.5 py-1 font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-40">
+                Combine {items.filter(i => i.picked && i.status === 'ready').length || ''} into one quote
+              </button>
+            </div>
+          )}
           <div className="space-y-3">
             {items.map((i, n) => (
               <div key={i.key} className={`rounded-lg border bg-white p-3 ${i.status === 'saved' ? 'border-green-300' : i.status === 'error' ? 'border-red-300' : 'border-gray-200'}`} data-testid={`import-item-${n}`}>
                 <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
+                  {i.status === 'ready' && items.filter(x => x.status === 'ready').length > 1 && (
+                    <input type="checkbox" aria-label={`Pick quote ${n + 1} to combine`} checked={i.picked} onChange={e => patch(i.key, { picked: e.target.checked })} />
+                  )}
                   <span className="font-semibold text-gray-700">Quote {n + 1}</span>
-                  <span className="text-gray-400">{i.file}</span>
+                  <span className="text-gray-400">{i.sources.map(x => x.name).join(' + ')}</span>
+                  {i.sources.length > 1 && <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-700">{i.sources.length} files combined</span>}
                   {i.status === 'reading' && <span className="text-blue-600">Reading…</span>}
                   {i.status === 'saved' && <span className="text-green-700">✓ Saved</span>}
                   {i.status === 'error' && <span className="text-red-600">{i.error}</span>}
                   <span className="ml-auto flex gap-2">
-                    {(i.previewUrl || i.text) && <button onClick={() => patch(i.key, { showSource: !i.showSource })} className="text-blue-600 hover:underline">{i.showSource ? 'Hide source' : 'Show source'}</button>}
+                    {i.sources.length > 1 && i.status !== 'saved' && <button onClick={() => split(i.key)} className="text-blue-600 hover:underline">Split back into {i.sources.length}</button>}
+                    {i.sources.some(x => x.previewUrl || x.text) && <button onClick={() => patch(i.key, { showSource: !i.showSource })} className="text-blue-600 hover:underline">{i.showSource ? 'Hide source' : i.sources.length > 1 ? 'Show sources' : 'Show source'}</button>}
                     {i.status !== 'saved' && <button onClick={() => setItems(list => list.filter(x => x.key !== i.key))} className="text-gray-400 hover:text-red-600">Remove</button>}
                   </span>
                 </div>
-                {i.showSource && (i.previewUrl
-                  ? <iframe src={i.previewUrl} className="mb-2 h-80 w-full rounded border" title={`Source ${n + 1}`} />
-                  : <pre className="mb-2 max-h-60 overflow-auto whitespace-pre-wrap rounded bg-gray-50 p-2 text-xs text-gray-600">{i.text}</pre>)}
+                {i.showSource && i.sources.map((x, k) => (x.previewUrl
+                  ? <iframe key={k} src={x.previewUrl} className="mb-2 h-80 w-full rounded border" title={`Source ${n + 1}.${k + 1}: ${x.name}`} />
+                  : x.text ? <pre key={k} className="mb-2 max-h-60 overflow-auto whitespace-pre-wrap rounded bg-gray-50 p-2 text-xs text-gray-600">{x.text}</pre> : null))}
                 {i.data && i.status !== 'saved' && (
                   <div className="space-y-2">
                     {i.data.confidence_notes && <p className="rounded bg-amber-50 px-2 py-1 text-xs text-amber-700">⚠ {i.data.confidence_notes}</p>}

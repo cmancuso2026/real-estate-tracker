@@ -16,6 +16,7 @@ export const PERIODS = [
   { key: 'this_month', label: 'this month' },
   { key: 'last_7_days', label: 'the last 7 days' },
   { key: 'last_30_days', label: 'the last 30 days' },
+  { key: 'last_month', label: 'last month' },
 ];
 
 /**
@@ -31,8 +32,8 @@ export const METRICS = [
   { key: 'cash_total', type: 'level', label: 'Total cash position', unit: '$', params: [], example: 'cash position drops below $30,000' },
   { key: 'account_balance', type: 'level', label: 'One account’s balance', unit: '$', params: ['account'], example: 'Checking drops below $2,000' },
   { key: 'cash_change', type: 'level', label: 'Change in total cash over N days', unit: '$', params: ['days'], example: 'cash falls by more than $5,000 in 7 days (op below, threshold -5000)' },
-  { key: 'spending', type: 'level', label: 'Spending in a period', unit: '$', params: ['period', 'group', 'category'], example: 'spending this month goes over $8,000' },
-  { key: 'income', type: 'level', label: 'Income in a period', unit: '$', params: ['period', 'group', 'category'], example: 'income this month is under $10,000' },
+  { key: 'spending', type: 'level', label: 'Spending in a period', unit: '$', params: ['period', 'group', 'category', 'property', 'breakdown'], example: 'spending this month goes over $8,000; repair spend by property last month over $2,000 (category Repairs, breakdown property)' },
+  { key: 'income', type: 'level', label: 'Income in a period', unit: '$', params: ['period', 'group', 'category', 'property', 'breakdown'], example: 'income this month is under $10,000' },
   { key: 'needs_property', type: 'level', label: 'Transactions waiting for a property', unit: 'count', params: [], example: 'more than 10 transactions need a property' },
   { key: 'large_transaction', type: 'event', baseline: true, label: 'A single large transaction', unit: '$', params: ['direction', 'group', 'category'], example: 'any charge over $1,000' },
   { key: 'rent_overdue', type: 'event', label: 'Rent unpaid N days after it was due', unit: 'days', params: ['days'], example: 'rent is 5 days late' },
@@ -46,6 +47,7 @@ export const SECTIONS = [
   { key: 'cash_position', label: 'Cash position (total and each account)' },
   { key: 'month_to_date', label: 'Income and spending this month' },
   { key: 'spending_by_group', label: 'Spending by group this month' },
+  { key: 'spending_by_property', label: 'Spending by property this month' },
   { key: 'top_transactions', label: 'Largest transactions (last 7 days)' },
   { key: 'recent_transactions', label: 'Latest transactions' },
   { key: 'needs_property', label: 'Transactions waiting for a property' },
@@ -125,6 +127,20 @@ export function normalizeCondition(c) {
   }
   if (m.params.includes('group') && c.group) out.group = String(c.group);
   if (m.params.includes('category') && c.category) out.category = String(c.category);
+  if (m.params.includes('property') && c.property_id != null && c.property_id !== '') {
+    const id = Number(c.property_id);
+    if (!Number.isInteger(id) || id <= 0) throw bad('Pick a property');
+    out.property_id = id;
+  }
+  // breakdown 'property': list each property's share in the message, and
+  // threshold_scope says whether the line is for the total or any one property.
+  if (m.params.includes('breakdown') && c.breakdown) {
+    if (c.breakdown !== 'property') throw bad('breakdown must be "property"');
+    out.breakdown = 'property';
+    const scope = c.threshold_scope ?? 'total';
+    if (scope !== 'total' && scope !== 'each') throw bad('threshold_scope must be total or each');
+    out.threshold_scope = scope;
+  }
   return out;
 }
 
@@ -193,8 +209,17 @@ export function describeCondition(c) {
     case 'cash_change':
       return `Change in total cash over ${c.days} days ${cmp(money(c.threshold))}`;
     case 'spending':
-    case 'income':
-      return `${c.metric === 'spending' ? 'Spending' : 'Income'}${scope ? ` on ${scope}` : ''} ${per} ${c.op === 'below' ? 'is under' : 'goes over'} ${money(c.threshold)}`;
+    case 'income': {
+      const what = `${c.metric === 'spending' ? 'Spending' : 'Income'}${scope ? ` on ${scope}` : ''}`;
+      const where = c.property_name ? ` at ${c.property_name}` : c.property_id ? ' at one property' : '';
+      const cmp = `${c.op === 'below' ? 'is under' : 'goes over'} ${money(c.threshold)}`;
+      if (c.breakdown === 'property') {
+        return c.threshold_scope === 'each'
+          ? `${what} ${per}, by property: any property ${cmp}`
+          : `${what}${where} ${per} ${cmp} in total (shown by property)`;
+      }
+      return `${what}${where} ${per} ${cmp}`;
+    }
     case 'needs_property':
       return `More than ${c.threshold} transactions waiting for a property`.replace('More than', c.op === 'below' ? 'Fewer than' : 'More than');
     case 'large_transaction':

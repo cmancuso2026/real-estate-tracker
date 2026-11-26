@@ -6,7 +6,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { interpretAlert, InterpretError, toRuleDraft, type InterpretedRule } from '../lib/alerts-interpret';
 import { normalizeRule } from '@finance/alerts/catalog.js';
 
-const CTX = { channels: ['#cash-alerts'], accounts: ['Checking', 'Savings'], groups: [{ name: 'Food', categories: ['Groceries'] }], today: '2026-11-26' };
+const CTX = { channels: ['#cash-alerts'], accounts: ['Checking', 'Savings'], properties: ['1205-1207 NE 117th St', '20-22 NW 119th St'], groups: [{ name: 'Food', categories: ['Groceries'] }], today: '2026-11-26' };
 
 const answer: InterpretedRule = {
   understood: true,
@@ -16,7 +16,7 @@ const answer: InterpretedRule = {
   send_time: null,
   weekday: null,
   month_day: null,
-  condition: { metric: 'cash_total', op: 'below', threshold: 30000, account: null, days: null, percent: null, period: null, group: null, category: null, direction: null },
+  condition: { metric: 'cash_total', op: 'below', threshold: 30000, account: null, days: null, percent: null, period: null, group: null, category: null, direction: null, property: null, breakdown: null, threshold_scope: null },
   include: ['cash_position'],
   channel: '#cash-alerts',
   message: null,
@@ -65,4 +65,22 @@ test('interpret: refusals and API errors', async () => {
   await assert.rejects(interpretAlert('x', CTX, stub({ stop_reason: 'end_turn', parsed_output: null }).client), /Couldn’t read/);
   const auth = new Anthropic.AuthenticationError(401, { type: 'error', error: { type: 'authentication_error', message: 'bad key' } }, 'bad key', new Headers());
   await assert.rejects(interpretAlert('x', CTX, stub(auth).client), (e: unknown) => e instanceof InterpretError && e.status === 503 && /ANTHROPIC_API_KEY/.test(e.message));
+});
+
+test('interpret: repair spend by property maps to a breakdown rule', () => {
+  const r: InterpretedRule = {
+    ...answer,
+    name: 'Monthly repairs by property',
+    cadence: 'monthly',
+    month_day: 1,
+    send_time: '08:00',
+    condition: { metric: 'spending', op: 'above', threshold: 2000, account: null, days: null, percent: null, period: 'last_month', group: null, category: 'Repairs', direction: null, property: null, breakdown: 'property', threshold_scope: null },
+    include: [],
+  };
+  const d = toRuleDraft(r, [], 'show me repair spend by investment property for a month if the total is over 2k');
+  assert.deepEqual(d.draft.condition, { metric: 'spending', op: 'above', threshold: 2000, period: 'last_month', category: 'Repairs', breakdown: 'property', threshold_scope: 'total' });
+  assert.equal(JSON.parse(normalizeRule(d.draft).condition_json!).breakdown, 'property');
+  // A named property becomes its id.
+  const one = toRuleDraft({ ...r, condition: { ...r.condition!, breakdown: null, property: '20-22 NW 119th St' } }, [], 'x', [{ id: 1, name: '1205-1207 NE 117th St' }, { id: 2, name: '20-22 NW 119th St' }]);
+  assert.equal((one.draft.condition as { property_id?: number }).property_id, 2);
 });
