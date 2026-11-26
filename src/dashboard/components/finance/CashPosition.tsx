@@ -4,8 +4,8 @@ import { CategoryScale, Chart as ChartJS, Filler, Legend, LinearScale, LineContr
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Chart } from 'react-chartjs-2';
-import { balancesByBucket, on } from '@/lib/finance-ui/cash';
-import { fmtBucket, type Granularity } from '@/lib/finance-ui/chart';
+import { balancesByBucket, daysCovering, on } from '@/lib/finance-ui/cash';
+import type { Granularity } from '@/lib/finance-ui/chart';
 import { financeApi } from './api';
 import { Card } from './ui';
 
@@ -30,8 +30,8 @@ const ACCOUNT_COLORS = ['#2f9e44', '#f08c00', '#7048e8', '#0c8599', '#c2255c'];
 /**
  * Cash position: total cash (every Bank of America checking / savings account)
  * over the selected period, with a line per account. Accounts can be renamed.
- * Given the income / spending chart's buckets, it plots on the same dates (the
- * balance at the end of each day / week / month) so the two charts line up.
+ * Given the income / spending chart's buckets, it plots the balance for every
+ * day of that chart's date range, so the two cover the same dates.
  */
 export function CashPosition({
   years,
@@ -60,6 +60,7 @@ export function CashPosition({
   const inPeriod = useCallback((d: string) => years.has(d.slice(0, 4)) && months.has(String(Number(d.slice(5, 7)))), [years, months]);
   const total = data?.total ?? null;
   const pts = useMemo(() => (total ? total.points.filter((p) => inPeriod(p.date)) : []), [total, inPeriod]);
+  const days = useMemo(() => (buckets?.length ? daysCovering(buckets, gran) : []), [buckets, gran]);
 
   async function rename(from: string) {
     setError(null);
@@ -94,11 +95,13 @@ export function CashPosition({
   const change = first && last ? last.balance - first.balance : 0;
   const multi = data.accounts.length > 1;
 
-  // X axis: the chart above's buckets when given, else each recorded balance.
-  const aligned = !!buckets?.length;
-  const labels = aligned ? buckets!.map((k) => fmtBucket(k, gran)) : pts.map((p) => short(p.date));
-  const totalSeries = aligned ? balancesByBucket(total.points, buckets!, gran) : pts.map((p) => p.balance);
-  const accountSeries = (a: Account) => (aligned ? balancesByBucket(a.points, buckets!, gran) : pts.map((p) => on(a.points, p.date)));
+  // X axis: every day across the chart above's date range (its buckets), so
+  // the balance shows day by day even when that chart groups by week or month.
+  // Without buckets, each recorded balance.
+  const aligned = days.length > 0;
+  const labels = aligned ? days.map(short) : pts.map((p) => short(p.date));
+  const totalSeries = aligned ? balancesByBucket(total.points, days, 'daily') : pts.map((p) => p.balance);
+  const accountSeries = (a: Account) => (aligned ? balancesByBucket(a.points, days, 'daily') : pts.map((p) => on(a.points, p.date)));
   const plotted = aligned ? totalSeries.some((v) => v != null) : pts.length > 0;
 
   const chartData = {
@@ -112,7 +115,7 @@ export function CashPosition({
         fill: true,
         borderWidth: 2.5,
         pointRadius: labels.length > 60 ? 0 : 2,
-        stepped: aligned ? false : ('after' as const),
+        stepped: 'after' as const,
       },
       ...(multi
         ? data.accounts.map((a, i) => ({
@@ -124,7 +127,7 @@ export function CashPosition({
             borderWidth: 1.5,
             borderDash: [5, 4],
             pointRadius: 0,
-            stepped: aligned ? false : ('after' as const),
+            stepped: 'after' as const,
           }))
         : []),
     ],
@@ -140,7 +143,7 @@ export function CashPosition({
       tooltip: { callbacks: { label: (c: { dataset: { label: string }; parsed: { y: number } }) => `${c.dataset.label}: ${usd(c.parsed.y)}` } },
     },
     scales: {
-      x: { ticks: { ...(aligned ? {} : { maxTicksLimit: 8 }), font: { size: 11 } }, grid: { display: false } },
+      x: { ticks: { maxTicksLimit: 8, font: { size: 11 } }, grid: { display: false } },
       y: {
         ticks: {
           callback: (v: number | string) => {
