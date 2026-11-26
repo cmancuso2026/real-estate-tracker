@@ -166,7 +166,7 @@ test('property attribution (pg-mem)', async (t) => {
       // link a second expense and a refund to the same project
       const valet = await txnBy('valet'); // -20.00
       await call('PATCH', `/finance/transactions/${valet.id}/attribution`, { property_id: p3, work_order_id: wo.id });
-      const [refund] = await knex('transactions').insert({ date: '2026-04-30', description: 'COMCAST REFUND', amount: 15.05, source: 'Bank of America', category: 'Wifi', category_group: 'Living', dedup_hash: 'refund-1' }).returning('id');
+      const [refund] = await knex('transactions').insert({ date: '2026-04-30', description: 'COMCAST REFUND', amount: 15.05, source: 'Bank of America', category: 'Wifi', category_group: 'Bills & Utilities', dedup_hash: 'refund-1' }).returning('id');
       await knex('transaction_allocations').insert({ transaction_id: refund.id, property_id: p3, work_order_id: wo.id, amount: 15.05, percent: 100, input_mode: 'percent' });
       const spend = (await call('GET', `/finance/rollups/projects?propertyId=${p3}`)).body.projects[wo.id];
       assert.deepEqual(spend, { actual_spend: 120, transaction_count: 3 }); // 115.05 + 20 − 15.05

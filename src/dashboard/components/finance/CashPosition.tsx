@@ -4,6 +4,8 @@ import { CategoryScale, Chart as ChartJS, Filler, Legend, LinearScale, LineContr
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Chart } from 'react-chartjs-2';
+import { balancesByBucket, on } from '@/lib/finance-ui/cash';
+import { fmtBucket, type Granularity } from '@/lib/finance-ui/chart';
 import { financeApi } from './api';
 import { Card } from './ui';
 
@@ -25,21 +27,23 @@ const usd = (n: number) => (n < 0 ? '-$' : '$') + Math.abs(n).toLocaleString('en
 const short = (d: string) => new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
 const ACCOUNT_COLORS = ['#2f9e44', '#f08c00', '#7048e8', '#0c8599', '#c2255c'];
 
-/** The balance in force on a date (last closing balance on or before it). */
-function on(points: { date: string; balance: number }[], date: string): number | null {
-  let v: number | null = null;
-  for (const p of points) {
-    if (p.date <= date) v = p.balance;
-    else break;
-  }
-  return v;
-}
-
 /**
  * Cash position: total cash (every Bank of America checking / savings account)
  * over the selected period, with a line per account. Accounts can be renamed.
+ * Given the income / spending chart's buckets, it plots on the same dates (the
+ * balance at the end of each day / week / month) so the two charts line up.
  */
-export function CashPosition({ years, months }: { years: Set<string>; months: Set<string> }) {
+export function CashPosition({
+  years,
+  months,
+  buckets,
+  gran = 'daily',
+}: {
+  years: Set<string>;
+  months: Set<string>;
+  buckets?: string[];
+  gran?: Granularity;
+}) {
   const [data, setData] = useState<Balances | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [name, setName] = useState('');
@@ -90,30 +94,37 @@ export function CashPosition({ years, months }: { years: Set<string>; months: Se
   const change = first && last ? last.balance - first.balance : 0;
   const multi = data.accounts.length > 1;
 
+  // X axis: the chart above's buckets when given, else each recorded balance.
+  const aligned = !!buckets?.length;
+  const labels = aligned ? buckets!.map((k) => fmtBucket(k, gran)) : pts.map((p) => short(p.date));
+  const totalSeries = aligned ? balancesByBucket(total.points, buckets!, gran) : pts.map((p) => p.balance);
+  const accountSeries = (a: Account) => (aligned ? balancesByBucket(a.points, buckets!, gran) : pts.map((p) => on(a.points, p.date)));
+  const plotted = aligned ? totalSeries.some((v) => v != null) : pts.length > 0;
+
   const chartData = {
-    labels: pts.map((p) => short(p.date)),
+    labels,
     datasets: [
       {
         label: multi ? 'Total cash' : data.accounts[0]!.account,
-        data: pts.map((p) => p.balance),
+        data: totalSeries,
         borderColor: '#3b5bdb',
         backgroundColor: 'rgba(59,91,219,.08)',
         fill: true,
         borderWidth: 2.5,
-        pointRadius: pts.length > 60 ? 0 : 2,
-        stepped: 'after' as const,
+        pointRadius: labels.length > 60 ? 0 : 2,
+        stepped: aligned ? false : ('after' as const),
       },
       ...(multi
         ? data.accounts.map((a, i) => ({
             label: a.account,
-            data: pts.map((p) => on(a.points, p.date)),
+            data: accountSeries(a),
             borderColor: ACCOUNT_COLORS[i % ACCOUNT_COLORS.length],
             backgroundColor: 'transparent',
             fill: false,
             borderWidth: 1.5,
             borderDash: [5, 4],
             pointRadius: 0,
-            stepped: 'after' as const,
+            stepped: aligned ? false : ('after' as const),
           }))
         : []),
     ],
@@ -129,7 +140,7 @@ export function CashPosition({ years, months }: { years: Set<string>; months: Se
       tooltip: { callbacks: { label: (c: { dataset: { label: string }; parsed: { y: number } }) => `${c.dataset.label}: ${usd(c.parsed.y)}` } },
     },
     scales: {
-      x: { ticks: { maxTicksLimit: 8, font: { size: 11 } }, grid: { display: false } },
+      x: { ticks: { ...(aligned ? {} : { maxTicksLimit: 8 }), font: { size: 11 } }, grid: { display: false } },
       y: {
         ticks: {
           callback: (v: number | string) => {
@@ -200,8 +211,8 @@ export function CashPosition({ years, months }: { years: Set<string>; months: Se
         )}
         {error && <span className="text-red-600">{error}</span>}
       </div>
-      {pts.length ? (
-        <div className="relative h-56" data-testid="cash-chart">
+      {plotted ? (
+        <div className="relative h-56" data-testid="cash-chart" data-series={JSON.stringify({ labels, total: totalSeries })}>
           <Chart type="line" data={chartData} options={options} />
         </div>
       ) : (

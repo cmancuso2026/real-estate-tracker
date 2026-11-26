@@ -33,11 +33,14 @@ export function groupOf(tax: Taxonomy, cat: string): string {
 
 export const GROUP_ICON: Record<string, string> = {
   Baby: '👶',
+  'Bills & Utilities': '🔌',
   Financials: '💳',
   Food: '🛒',
+  Fun: '🎉',
+  'Health & Personal': '🧘',
   Investments: '🏠',
-  Living: '🏡',
-  Other: '🎭',
+  Other: '❓',
+  Shopping: '🛍️',
   Travel: '🚗',
   'W2 Income': '💰',
 };

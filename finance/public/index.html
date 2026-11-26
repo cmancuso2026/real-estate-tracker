@@ -264,11 +264,14 @@ table.txns tr.inc-row td{background:rgba(47,158,68,.03);}
         <select id="chartGroup" onchange="onChartGroupChange()">
           <option value="">All</option>
           <option value="Baby">Baby</option>
+          <option value="Bills &amp; Utilities">Bills &amp; Utilities</option>
           <option value="Financials">Financials</option>
           <option value="Food">Food</option>
+          <option value="Fun">Fun</option>
+          <option value="Health &amp; Personal">Health &amp; Personal</option>
           <option value="Investments">Investments</option>
-          <option value="Living">Living</option>
           <option value="Other">Other</option>
+          <option value="Shopping">Shopping</option>
           <option value="Travel">Travel</option>
           <option value="W2 Income">W2 Income</option>
         </select>
@@ -331,11 +334,14 @@ table.txns tr.inc-row td{background:rgba(47,158,68,.03);}
         <select onchange="onTxnGroupChange()" id="txnGrpF">
           <option value="">All Groups</option>
           <option value="Baby">Baby</option>
+          <option value="Bills &amp; Utilities">Bills &amp; Utilities</option>
           <option value="Financials">Financials</option>
           <option value="Food">Food</option>
+          <option value="Fun">Fun</option>
+          <option value="Health &amp; Personal">Health &amp; Personal</option>
           <option value="Investments">Investments</option>
-          <option value="Living">Living</option>
           <option value="Other">Other</option>
+          <option value="Shopping">Shopping</option>
           <option value="Travel">Travel</option>
           <option value="W2 Income">W2 Income</option>
         </select>
@@ -408,10 +414,13 @@ let GROUPS = {
   'Investments': ['1205 Rent','1207 Rent','20 Rent','1205 PITI','20 PITI','Repairs','Lawn Care','Zillow','Matterport','Other - Home','Home Depot'],
   'Travel':      ['Car Payment','Car Insurance','Gas','Car Maintenance','Parking','Sunpass','Lyft','Boarding','Hotel','Flights'],
   'Food':        ['Groceries','Eating Out','Restaurant'],
-  'Living':      ['Roman','Gym','Amazon','Shopping','Electric','Water','Wifi','Phone','Career','Gun','Healthcare','Family Dollar','Home Security'],
+  'Bills & Utilities': ['Electric','Water','Wifi','Phone','Home Security'],
+  'Shopping':    ['Amazon','Shopping','Family Dollar'],
+  'Health & Personal': ['Healthcare','Gym','Career','Roman'],
+  'Fun':         ['Bar','Entertainment','Gun'],
   'Baby':        ['Baby Gear'],
   'Financials':  ['Venmo','Capital One','Amex'],
-  'Other':       ['Bar','Entertainment','Other','Uncategorized'],
+  'Other':       ['Other','Uncategorized'],
 };
 // reverse map: cat → group (rebuilt whenever GROUPS changes)
 let CAT_TO_GROUP = {};
@@ -710,7 +719,7 @@ function updateHeroCards() {
 // CATEGORIES TAB — tabular, multi-column, comparison
 // ══════════════════════════════════════════════
 const GROUP_ICON = {
-  'Baby':'👶','Financials':'💳','Food':'🛒','Investments':'🏠','Living':'🏡',
+  'Baby':'👶','Financials':'💳','Food':'🛒','Investments':'🏠','Bills & Utilities':'🔌','Shopping':'🛍️','Health & Personal':'🧘','Fun':'🎉',
   'Other':'🎭','Travel':'🚗','W2 Income':'💰',
 };
 let catCollapsed = new Set(Object.keys(GROUPS)); // group names whose subcategories are hidden — collapsed by default
@@ -1205,7 +1214,7 @@ function merchantKey(desc){
 const NAME_HINTS = [
   { re:/\b(RESTAURANT|CAFE|COFFEE|STARBUCKS|DUNKIN|PIZZA|SUSHI|TACO|BURGER|GRILL|DINER|BAKERY|KITCHEN|CHIPOTLE|MCDONALD|SUBWAY|POPEYES|PANERA|WINGSTOP|DOORDASH|GRUBHUB)\b/, group:'Food',   label:'looks like dining' },
   { re:/\b(SHELL|CHEVRON|EXXON|MOBIL|MARATHON|SUNOCO|CITGO|FUEL|PARKING|VALET|SUNPASS|JETBLUE|DELTA|AIRLINE|SOUTHWEST AIR|HOTEL|MOTEL|LODGE|CAR RENTAL)\b/, group:'Travel', label:'looks like travel' },
-  { re:/\b(PHARMACY|WALGREENS|CVS|CLINIC|HOSPITAL|DENTAL|DENTIST|MEDICAL|PEDIATRIC|URGENT CARE)\b/, group:'Living', label:'looks like healthcare' },
+  { re:/\b(PHARMACY|WALGREENS|CVS|CLINIC|HOSPITAL|DENTAL|DENTIST|MEDICAL|PEDIATRIC|URGENT CARE)\b/, group:'Health & Personal', label:'looks like healthcare' },
 ];
 
 function computeDiscrepancies(){

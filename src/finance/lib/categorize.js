@@ -10,7 +10,7 @@
 // favour of that ground-truth data:
 //   * BoA "NEAT N TIDY" -> Other/Uncategorized (spec's own note says the
 //     cleaning service should be flagged for review), while "RAYS BARBER"
-//     stays Living/Healthcare.
+//     stays Health & Personal/Healthcare.
 //   * Amex also matches "WHOLE FOODS" (with a space) in addition to the spec's
 //     "WHOLEFDS", since real statements use both spellings.
 import { groupFor } from './taxonomy.js';

@@ -216,7 +216,7 @@ export default function FinanceOverviewPage() {
         {view === 'sankey' && <TransfersNote items={transfers} />}
       </Card>
 
-      <CashPosition years={selYears} months={selMonths} />
+      <CashPosition years={selYears} months={selMonths} buckets={model?.keys} gran={gran} />
     </div>
   );
 }

@@ -161,7 +161,7 @@ test('categorizeWithHistory: two MANUAL matches are enough evidence -> categoriz
 test('categorizeWithHistory: split vote at/under 90% -> Uncategorized', () => {
   const rows = [];
   for (let i = 0; i < 9; i += 1) rows.push(row(`PUBLIX ${i}`, 'Groceries', 'Food'));
-  rows.push(row('PUBLIX 99', 'Shopping', 'Living')); // 9/10 = 0.9 exactly, not > 0.9
+  rows.push(row('PUBLIX 99', 'Shopping', 'Shopping')); // 9/10 = 0.9 exactly, not > 0.9
   const index = buildHistoryIndex(rows);
   const r = categorizeWithHistory('PUBLIX 500', '', 'amex_gold', index);
   assert.equal(r.category, 'Uncategorized');
@@ -171,7 +171,7 @@ test('categorizeWithHistory: split vote at/under 90% -> Uncategorized', () => {
 test('categorizeWithHistory: clear majority above 90% wins', () => {
   const rows = [];
   for (let i = 0; i < 19; i += 1) rows.push(row(`PUBLIX ${i}`, 'Groceries', 'Food'));
-  rows.push(row('PUBLIX 99', 'Shopping', 'Living')); // 19/20 = 0.95
+  rows.push(row('PUBLIX 99', 'Shopping', 'Shopping')); // 19/20 = 0.95
   const index = buildHistoryIndex(rows);
   const r = categorizeWithHistory('PUBLIX 500', '', 'amex_gold', index);
   assert.equal(r.category, 'Groceries');
@@ -184,8 +184,8 @@ test('categorizeWithHistory: manual rows count double in the vote', () => {
     row('TARGET 1', 'Groceries', 'Food', false),
     row('TARGET 2', 'Groceries', 'Food', false),
     row('TARGET 3', 'Groceries', 'Food', false),
-    row('TARGET 4', 'Shopping', 'Living', true),
-    row('TARGET 5', 'Shopping', 'Living', true),
+    row('TARGET 4', 'Shopping', 'Shopping', true),
+    row('TARGET 5', 'Shopping', 'Shopping', true),
   ]);
   const s = scoreFromHistory('TARGET #9', index);
   assert.equal(s.category, 'Shopping');

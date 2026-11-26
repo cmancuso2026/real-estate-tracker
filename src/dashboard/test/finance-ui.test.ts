@@ -4,6 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert';
 import { buildChart, getBucketKey } from '../lib/finance-ui/chart';
+import { balancesByBucket, bucketRange } from '../lib/finance-ui/cash';
 import { buildCategoryTable } from '../lib/finance-ui/categoryTable';
 import { fmt, fmtShort } from '../lib/finance-ui/format';
 import { defaultMonthSelection, defaultYearSelection, propertyOfCat } from '../lib/finance-ui/period';
@@ -168,4 +169,20 @@ test('card payments are netted out of the Categories table and the Transactions 
   assert.deepEqual(t.totals, [3900]);
   const s = summaryBar(rows, ctx);
   assert.deepEqual([s.income, s.expenses, s.count], [4000, -100, 4]);
+});
+
+test('cash position: balance at the end of each chart bucket', () => {
+  assert.deepEqual(bucketRange('2026-02', 'monthly'), { start: '2026-02-01', end: '2026-02-28' });
+  assert.deepEqual(bucketRange('2026-10-25', 'weekly'), { start: '2026-10-25', end: '2026-10-31' });
+  const pts = [
+    { date: '2026-09-30', balance: 100 },
+    { date: '2026-10-06', balance: 50 },
+    { date: '2026-10-31', balance: 80 },
+    { date: '2026-11-23', balance: 120 },
+  ];
+  // Aug: before any balance → gap. Nov: latest so far. Dec: after the latest → gap.
+  assert.deepEqual(balancesByBucket(pts, ['2026-08', '2026-09', '2026-10', '2026-11', '2026-12'], 'monthly'), [null, 100, 80, 120, null]);
+  // Weeks start Sunday: Oct 4–10 ends on the Oct 6 balance; Nov 22–28 holds Nov 23.
+  assert.deepEqual(balancesByBucket(pts, ['2026-10-04', '2026-11-22'], 'weekly'), [50, 120]);
+  assert.deepEqual(balancesByBucket(pts, ['2026-10-07'], 'daily'), [50]);
 });
