@@ -1,4 +1,5 @@
 import { MAX_FILE_BYTES, MAX_FILES, processUpload } from '@finance/services/upload.js';
+import { runAlerts } from '@finance/alerts/engine.js';
 import { httpError, run } from '@/lib/finance';
 
 export const dynamic = 'force-dynamic';
@@ -31,6 +32,10 @@ export async function POST(req: Request) {
       files.push({ buffer: Buffer.from(await f.arrayBuffer()), originalname: f.name });
     }
     const source = form?.get('source');
-    return processUpload(knex, files, { sourceKey: typeof source === 'string' && source ? source : null });
+    const result = await processUpload(knex, files, { sourceKey: typeof source === 'string' && source ? source : null });
+    // New balances / transactions: check real-time alerts now (in the background;
+    // the scheduler checks again within minutes if this one fails).
+    if (result?.new_rows) void runAlerts(knex, { mode: 'realtime' }).catch((e: unknown) => console.error('alerts after upload failed:', e));
+    return result;
   });
 }
