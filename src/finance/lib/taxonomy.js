@@ -12,13 +12,13 @@ const GROUPS = {
     'Parking', 'Sunpass', 'Lyft', 'Boarding', 'Hotel', 'Flights',
   ],
   Food: ['Groceries', 'Eating Out', 'Restaurant'],
-  Living: [
-    'Roman', 'Gym', 'Amazon', 'Shopping', 'Electric', 'Water',
-    'Wifi', 'Phone', 'Career', 'Gun', 'Healthcare', 'Family Dollar', 'Home Security',
-  ],
+  'Bills & Utilities': ['Electric', 'Water', 'Wifi', 'Phone', 'Home Security'],
+  Shopping: ['Amazon', 'Shopping', 'Family Dollar'],
+  'Health & Personal': ['Healthcare', 'Gym', 'Career', 'Roman'],
+  Fun: ['Bar', 'Entertainment', 'Gun'],
   Baby: ['Baby Gear'],
   Financials: ['Venmo', 'Capital One', 'Amex'],
-  Other: ['Bar', 'Entertainment', 'Other', 'Uncategorized'],
+  Other: ['Other', 'Uncategorized'],
 };
 
 // Reverse lookup: subcategory -> group.

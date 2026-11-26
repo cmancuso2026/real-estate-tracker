@@ -178,7 +178,7 @@ test('API integration (pg-mem)', async (t) => {
       });
       const updated = await put.json();
       assert.equal(updated.category, 'Gym');
-      assert.equal(updated.category_group, 'Living'); // server derives group from taxonomy
+      assert.equal(updated.category_group, 'Health & Personal'); // server derives group from taxonomy
       assert.equal(updated.is_manual, true);
 
       // Delete the row, then re-upload — the override must reapply automatically.
@@ -273,10 +273,10 @@ test('API integration (pg-mem)', async (t) => {
       assert.equal(Number(target.confidence_score), 1); // unanimous vote
 
       // A manual override must never be clobbered by re-run.
-      await knex('transactions').insert(seed(5, 'Shopping', 'Living', true));
+      await knex('transactions').insert(seed(5, 'Shopping', 'Shopping', true));
       await knex('transactions')
         .where({ dedup_hash: 'recat-test-5' })
-        .update({ category: 'Shopping', category_group: 'Living', is_manual: true });
+        .update({ category: 'Shopping', category_group: 'Shopping', is_manual: true });
       await fetch(`${base}/api/finance/transactions/recategorize`, { method: 'POST' });
       const kept = await knex('transactions').where({ dedup_hash: 'recat-test-5' }).first();
       assert.equal(kept.category, 'Shopping');
