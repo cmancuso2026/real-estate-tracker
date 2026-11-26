@@ -44,6 +44,31 @@ export default function AdminCategoriesPage() {
   const [newGroup, setNewGroup] = useState('');
   const [error, setError] = useState<string | null>(null);
   const { ask, dialog, showError } = useConfirm();
+  // Collapsed groups (remembered in this browser) — collapse them all to see
+  // just the group order and move groups around.
+  const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('admin-collapsed-groups') ?? '[]');
+      if (Array.isArray(saved)) setCollapsed(new Set(saved.map(Number)));
+    } catch { /* not remembered */ }
+  }, []);
+  const saveCollapsed = (next: Set<number>) => {
+    setCollapsed(next);
+    try { localStorage.setItem('admin-collapsed-groups', JSON.stringify([...next])); } catch { /* not remembered */ }
+  };
+  const toggleGroup = (id: number) => {
+    const next = new Set(collapsed);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    saveCollapsed(next);
+  };
+  async function sortPreset(groupsDir: 'asc' | 'desc' | null, catsDir: 'asc' | 'desc' | null) {
+    const word = (d: string) => (d === 'desc' ? 'Z→A' : 'A→Z');
+    const what = [groupsDir && `groups ${word(groupsDir)}`, catsDir && `categories in every group ${word(catsDir)}`].filter(Boolean).join(' and ');
+    if (!confirm(`Sort ${what}? This replaces the order you set with the arrows.`)) return;
+    await direct({ op: 'sort', groups: groupsDir, categories: catsDir });
+  }
 
   const load = useCallback(async () => {
     try {
@@ -172,11 +197,39 @@ export default function AdminCategoriesPage() {
         </label>
       </div>
 
-      {groups.map((g) => {
+      <div className={`${card} flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3`} data-testid="order-toolbar">
+        <span className="text-sm font-medium text-gray-700">Order</span>
+        <span className="flex items-center gap-1 text-xs text-gray-500">
+          Groups
+          <button className={btn} onClick={() => void sortPreset('asc', null)}>A→Z</button>
+          <button className={btn} onClick={() => void sortPreset('desc', null)}>Z→A</button>
+        </span>
+        <span className="flex items-center gap-1 text-xs text-gray-500">
+          Categories
+          <button className={btn} onClick={() => void sortPreset(null, 'asc')}>A→Z</button>
+          <button className={btn} onClick={() => void sortPreset(null, 'desc')}>Z→A</button>
+        </span>
+        <span className="flex items-center gap-1 text-xs text-gray-500">
+          Both
+          <button className={btn} onClick={() => void sortPreset('asc', 'asc')}>A→Z</button>
+          <button className={btn} onClick={() => void sortPreset('desc', 'desc')}>Z→A</button>
+        </span>
+        <span className="ml-auto flex items-center gap-1">
+          <button className={btn} onClick={() => saveCollapsed(new Set(groups.map((g) => g.id)))}>Collapse all</button>
+          <button className={btn} onClick={() => saveCollapsed(new Set())}>Expand all</button>
+        </span>
+        <p className="w-full text-xs text-gray-400">
+          Or set your own order with the ↑ ↓ arrows on each group and category. Collapse the groups to see and reorder just the groups.
+          This order is used in every category dropdown and list.
+        </p>
+      </div>
+
+      {groups.map((g, gi) => {
         const cats = g.categories.filter((c) => showArchived || !c.archived);
+        const isCollapsed = collapsed.has(g.id);
         return (
           <section key={g.id} className={card} data-testid={`group-${g.name}`}>
-            <div className="flex items-center justify-between border-b border-gray-100 px-4 py-2.5">
+            <div className={`flex items-center justify-between gap-2 px-4 py-2.5 ${isCollapsed ? '' : 'border-b border-gray-100'}`}>
               {edit?.kind === 'rename_group' && edit.group.id === g.id ? (
                 <span className="flex items-center gap-2">
                   <input aria-label="Group name" className={input} value={edit.value} onChange={(e) => setEdit({ ...edit, value: e.target.value })} />
@@ -188,14 +241,26 @@ export default function AdminCategoriesPage() {
                   </button>
                 </span>
               ) : (
-                <h3 className="font-semibold">
-                  {g.name} <span className="font-normal text-gray-400">({g.categories.filter((c) => !c.archived).length})</span>
-                </h3>
+                <button className="flex items-center gap-2 text-left" aria-expanded={!isCollapsed} onClick={() => toggleGroup(g.id)}>
+                  <span className="w-3 text-gray-400">{isCollapsed ? '▸' : '▾'}</span>
+                  <h3 className="font-semibold">
+                    {g.name} <span className="font-normal text-gray-400">({g.categories.filter((c) => !c.archived).length})</span>
+                  </h3>
+                </button>
               )}
-              <button className={btn} onClick={() => setEdit({ kind: 'rename_group', group: g, value: g.name })}>
-                Rename group
-              </button>
+              <span className="inline-flex gap-1">
+                <button className={btn} title="Move group up" aria-label={`Move ${g.name} up`} disabled={gi === 0} onClick={() => void direct({ op: 'reorder_group', name: g.name, direction: 'up' })}>
+                  ↑
+                </button>
+                <button className={btn} title="Move group down" aria-label={`Move ${g.name} down`} disabled={gi === groups.length - 1} onClick={() => void direct({ op: 'reorder_group', name: g.name, direction: 'down' })}>
+                  ↓
+                </button>
+                <button className={btn} onClick={() => setEdit({ kind: 'rename_group', group: g, value: g.name })}>
+                  Rename group
+                </button>
+              </span>
             </div>
+            {!isCollapsed && (
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead>
@@ -324,6 +389,7 @@ export default function AdminCategoriesPage() {
                 </tbody>
               </table>
             </div>
+            )}
           </section>
         );
       })}

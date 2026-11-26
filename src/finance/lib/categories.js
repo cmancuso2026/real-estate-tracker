@@ -246,7 +246,51 @@ export async function reorderCategory(knex, { name, direction }) {
   });
 }
 
-/** Merge: re-point every row from one category to another, then remove it. */
+/** Move a group one place up or down. */
+export async function reorderGroup(knex, { name, direction }) {
+  const g = await getGroup(knex, clean(name));
+  if (direction !== 'up' && direction !== 'down') throw httpError(400, 'direction must be up or down');
+  const all = await knex('category_groups').orderBy('sort_order').orderBy('name').select('id', 'name');
+  const i = all.findIndex((x) => x.id === g.id);
+  const j = direction === 'up' ? i - 1 : i + 1;
+  if (j < 0 || j >= all.length) return { dry_run: false, summary: 'Already at the edge', changes: {} };
+  const order = all.map((x) => x.id);
+  [order[i], order[j]] = [order[j], order[i]];
+  const plan = { summary: `Move group “${g.name}” ${direction}`, changes: { category_groups: 2 }, before: { position: i }, after: { position: j } };
+  return runOp(knex, 'group.reorder', false, plan, async (trx) => {
+    for (let k = 0; k < order.length; k += 1) await trx('category_groups').where({ id: order[k] }).update({ sort_order: k });
+  });
+}
+
+/**
+ * Sort presets: put groups and/or the categories inside every group in
+ * alphabetical order, A→Z ('asc') or Z→A ('desc'). Leave one out to keep its
+ * current order. Your own up/down order is replaced for what you sort.
+ */
+export async function sortTaxonomy(knex, { groups, categories }) {
+  const ok = (v) => v == null || v === '' || v === 'asc' || v === 'desc';
+  if (!ok(groups) || !ok(categories)) throw httpError(400, 'groups / categories must be asc or desc');
+  if (!groups && !categories) throw httpError(400, 'Pick groups and/or categories to sort');
+  const cmp = (dir) => (a, b) => (dir === 'desc' ? -1 : 1) * a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+  const word = (d) => (d === 'desc' ? 'Z→A' : 'A→Z');
+  const what = [groups && `groups ${word(groups)}`, categories && `categories ${word(categories)}`].filter(Boolean).join(', ');
+  const plan = { summary: `Sort ${what}`, changes: {}, before: null, after: { groups: groups || null, categories: categories || null } };
+  return runOp(knex, 'taxonomy.sort', false, plan, async (trx) => {
+    const gs = await trx('category_groups').select('id', 'name');
+    if (groups) {
+      gs.sort(cmp(groups));
+      for (let k = 0; k < gs.length; k += 1) await trx('category_groups').where({ id: gs[k].id }).update({ sort_order: k });
+    }
+    if (categories) {
+      for (const g of gs) {
+        const cs = (await trx('categories').where({ group_id: g.id }).select('id', 'name')).sort(cmp(categories));
+        for (let k = 0; k < cs.length; k += 1) await trx('categories').where({ id: cs[k].id }).update({ sort_order: k });
+      }
+    }
+  });
+}
+
+
 export async function mergeCategory(knex, { name, into }, { dryRun = false } = {}) {
   const src = await getCategory(knex, clean(name));
   assertEditable(src);

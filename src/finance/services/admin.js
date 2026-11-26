@@ -60,6 +60,8 @@ const OPS = {
   archive: (k, b, o) => cats.archiveCategory(k, { ...b, archived: true }, o),
   unarchive: (k, b, o) => cats.archiveCategory(k, { ...b, archived: false }, o),
   reorder: (k, b) => cats.reorderCategory(k, b),
+  reorder_group: (k, b) => cats.reorderGroup(k, b),
+  sort: (k, b) => cats.sortTaxonomy(k, b),
   merge: (k, b, o) => cats.mergeCategory(k, b, o),
   delete: (k, b, o) => cats.deleteCategory(k, b, o),
 };
@@ -67,7 +69,8 @@ const OPS = {
 // POST /api/admin/categories — { op, dry_run?, ...args }.
 // ops: add {name, group} · add_group {name} · rename_group {name, new_name} ·
 // rename {name, new_name} · move {name, group} · archive/unarchive {name} ·
-// reorder {name, direction: up|down} · merge {name, into} · delete {name}
+// reorder {name, direction: up|down} · reorder_group {name, direction} ·
+// sort {groups?: asc|desc, categories?: asc|desc} · merge {name, into} · delete {name}
 export async function categoryOp(knex, body) {
   const fn = OPS[body && body.op];
   if (!fn) throw httpError(400, `Unknown op. Expected one of: ${Object.keys(OPS).join(', ')}`);
