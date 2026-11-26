@@ -44,3 +44,17 @@ export async function setProjectTrades(workOrderId: number, trades: string[]) {
   await query(`DELETE FROM project_trades WHERE work_order_id = $1 AND NOT (trade = ANY($2::text[]))`, [workOrderId, trades]);
   for (const t of trades) await query(`INSERT INTO project_trades (work_order_id, trade) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [workOrderId, t]);
 }
+
+/**
+ * A vendor's rating from its projects (alias `v`): the average of "My rating"
+ * on projects it did — its quote is the selected one, or it's the project's
+ * vendor. → avg_project_rating (1 decimal, null when none are rated) and
+ * rated_projects.
+ */
+const vendorProjects = (alias: string) => `FROM work_orders w
+  WHERE w.rating IS NOT NULL
+    AND (w.vendor_id = ${alias}.id OR EXISTS (SELECT 1 FROM project_quotes q WHERE q.work_order_id = w.id AND q.vendor_id = ${alias}.id AND q.is_selected))`;
+/** The average alone, for a vendors table under any alias. */
+export const vendorAvgRatingSql = (alias: string) => `(SELECT ROUND(AVG(w.rating)::numeric, 1) ${vendorProjects(alias)})`;
+export const VENDOR_RATING_SQL = `${vendorAvgRatingSql('v')} AS avg_project_rating,
+  (SELECT COUNT(*) ${vendorProjects('v')})::int AS rated_projects`;

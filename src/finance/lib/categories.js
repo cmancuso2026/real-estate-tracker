@@ -263,34 +263,45 @@ export async function reorderGroup(knex, { name, direction }) {
 }
 
 /**
- * Sort presets: put groups and/or the categories inside every group in
- * alphabetical order, A→Z ('asc') or Z→A ('desc'). Leave one out to keep its
- * current order. Your own up/down order is replaced for what you sort.
+ * Sort presets by total amount: put groups and/or the categories inside every
+ * group in order of how much money went through them (all time, the size of
+ * each category's net total; a group's is the sum of its categories), smallest
+ * first ('asc') or largest first ('desc'); ties go A→Z. Leave one out to keep
+ * its current order. Your own up/down order is replaced for what you sort.
  */
 export async function sortTaxonomy(knex, { groups, categories }) {
   const ok = (v) => v == null || v === '' || v === 'asc' || v === 'desc';
   if (!ok(groups) || !ok(categories)) throw httpError(400, 'groups / categories must be asc or desc');
   if (!groups && !categories) throw httpError(400, 'Pick groups and/or categories to sort');
-  const cmp = (dir) => (a, b) => (dir === 'desc' ? -1 : 1) * a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
-  const word = (d) => (d === 'desc' ? 'Z→A' : 'A→Z');
+  const word = (d) => (d === 'desc' ? 'largest total first' : 'smallest total first');
   const what = [groups && `groups ${word(groups)}`, categories && `categories ${word(categories)}`].filter(Boolean).join(', ');
   const plan = { summary: `Sort ${what}`, changes: {}, before: null, after: { groups: groups || null, categories: categories || null } };
   return runOp(knex, 'taxonomy.sort', false, plan, async (trx) => {
+    const sums = new Map(
+      (await trx('transactions').select('category').sum({ total: 'amount' }).groupBy('category')).map((r) => [r.category, Math.abs(Number(r.total) || 0)]),
+    );
+    const cmp = (dir) => (a, b) => (dir === 'desc' ? b.total - a.total : a.total - b.total) || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
     const gs = await trx('category_groups').select('id', 'name');
+    const catsOf = new Map();
+    for (const g of gs) {
+      const cs = (await trx('categories').where({ group_id: g.id }).select('id', 'name')).map((c) => ({ ...c, total: sums.get(c.name) ?? 0 }));
+      catsOf.set(g.id, cs);
+      g.total = cs.reduce((s, c) => s + c.total, 0);
+    }
     if (groups) {
       gs.sort(cmp(groups));
       for (let k = 0; k < gs.length; k += 1) await trx('category_groups').where({ id: gs[k].id }).update({ sort_order: k });
     }
     if (categories) {
       for (const g of gs) {
-        const cs = (await trx('categories').where({ group_id: g.id }).select('id', 'name')).sort(cmp(categories));
+        const cs = catsOf.get(g.id).sort(cmp(categories));
         for (let k = 0; k < cs.length; k += 1) await trx('categories').where({ id: cs[k].id }).update({ sort_order: k });
       }
     }
   });
 }
 
-
+/** Merge: re-point every row from one category to another, then remove it. */
 export async function mergeCategory(knex, { name, into }, { dryRun = false } = {}) {
   const src = await getCategory(knex, clean(name));
   assertEditable(src);

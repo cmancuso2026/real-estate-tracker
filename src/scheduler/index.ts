@@ -62,6 +62,13 @@ const JOBS: Job[] = [
     steps: ['v2:alerts'],
   },
   {
+    name: 'alerts',
+    // Every 5 minutes: real-time alerts, and the daily / weekly / monthly
+    // alerts set in Admin → Notifications once their local time has passed.
+    schedule: '*/5 * * * *',
+    steps: ['alerts:run'],
+  },
+  {
     name: 'v2-monthly-recap',
     // 13:00 UTC on the 1st of each month — 9:00 AM Miami (EDT).
     schedule: '0 13 1 * *',

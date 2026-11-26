@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
-import { normalizeTrades, setVendorTrades, VENDOR_TRADES_SQL } from '@/lib/vendor-trades';
+import { normalizeTrades, setVendorTrades, VENDOR_RATING_SQL, VENDOR_TRADES_SQL } from '@/lib/vendor-trades';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const rows = await query(
-      `SELECT v.*, ${VENDOR_TRADES_SQL} AS trades,
+      `SELECT v.*, ${VENDOR_TRADES_SQL} AS trades, ${VENDOR_RATING_SQL},
               COUNT(wo.id)::int               AS total_jobs,
               COUNT(wo.id) FILTER (WHERE wo.status = 'completed')::int AS completed_jobs,
               ROUND(AVG(wo.rating) FILTER (WHERE wo.rating IS NOT NULL), 1) AS avg_internal_rating,

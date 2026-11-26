@@ -5,6 +5,8 @@
 import { applyAttribution, assertProjectTagAllowed } from '../lib/attribution.js';
 import { allocationsByTxn, saveAllocations } from '../lib/allocations.js';
 import { serializeRows } from './transactions.js';
+import { applyFilters, isoDate } from './_query.js';
+import { loadTaxonomy } from '../lib/categories.js';
 
 function httpError(status, message) {
   const e = new Error(message);
@@ -46,30 +48,59 @@ export async function listProjectTransactions(knex, params) {
   return { transactions: await serializeRows(knex, rows) };
 }
 
-// GET /api/finance/projects/candidates?propertyId=&search=&projectId=&limit=
-// Transactions you could link: not on another project, and either not on any
-// property yet or (partly) on this property. Newest first. Each row says
-// whether it's already on this property.
+// GET /api/finance/projects/candidates?propertyId=&projectId=&year=&months=&
+//   group=&category=&source=&search=&scope=&limit=
+// Transactions you could link: not on another project, and (scope) either
+// 'available' (no property yet, or on this property — the default),
+// 'unassigned' (no property yet) or 'property' (on this property). The same
+// filters as the Transactions page; group means the category's current group.
+// Newest first. → { transactions (each with on_property), matched, facets:
+// { years, sources, groups: [{ name, categories }] } }
 export async function projectCandidates(knex, query = {}) {
   const pid = Number(query.propertyId);
   if (!Number.isInteger(pid) || pid <= 0) throw httpError(400, 'propertyId is required');
-  const limit = Math.min(Number(query.limit) || 100, 500);
+  const limit = Math.min(Number(query.limit) || 200, 500);
   const projectId = query.projectId ? Number(query.projectId) : null;
-  const q = knex('transactions').orderBy('date', 'desc').orderBy('id', 'desc').limit(3000).select('*');
-  if (query.search) q.whereRaw('LOWER(description) LIKE ?', [`%${String(query.search).toLowerCase()}%`]);
+  const scope = ['unassigned', 'property'].includes(query.scope) ? query.scope : 'available';
+  const tax = await loadTaxonomy(knex);
+  const q = applyFilters(knex('transactions'), { year: query.year, months: query.months, category: query.category, source: query.source, search: query.search })
+    .orderBy('date', 'desc')
+    .orderBy('id', 'desc')
+    .limit(5000)
+    .select('*');
+  if (query.group && !query.category) {
+    const g = tax.groups.find((x) => x.name === query.group);
+    q.whereIn('category', g ? g.categories.map((c) => c.name) : []);
+  }
   const rows = await q;
   const allocs = await allocationsByTxn(knex, rows.map((r) => r.id));
   const out = [];
+  let matched = 0;
   for (const r of rows) {
     const a = allocs.get(Number(r.id)) || [];
     if (a.some((x) => x.work_order_id != null && x.work_order_id !== projectId)) continue; // on another project
     if (projectId && a.some((x) => x.work_order_id === projectId)) continue; // already linked here
-    if (a.length && !a.some((x) => x.property_id === pid)) continue; // only on other properties
-    out.push(r);
-    if (out.length >= limit) break;
+    const onProp = a.some((x) => x.property_id === pid);
+    if (a.length && !onProp) continue; // only on other properties
+    if (scope === 'unassigned' && a.length) continue;
+    if (scope === 'property' && !onProp) continue;
+    matched += 1;
+    if (out.length < limit) out.push(r);
   }
   const serialized = await serializeRows(knex, out);
-  return { transactions: serialized.map((t) => ({ ...t, on_property: (t.allocations || []).some((x) => x.property_id === pid) })) };
+  const [years, sources] = await Promise.all([
+    knex('transactions').distinct('date').select('date'),
+    knex('transactions').distinct('source').orderBy('source').select('source'),
+  ]);
+  return {
+    transactions: serialized.map((t) => ({ ...t, group: tax.byName.get(t.category)?.group ?? 'Other', on_property: (t.allocations || []).some((x) => x.property_id === pid) })),
+    matched,
+    facets: {
+      years: [...new Set(years.map((r) => isoDate(r.date).slice(0, 4)))].sort().reverse(),
+      sources: sources.map((r) => r.source).filter(Boolean),
+      groups: tax.groups.map((g) => ({ name: g.name, categories: g.categories.filter((c) => !c.archived).map((c) => c.name) })),
+    },
+  };
 }
 
 // POST /api/finance/projects/:id/transactions — { ids } links each to the

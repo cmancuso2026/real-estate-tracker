@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
-import { normalizeTrades, PROJECT_TRADES_SQL, setProjectTrades } from '@/lib/vendor-trades';
+import { normalizeTrades, PROJECT_TRADES_SQL, setProjectTrades, vendorAvgRatingSql } from '@/lib/vendor-trades';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
               WHERE pu.work_order_id = wo.id
             ), '[]') AS units,
             COALESCE((
-              SELECT json_agg(json_build_object('id', pq.id, 'vendor_id', pq.vendor_id, 'vendor_name', vv.name, 'vendor_trade', vv.trade, 'vendor_phone', vv.phone, 'vendor_email', vv.email, 'vendor_rating', vv.manual_rating, 'quoted_cost', pq.quoted_cost, 'final_cost', pq.final_cost, 'is_selected', pq.is_selected, 'notes', pq.notes) ORDER BY pq.is_selected DESC, pq.created_at)
+              SELECT json_agg(json_build_object('id', pq.id, 'vendor_id', pq.vendor_id, 'vendor_name', vv.name, 'vendor_trade', vv.trade, 'vendor_phone', vv.phone, 'vendor_email', vv.email, 'vendor_rating', COALESCE(${vendorAvgRatingSql('vv')}, vv.manual_rating), 'quoted_cost', pq.quoted_cost, 'final_cost', pq.final_cost, 'is_selected', pq.is_selected, 'notes', pq.notes) ORDER BY pq.is_selected DESC, pq.created_at)
               FROM project_quotes pq JOIN vendors vv ON vv.id = pq.vendor_id
               WHERE pq.work_order_id = wo.id
             ), '[]') AS quotes,
