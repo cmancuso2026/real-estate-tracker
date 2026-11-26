@@ -181,3 +181,68 @@ test('engine: crossings, events, summaries, tests (pg-mem)', async () => {
     await knex.destroy();
   }
 });
+
+test('engine: repair spend by property, last month (pg-mem)', async () => {
+  const { evaluateCondition, periodRange } = await import('../alerts/data.js');
+  const { setAllocations } = await import('../services/attribution.js');
+  const knex = newDb({ noAstCoverageCheck: true }).adapters.createKnex();
+  try {
+    await createTrackerStubs(knex);
+    await knex.migrate.latest({ directory: path.join(__dirname, '..', 'db', 'migrations') });
+    assert.deepEqual(periodRange('last_month', '2026-11-26'), ['2026-10-01', '2026-10-31']);
+    assert.deepEqual(periodRange('last_month', '2026-01-05'), ['2025-12-01', '2025-12-31']);
+    const [a] = await knex('owned_properties').insert({ address: '1205 NE 117th St' }).returning('id');
+    const [b] = await knex('owned_properties').insert({ address: '20 NW 119th St' }).returning('id');
+    const ids = {};
+    let n = 0;
+    for (const [d, amount, category, date] of [
+      ['PLUMBER A', -1500, 'Repairs', '2026-10-05'], ['ROOFER B', -900, 'Repairs', '2026-10-12'], ['LUMBER SPLIT', -600, 'Repairs', '2026-10-20'],
+      ['HANDYMAN ?', -200, 'Repairs', '2026-10-25'], ['GROCERIES', -300, 'Groceries', '2026-10-25'], ['NOV REPAIR', -5000, 'Repairs', '2026-11-03'],
+    ]) {
+      const [r] = await knex('transactions').insert({ date, description: d, amount, source: 'Bank of America', category, category_group: category === 'Repairs' ? 'Investments' : 'Food', dedup_hash: `x${(n += 1)}` }).returning('id');
+      ids[d] = r.id;
+    }
+    const put = (id, rows) => setAllocations(knex, { id }, { mode: 'percent', rows });
+    await put(ids['PLUMBER A'], [{ property_id: a.id, value: 100 }]);
+    await put(ids['ROOFER B'], [{ property_id: b.id, value: 100 }]);
+    await put(ids['LUMBER SPLIT'], [{ property_id: a.id, value: 50 }, { property_id: b.id, value: 50 }]);
+    await put(ids['NOV REPAIR'], [{ property_id: a.id, value: 100 }]);
+    const today = '2026-11-26';
+    const base = { metric: 'spending', category: 'Repairs', period: 'last_month', op: 'above', breakdown: 'property' };
+
+    // Total over $3,000: 1,500 + 900 + 600 + 200 = 3,200 → fires, listing each property.
+    const total = await evaluateCondition(knex, { ...base, threshold: 3000, threshold_scope: 'total' }, today);
+    assert.equal(total.triggered, true);
+    assert.equal(total.value, 3200);
+    assert.match(total.detail, /Spending on Repairs last month \(Oct 1 – Oct 31\): \*\$3,200\* in total, by property:/);
+    assert.match(total.detail, /• 1205 NE 117th St: \*\$1,800\*/);
+    assert.match(total.detail, /• 20 NW 119th St: \*\$1,200\*/);
+    assert.match(total.detail, /• Not on a property: \*\$200\*/);
+    assert.doesNotMatch(total.detail, /GROCERIES|5,000/);
+    // Any one property over $1,500: only 1205 (1,800) → fires and is flagged.
+    const each = await evaluateCondition(knex, { ...base, threshold: 1500, threshold_scope: 'each' }, today);
+    assert.equal(each.triggered, true);
+    assert.match(each.detail, /1205 NE 117th St: \*\$1,800\* ⚠️/);
+    assert.doesNotMatch(each.detail, /20 NW 119th St: \*\$1,200\* ⚠️/);
+    assert.equal((await evaluateCondition(knex, { ...base, threshold: 2000, threshold_scope: 'each' }, today)).triggered, false);
+    // One property only.
+    const one = await evaluateCondition(knex, { metric: 'spending', category: 'Repairs', period: 'last_month', op: 'above', threshold: 1000, property_id: b.id }, today);
+    assert.deepEqual([one.value, one.triggered], [1200, true]);
+    assert.match(one.detail, /at 20 NW 119th St: \*\$1,200\*/);
+
+    // As a monthly alert on the 1st: validated, described and sent with the breakdown.
+    const rule = normalizeRule({ name: 'Repairs by property', cadence: 'monthly', month_day: 1, send_time: '08:00', condition: { ...base, threshold: 3000 } });
+    assert.equal(JSON.parse(rule.condition_json).threshold_scope, 'total');
+    assert.equal(describeCondition(JSON.parse(rule.condition_json)), 'Spending on Repairs last month goes over $3,000 in total (shown by property)');
+    assert.equal(describeCondition({ ...base, threshold: 1500, threshold_scope: 'each' }), 'Spending on Repairs last month, by property: any property goes over $1,500');
+    assert.throws(() => normalizeRule({ name: 'x', cadence: 'daily', condition: { ...base, threshold: 1, breakdown: 'unit' } }), /breakdown/);
+    await knex('alert_rules').insert(rule);
+    const sent = [];
+    await runAlerts(knex, { now: new Date('2026-12-01T13:30:00Z'), send: async (_c, text) => sent.push(text), env: ENV });
+    assert.equal(sent.length, 1);
+    assert.match(sent[0], /Repairs by property/);
+    assert.match(sent[0], /Nov 1 – Nov 30\): \*\$5,000\* in total, by property:\n• 1205 NE 117th St: \*\$5,000\*/);
+  } finally {
+    await knex.destroy();
+  }
+});

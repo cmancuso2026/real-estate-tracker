@@ -53,3 +53,24 @@ test('projects overview: quoted from the chosen quote, actual from transactions,
   // No project name: the description is the name; starting cost is the quote; no transactions → no variance.
   assert.deepEqual([rows[1]!.name, rows[1]!.description, rows[1]!.quoted, rows[1]!.variance, rows[1]!.vendor], ['From a transaction', null, 250, null, null]);
 });
+
+test('quotes: combining files into one quote', async () => {
+  const { mergeQuotes } = await import('../lib/quote-merge');
+  const q = (p: Partial<import('../lib/quote-merge').VendorQuoteExtracted>) => ({
+    vendor_name: null, vendor_phone: null, vendor_email: null, trade: null, project_name: null, quoted_cost: null, scope_of_work: null, quote_date: null, confidence_notes: null, ...p,
+  });
+  const m = mergeQuotes([
+    q({ vendor_name: 'Top Roof', quoted_cost: 12000, scope_of_work: 'Re-roof main house', trade: 'roofing' }),
+    q({ vendor_phone: '305-555-0140', quoted_cost: 1800.5, scope_of_work: 'Addendum: replace fascia' }),
+    q({ scope_of_work: 're-roof main house', confidence_notes: 'Page 3 blurry' }),
+  ]);
+  assert.equal(m.vendor_name, 'Top Roof');
+  assert.equal(m.vendor_phone, '305-555-0140');
+  assert.equal(m.trade, 'roofing');
+  assert.equal(m.quoted_cost, 13800.5);
+  assert.equal(m.scope_of_work, 'Re-roof main house\nAddendum: replace fascia');
+  assert.match(m.confidence_notes!, /Combined from 3 files: the amount is the sum \(\$12,000 \+ \$1,800\.5\)/);
+  assert.match(m.confidence_notes!, /Page 3 blurry/);
+  assert.match(mergeQuotes([q({ vendor_name: 'A' }), q({ vendor_name: 'B' })]).confidence_notes!, /different vendors \(A, B\)/);
+  assert.equal(mergeQuotes([q({}), q({})]).quoted_cost, null);
+});

@@ -17,10 +17,11 @@ export async function POST(req: Request) {
       const r = await interpretAlert(prompt, {
         channels: admin.channels.map((c: { name: string }) => c.name),
         accounts: admin.accounts,
+        properties: admin.properties.map((p: { name: string }) => p.name),
         groups: admin.groups,
         today: new Date().toISOString().slice(0, 10),
       });
-      return toRuleDraft(r, admin.channels, prompt);
+      return toRuleDraft(r, admin.channels, prompt, admin.properties);
     } catch (e) {
       if (e instanceof InterpretError) throw httpError(e.status, e.message);
       throw e;

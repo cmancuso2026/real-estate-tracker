@@ -26,13 +26,15 @@ function publicChannel(c, env) {
 
 // GET /api/admin/alerts → everything the Admin page needs.
 export async function getAlertsAdmin(knex, { env = process.env } = {}) {
-  const [rules, channels, log, balances, tax] = await Promise.all([
+  const [rules, channels, log, balances, tax, props] = await Promise.all([
     knex('alert_rules').orderBy('id'),
     knex('notification_channels').orderBy('name'),
     knex('alert_log').orderBy('id', 'desc').limit(30),
     getBalances(knex),
     loadTaxonomy(knex),
+    knex('owned_properties').select('id', 'address').orderBy('id'),
   ]);
+  const propName = new Map(props.map((p) => [Number(p.id), p.address]));
   const chName = new Map(channels.map((c) => [c.id, c.name]));
   const def = channels.find((c) => c.is_default);
   return {
@@ -42,7 +44,9 @@ export async function getAlertsAdmin(knex, { env = process.env } = {}) {
         ...h,
         condition_json: undefined,
         include_json: undefined,
-        summary: h.kind === 'summary' ? `Summary: ${h.include.length} section${h.include.length === 1 ? '' : 's'}` : describeCondition(h.condition),
+        summary: h.kind === 'summary'
+          ? `Summary: ${h.include.length} section${h.include.length === 1 ? '' : 's'}`
+          : describeCondition(h.condition?.property_id ? { ...h.condition, property_name: propName.get(h.condition.property_id) } : h.condition),
         schedule: describeSchedule(h),
         channel_name: h.channel_id ? chName.get(h.channel_id) ?? null : def?.name ?? null,
       };
@@ -55,6 +59,7 @@ export async function getAlertsAdmin(knex, { env = process.env } = {}) {
       interpreter: !!(env.ANTHROPIC_API_KEY || env.ANTHROPIC_AUTH_TOKEN),
     },
     accounts: balances.accounts.map((a) => a.account),
+    properties: props.map((p) => ({ id: Number(p.id), name: p.address })),
     groups: tax.groups.map((g) => ({ name: g.name, categories: g.categories.filter((c) => !c.archived).map((c) => c.name) })),
   };
 }

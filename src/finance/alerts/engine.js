@@ -55,8 +55,9 @@ export async function composeRule(knex, rule, { now = new Date(), seen = new Set
       if (extra > 0) lines.push(`…and ${extra} more`);
     } else {
       triggered = r.triggered;
-      lines.push(`_${describeCondition(rule.condition)}_`);
-      lines.push(r.detail + (r.triggered ? '' : ' (condition not met right now)'));
+      const pn = rule.condition.property_id ? (await knex('owned_properties').where({ id: rule.condition.property_id }).first('address'))?.address : null;
+      lines.push(`_${describeCondition(pn ? { ...rule.condition, property_name: pn } : rule.condition)}_`);
+      lines.push(r.detail + (r.triggered ? '' : '\n(condition not met right now)'));
     }
   }
   const sections = [];

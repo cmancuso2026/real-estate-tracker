@@ -36,6 +36,9 @@ export const InterpretedRule = z.object({
       group: z.string().nullable(),
       category: z.string().nullable(),
       direction: z.enum(['out', 'in', 'any']).nullable(),
+      property: z.string().nullable().describe('one property, written exactly as in the property list; null for all'),
+      breakdown: z.enum(['property']).nullable().describe('"property" to list the amount for each property'),
+      threshold_scope: z.enum(['total', 'each']).nullable().describe('with breakdown: the threshold is for the total, or for any one property'),
     })
     .nullable(),
   include: z.array(z.enum(sectionKeys)).describe('extra sections for the message; required for a summary'),
@@ -48,6 +51,7 @@ export type InterpretedRule = z.infer<typeof InterpretedRule>;
 export interface InterpretContext {
   channels: string[];
   accounts: string[];
+  properties: string[];
   groups: { name: string; categories: string[] }[];
   today: string;
 }
@@ -61,7 +65,7 @@ Cadence: realtime (checked every few minutes and after uploads; use it for "anyt
 
 kind "condition" watches one metric:
 ${metrics}
-Level metrics need op ("below"/"above") and threshold. "drops below 30k" → op below, threshold 30000. For cash_change, a drop of $5k is op below, threshold -5000. large_transaction needs threshold (the minimum absolute amount) and direction (out = money spent, the default; in = deposits; any). Periods: ${PERIODS.map((p) => p.key).join(', ')} (default this_month). Leave unused params null.
+Level metrics need op ("below"/"above") and threshold. For spending / income: "by property", "per property", "for each (investment) property" → breakdown "property" (the message lists each property's amount); the threshold is for the total unless they say any one / a single / each property goes over it (threshold_scope "each"). A named property → property. "Repair spend" means category Repairs; "property costs" or "investment spending" means group Investments. "For a month", "monthly", "each month" → cadence monthly with period last_month (sent on the 1st about the month that just ended), unless they say "this month" or "so far". "drops below 30k" → op below, threshold 30000. For cash_change, a drop of $5k is op below, threshold -5000. large_transaction needs threshold (the minimum absolute amount) and direction (out = money spent, the default; in = deposits; any). Periods: ${PERIODS.map((p) => p.key).join(', ')} (default this_month). Leave unused params null.
 
 kind "summary" sends the sections in include on a schedule ("weekly recap", "daily digest of …").
 
@@ -71,6 +75,7 @@ Add sections only when the user asks for more context ("…and include my accoun
 
 Their Slack channels: ${ctx.channels.length ? ctx.channels.join(', ') : 'none yet'}. If they name a channel, return it as written with a leading #, even if it's not in the list.
 Their bank accounts: ${ctx.accounts.length ? ctx.accounts.join(', ') : 'none yet'}. For account_balance, use one of these names.
+Their properties: ${ctx.properties.length ? ctx.properties.join('; ') : 'none yet'}.
 Spending groups and categories: ${ctx.groups.map((g) => `${g.name} (${g.categories.join(', ')})`).join('; ')}. Use these names exactly for group / category filters.
 
 Today is ${ctx.today}. Set understood=false only when nothing in the request maps to these options; otherwise pick the closest rule and say in notes what you assumed or left out (e.g. email or SMS: only Slack is available).`;
@@ -113,9 +118,19 @@ export async function interpretAlert(text: string, ctx: InterpretContext, client
 }
 
 /** Turn the interpreted rule into the Admin form's shape (channel by name → id). */
-export function toRuleDraft(r: InterpretedRule, channels: { id: number; name: string }[], prompt: string) {
+export function toRuleDraft(r: InterpretedRule, channels: { id: number; name: string }[], prompt: string, properties: { id: number; name: string }[] = []) {
   const ch = r.channel ? channels.find((c) => c.name.toLowerCase() === r.channel!.toLowerCase().replace(/^(?!#)/, '#')) : undefined;
-  const condition = r.condition ? Object.fromEntries(Object.entries(r.condition).filter(([, v]) => v !== null)) : null;
+  let condition: Record<string, unknown> | null = null;
+  if (r.condition) {
+    const { property, ...rest } = r.condition;
+    condition = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== null));
+    if (property) {
+      const want = property.toLowerCase().trim();
+      const hit = properties.find((p) => p.name.toLowerCase() === want) ?? properties.find((p) => p.name.toLowerCase().includes(want) || want.includes(p.name.toLowerCase()));
+      if (hit) condition.property_id = hit.id;
+    }
+    if (condition.breakdown && !condition.threshold_scope) condition.threshold_scope = 'total';
+  }
   return {
     draft: {
       name: r.name,
