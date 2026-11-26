@@ -67,7 +67,19 @@ test('overview: rent this month matches the rent roll (pg-mem)', async () => {
     // 1821 has no record; unit 20 paid in two parts.
     await knex('rent_collections').insert([pay(1205, 2000), pay(1207, 2100), pay(1825, 2100), pay(20, 433, 2), pay(20, 2027, 3)]);
 
+    // PITI: each property's PITI category, mapped with role 'piti'.
+    let n = 0;
+    for (const [cat, pid, amount, date] of [['1205 PITI', p1, -3321, '2026-11-01'], ['1821 PITI', p2, -4531, '2026-11-01'], ['20 PITI', p3, -5027, '2026-11-02'], ['20 PITI', p3, -5027, '2026-10-02']]) {
+      await knex('property_category_map').insert({ category: cat, property_id: pid, role: 'piti', confirmed: true }).onConflict('category').ignore();
+      await knex('transactions').insert({ date, description: `MORTGAGE ${(n += 1)}`, amount, source: 'Bank of America', category: cat, category_group: 'Investments', dedup_hash: `piti${n}` });
+    }
+
     const o = await getOverview(knex, { month: '2026-11', today: '2026-11-26' });
+    assert.equal(o.real_estate.piti_this_month.total, 12879, 'sum of the three PITI payments this month');
+    assert.equal(o.real_estate.piti_this_month.ytd, 17906, 'plus October on 20-22');
+    assert.deepEqual(o.real_estate.piti_this_month.by_property.map((x) => [x.address, x.amount]), [
+      ['1205-1207 NE 117th St', 3321], ['1821-1825 NW 74th St', 4531], ['20-22 NW 119th St', 5027],
+    ]);
     const re = o.real_estate;
     assert.equal(re.rent_roll, 10760);
     assert.deepEqual(re.rent_this_month, { due: 10760, collected: 8660, outstanding: 2100 }, 'due = rent roll; 1821 still owes');
