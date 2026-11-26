@@ -543,11 +543,22 @@ export async function buildPropertySummary(propertyId: number): Promise<Property
   const propertyRentRows = rentRows.filter(r =>
     units.some(u => u.id === r.unit_id)
   );
-  const expected    = propertyRentRows.reduce((s, r) => s + r.amount_due, 0);
-  const collected   = propertyRentRows.reduce((s, r) => s + (r.amount_paid ?? 0), 0);
-  const outstanding = expected - collected;
-  const partialCount = propertyRentRows.filter(r => r.is_partial).length;
-  const lateCount    = propertyRentRows.filter(r => r.is_late).length;
+  // Per unit: a split payment is several rows each carrying the full rent as
+  // amount_due, so count the rent once and add up the payments.
+  const byUnit = new Map<number, { due: number; paid: number; late: boolean }>();
+  for (const r of propertyRentRows) {
+    const u = byUnit.get(r.unit_id) ?? { due: 0, paid: 0, late: false };
+    u.due = Math.max(u.due, r.amount_due);
+    u.paid += r.amount_paid ?? 0;
+    u.late = u.late || !!r.is_late;
+    byUnit.set(r.unit_id, u);
+  }
+  const unitRent = [...byUnit.values()];
+  const expected    = unitRent.reduce((s, u) => s + u.due, 0);
+  const collected   = unitRent.reduce((s, u) => s + u.paid, 0);
+  const outstanding = unitRent.reduce((s, u) => s + Math.max(0, u.due - u.paid), 0);
+  const partialCount = unitRent.filter(u => u.paid > 0 && u.paid < u.due).length;
+  const lateCount    = unitRent.filter(u => u.late).length;
 
   // Open work orders
   const openWorkOrders = await listWorkOrders({ propertyId, status: 'open' });

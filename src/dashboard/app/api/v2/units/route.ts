@@ -18,14 +18,18 @@ export async function GET(req: NextRequest) {
             l.end_date    AS lease_end_date,
             -- Earliest lease for the CURRENT tenant on this unit (years in unit)
             first_t_lease.start_date AS first_lease_start_date,
-            rc.amount_due,
-            rc.amount_paid,
-            rc.is_late,
-            rc.is_partial,
+            -- This month's rent (same rule as lib/rentMonth.js): due from the
+            -- lease in force this month, else the largest amount_due recorded;
+            -- paid = every payment this month (a split payment is several rows).
+            due.amount AS amount_due,
+            rc.paid AS amount_paid,
+            rc.payments AS payment_count,
+            COALESCE(rc.late, FALSE) AS is_late,
+            (rc.payments > 0 AND COALESCE(rc.paid, 0) > 0 AND rc.paid < due.amount) AS is_partial,
             CASE
-              WHEN rc.id IS NULL THEN 'no_record'
-              WHEN rc.amount_paid IS NULL OR rc.amount_paid = 0 THEN 'outstanding'
-              WHEN rc.amount_paid >= rc.amount_due THEN 'paid'
+              WHEN rc.payments = 0 THEN 'no_record'
+              WHEN COALESCE(rc.paid, 0) = 0 THEN 'outstanding'
+              WHEN rc.paid >= due.amount THEN 'paid'
               ELSE 'partial'
             END AS payment_status
      FROM units u
@@ -50,14 +54,23 @@ export async function GET(req: NextRequest) {
        ORDER BY start_date ASC
        LIMIT 1
      ) first_t_lease ON TRUE
-     -- This month's rent (most recent record, in case of multiple)
+     -- This month's payments, all of them
      LEFT JOIN LATERAL (
-       SELECT * FROM rent_collections
+       SELECT COUNT(*)::int AS payments, SUM(amount_paid)::int AS paid, MAX(amount_due)::int AS max_due, BOOL_OR(is_late) AS late
+       FROM rent_collections
        WHERE unit_id = u.id
          AND due_date LIKE to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM') || '%'
-       ORDER BY created_at DESC
-       LIMIT 1
      ) rc ON TRUE
+     -- The lease in force this month (latest start), for the amount due
+     LEFT JOIN LATERAL (
+       SELECT rent_amount FROM leases
+       WHERE unit_id = u.id
+         AND start_date <= to_char((date_trunc('month', now() AT TIME ZONE 'UTC') + interval '1 month - 1 day'), 'YYYY-MM-DD')
+         AND end_date   >= to_char(date_trunc('month', now() AT TIME ZONE 'UTC'), 'YYYY-MM-DD')
+       ORDER BY start_date DESC
+       LIMIT 1
+     ) month_lease ON TRUE
+     LEFT JOIN LATERAL (SELECT COALESCE(month_lease.rent_amount, rc.max_due) AS amount) due ON TRUE
      WHERE u.property_id = $1
      ORDER BY u.unit_label`,
     [propertyId]

@@ -86,25 +86,28 @@ export async function GET(
 
     const months: Set<string> = new Set();
 
+    // One entry per unit and month: a split payment is several rows, each
+    // carrying the full rent as amount_due, so due is counted once and the
+    // payments are added up (same rule as lib/rentMonth.js).
+    const unitMonths = new Map<string, { due: number; paid: number; late: boolean }>();
     for (const row of rentRows) {
       const isOwner = row['is_owner_unit'] as boolean;
       if (isOwner) continue; // Skip owner-occupied units
 
-      const dueDateStr = row['due_date'] as string;
-      const month = dueDateStr.slice(0, 7); // YYYY-MM
+      const month = (row['due_date'] as string).slice(0, 7); // YYYY-MM
       months.add(month);
-
-      const amountDue = (row['amount_due'] as number) ?? 0;
-      const amountPaid = (row['amount_paid'] as number) ?? 0;
-      const isLate = (row['is_late'] as boolean) ?? false;
-
-      totalExpected += amountDue;
-      totalCollected += amountPaid;
+      const key = `${row['unit_id']}-${month}`;
+      const um = unitMonths.get(key) ?? { due: 0, paid: 0, late: false };
+      um.due = Math.max(um.due, Number(row['amount_due'] ?? 0));
+      um.paid += Number(row['amount_paid'] ?? 0);
+      um.late = um.late || !!row['is_late'];
+      unitMonths.set(key, um);
+    }
+    for (const um of unitMonths.values()) {
+      totalExpected += um.due;
+      totalCollected += um.paid;
       totalPayments++;
-
-      if (amountPaid > 0 && !isLate) {
-        onTimeCount++;
-      }
+      if (um.paid > 0 && !um.late) onTimeCount++;
     }
 
     // On-time percentage (only count paid/partial as on-time)
