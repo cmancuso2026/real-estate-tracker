@@ -143,8 +143,12 @@ export async function GET(
       months.size > 0 ? totalCollected / months.size : 0;
 
     const recurringRows = await query<{ recurring_total: string | number }>(
+      // Only costs running today (inside their start / end dates).
       `SELECT COALESCE(SUM(monthly_amount), 0) AS recurring_total
-       FROM recurring_costs WHERE property_id = $1 AND is_active = TRUE`,
+       FROM recurring_costs
+       WHERE property_id = $1 AND is_active = TRUE
+         AND (start_date IS NULL OR start_date <= to_char(CURRENT_DATE, 'YYYY-MM-DD'))
+         AND (end_date   IS NULL OR end_date   >= to_char(CURRENT_DATE, 'YYYY-MM-DD'))`,
       [property_id],
     );
     const recurringTotal = Number(recurringRows[0]?.recurring_total ?? 0);

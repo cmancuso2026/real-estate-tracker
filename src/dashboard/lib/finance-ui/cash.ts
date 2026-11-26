@@ -39,3 +39,18 @@ export function balancesByBucket(points: { date: string; balance: number }[], ke
     return on(points, end);
   });
 }
+
+/**
+ * Every day covered by a chart's buckets: from the first bucket's first day to
+ * the last bucket's last day. The cash chart plots a balance per day over the
+ * same range as the income / spending chart, whatever that chart's grouping.
+ */
+export function daysCovering(keys: string[], gran: Granularity): string[] {
+  if (!keys.length) return [];
+  const from = bucketRange(keys[0]!, gran).start;
+  const to = bucketRange(keys[keys.length - 1]!, gran).end;
+  const out: string[] = [];
+  const d = new Date(from + 'T00:00:00');
+  for (let s = iso(d); s <= to; d.setDate(d.getDate() + 1), s = iso(d)) out.push(s);
+  return out;
+}

@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert';
 import { buildChart, getBucketKey } from '../lib/finance-ui/chart';
-import { balancesByBucket, bucketRange } from '../lib/finance-ui/cash';
+import { balancesByBucket, bucketRange, daysCovering } from '../lib/finance-ui/cash';
 import { buildCategoryTable } from '../lib/finance-ui/categoryTable';
 import { fmt, fmtShort } from '../lib/finance-ui/format';
 import { defaultMonthSelection, defaultYearSelection, propertyOfCat } from '../lib/finance-ui/period';
@@ -185,4 +185,14 @@ test('cash position: balance at the end of each chart bucket', () => {
   // Weeks start Sunday: Oct 4–10 ends on the Oct 6 balance; Nov 22–28 holds Nov 23.
   assert.deepEqual(balancesByBucket(pts, ['2026-10-04', '2026-11-22'], 'weekly'), [50, 120]);
   assert.deepEqual(balancesByBucket(pts, ['2026-10-07'], 'daily'), [50]);
+});
+
+test('cash position: one point per day across the chart range', () => {
+  const days = daysCovering(['2026-10', '2026-11'], 'monthly');
+  assert.equal(days.length, 61);
+  assert.equal(days[0], '2026-10-01');
+  assert.equal(days[60], '2026-11-30');
+  assert.deepEqual(daysCovering(['2026-10-25'], 'weekly'), ['2026-10-25', '2026-10-26', '2026-10-27', '2026-10-28', '2026-10-29', '2026-10-30', '2026-10-31']);
+  const pts = [{ date: '2026-10-02', balance: 10 }, { date: '2026-10-04', balance: 30 }];
+  assert.deepEqual(balancesByBucket(pts, daysCovering(['2026-10-01', '2026-10-05'], 'daily'), 'daily'), [null, 10, 10, 30, null]);
 });

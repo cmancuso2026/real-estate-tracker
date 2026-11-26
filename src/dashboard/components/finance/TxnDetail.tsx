@@ -5,6 +5,7 @@ import { fmt } from '@/lib/finance-ui/format';
 import { similarTxns, type Discrepancies, type Reason } from '@/lib/finance-ui/review';
 import type { Txn } from '@/lib/finance-ui/types';
 import { btnPrimary } from './ui';
+import { TxnProjectAssign } from './TxnProjectAssign';
 
 function ReasonText({ r }: { r: Reason }) {
   if (r.type === 'inconsistent') {
@@ -81,6 +82,8 @@ export function TxnDetail({
           <div>{t.manual ? 'Manually (edited)' : 'Auto'}</div>
         </div>
       </div>
+
+      <TxnProjectAssign t={t} />
 
       <div>
         <K>

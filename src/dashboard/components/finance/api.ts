@@ -17,5 +17,5 @@ export const financeApi = {
   put: <T,>(path: string, body: unknown) => call<T>('PUT', path, body),
   post: <T,>(path: string, body?: unknown) => call<T>('POST', path, body),
   patch: <T,>(path: string, body: unknown) => call<T>('PATCH', path, body),
-  del: <T,>(path: string) => call<T>('DELETE', path),
+  del: <T,>(path: string, body?: unknown) => call<T>('DELETE', path, body),
 };

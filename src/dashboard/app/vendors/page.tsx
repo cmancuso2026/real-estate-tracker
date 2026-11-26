@@ -1,9 +1,13 @@
 'use client';
 
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, Suspense, useEffect, useState } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
+import { TradePicker, TradePills } from '@/components/TradePicker';
+import { ProjectsOverview } from '@/components/ProjectsOverview';
+import { useTrades } from '@/lib/useTrades';
 
 interface Vendor {
-  id: number; name: string; trade: string; phone: string | null; email: string | null;
+  id: number; name: string; trade: string; trades?: string[]; phone: string | null; email: string | null;
   google_rating: number | null; google_review_count: number | null;
   manual_rating: number | null; manual_notes: string | null;
   total_jobs: number; completed_jobs: number; avg_internal_rating: number | null; total_spend: number | null;
@@ -31,10 +35,8 @@ interface VendorQuoteExtracted {
   scope_of_work: string | null; quote_date: string | null; confidence_notes: string | null;
 }
 
-const TRADES = ['plumbing','hvac','electrical','roofing','appliance','landscaping','pest_control','general','other'];
-
 const capitalize = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '');
-const tradeLabel = (s: string | null | undefined) => (s ? s.split('_').map(capitalize).join(' ') : '—');
+const vendorTrades = (v: { trade: string; trades?: string[] }) => (v.trades?.length ? v.trades : v.trade ? [v.trade] : ['other']);
 function fmt$(n: number | null) { return n == null ? '—' : '$' + Number(n).toLocaleString(); }
 function Stars({ rating, max = 5 }: { rating: number | null; max?: number }) {
   if (!rating) return <span className="text-xs text-gray-400">—</span>;
@@ -44,6 +46,19 @@ function Stars({ rating, max = 5 }: { rating: number | null; max?: number }) {
 type AddMode = null | 'choice' | 'manual' | 'import';
 
 export default function VendorsPage() {
+  return (
+    <Suspense fallback={null}>
+      <VendorsPageInner />
+    </Suspense>
+  );
+}
+
+function VendorsPageInner() {
+  const params = useSearchParams();
+  const router = useRouter();
+  const view = params.get('view') === 'projects' ? 'projects' : 'vendors';
+  const setView = (v: 'vendors' | 'projects') => router.replace(v === 'projects' ? '/vendors?view=projects' : '/vendors', { scroll: false });
+  const { trades, label: tradeLabel } = useTrades();
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [spend, setSpend] = useState<SpendResponse | null>(null);
   const [search, setSearch] = useState('');
@@ -60,7 +75,7 @@ export default function VendorsPage() {
     });
 
   // Manual add form
-  const [form, setForm] = useState({ name: '', trade: 'general', phone: '', email: '', website: '' });
+  const [form, setForm] = useState({ name: '', trades: [] as string[], phone: '', email: '', website: '' });
   const [saving, setSaving] = useState(false);
 
   // Post-save "assign to project?" prompt
@@ -88,12 +103,12 @@ export default function VendorsPage() {
   useEffect(() => { load(); }, []);
 
   const save = async () => {
-    if (!form.name || !form.trade) return;
+    if (!form.name || !form.trades.length) return;
     setSaving(true);
     const res = await fetch('/api/v2/vendors', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) });
     setSaving(false);
     setAddMode(null);
-    setForm({ name: '', trade: 'general', phone: '', email: '', website: '' });
+    setForm({ name: '', trades: [], phone: '', email: '', website: '' });
     load();
     if (res.ok) {
       try {
@@ -109,15 +124,16 @@ export default function VendorsPage() {
   const actualAll = spend ? spend.by_property.reduce((s, p) => s + Number(p.actual_spend || 0), 0) : 0;
   const actualByVendor = new Map((spend?.vendors ?? []).map(v => [v.vendor_id, v]));
 
-  // Group vendors by trade: known trades first (in TRADES order), then any extras alphabetically.
+  // Group vendors by trade (a vendor with several trades shows under each):
+  // trades in Admin → Trades order first, then any others alphabetically.
   const vendorsByTrade = (() => {
     const map = new Map<string, Vendor[]>();
     for (const v of vendors) {
-      const t = v.trade || 'other';
-      (map.get(t) ?? map.set(t, []).get(t)!).push(v);
+      for (const t of vendorTrades(v)) (map.get(t) ?? map.set(t, []).get(t)!).push(v);
     }
-    const known = TRADES.filter(t => map.has(t));
-    const extras = [...map.keys()].filter(t => !TRADES.includes(t)).sort();
+    const order = trades.map(t => t.key);
+    const known = order.filter(t => map.has(t));
+    const extras = [...map.keys()].filter(t => !order.includes(t)).sort();
     return [...known, ...extras].map(t => ({ trade: t, vendors: map.get(t)! }));
   })();
 
@@ -128,10 +144,24 @@ export default function VendorsPage() {
           <h1 className="text-2xl font-bold">Vendors</h1>
           <p className="text-sm text-gray-500">Contractors and service providers</p>
         </div>
-        <button onClick={() => setAddMode('choice')} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
-          + Add Vendor
-        </button>
+        <div className="flex items-center gap-3">
+          <div className="flex overflow-hidden rounded-lg border border-gray-300 text-sm" role="tablist" aria-label="Vendors view">
+            {(['vendors', 'projects'] as const).map(v => (
+              <button key={v} role="tab" aria-selected={view === v} onClick={() => setView(v)}
+                className={`px-3 py-1.5 ${view === v ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'}`}>
+                {v === 'vendors' ? 'Vendors' : 'Projects'}
+              </button>
+            ))}
+          </div>
+          {view === 'vendors' && (
+            <button onClick={() => setAddMode('choice')} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+              + Add Vendor
+            </button>
+          )}
+        </div>
       </div>
+
+      {view === 'projects' ? <ProjectsOverview /> : (<>
 
       {/* Spend summary */}
       <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -196,23 +226,20 @@ export default function VendorsPage() {
             ].map(f => (
               <div key={f.key}>
                 <label className="mb-1 block text-xs text-gray-500">{f.label}</label>
-                <input type={f.type} value={(form as Record<string, string>)[f.key]}
+                <input type={f.type} value={(form as unknown as Record<string, string>)[f.key]}
                   onChange={e => setForm(prev => ({ ...prev, [f.key]: e.target.value }))}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                 />
               </div>
             ))}
-            <div>
-              <label className="mb-1 block text-xs text-gray-500">Trade *</label>
-              <select value={form.trade} onChange={e => setForm(prev => ({ ...prev, trade: e.target.value }))}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
-                {TRADES.map(t => <option key={t} value={t}>{tradeLabel(t)}</option>)}
-              </select>
-            </div>
+          </div>
+          <div className="mt-3">
+            <label className="mb-1 block text-xs text-gray-500">Trades * <span className="text-gray-400">(pick all that apply)</span></label>
+            <TradePicker trades={trades} value={form.trades} onChange={next => setForm(prev => ({ ...prev, trades: next }))} label={tradeLabel} />
           </div>
           <p className="mt-2 text-xs text-gray-400">Google rating will be looked up automatically if available.</p>
           <div className="mt-4 flex gap-2">
-            <button onClick={save} disabled={saving} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
+            <button onClick={save} disabled={saving || !form.name || !form.trades.length} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
               {saving ? 'Saving…' : 'Save Vendor'}
             </button>
             <button onClick={() => setAddMode(null)} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">
@@ -304,7 +331,7 @@ export default function VendorsPage() {
                             <span className="mr-2 inline-block text-gray-400">{expandedId === v.id ? '▾' : '▸'}</span>
                             {v.name}
                           </td>
-                          <td className="px-5 py-3 text-gray-500">{tradeLabel(v.trade)}</td>
+                          <td className="px-5 py-3 text-gray-500"><TradePills keys={vendorTrades(v)} label={tradeLabel} /></td>
                           <td className="px-5 py-3">
                             {v.google_rating
                               ? <span><Stars rating={v.google_rating} /> <span className="text-xs text-gray-400">({v.google_review_count})</span></span>
@@ -345,12 +372,15 @@ export default function VendorsPage() {
           </table>
         </div>
       )}
+      </>)}
     </>
   );
 }
 
 // ── Vendor import: PDF/email → AI extract → side-by-side confirm ──────────────────
 function VendorImportPanel({ onCancel, onDone }: { onCancel: () => void; onDone: () => void }) {
+  const { trades, label: tradeLabel } = useTrades();
+  const [pickedTrades, setPickedTrades] = useState<string[]>([]);
   const [parsing, setParsing] = useState(false);
   const [error, setError] = useState('');
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -367,7 +397,9 @@ function VendorImportPanel({ onCancel, onDone }: { onCancel: () => void; onDone:
       const res = await fetch('/api/v2/upload', { method: 'POST', body: form });
       const json = await res.json();
       if (!res.ok) { setError(json.error ?? 'Parse failed'); return; }
-      setData(json.extracted as VendorQuoteExtracted);
+      const ex = json.extracted as VendorQuoteExtracted;
+      setData(ex);
+      setPickedTrades(ex.trade ? [ex.trade] : []);
     } catch { setError('Upload error'); }
     finally { setParsing(false); }
   }
@@ -392,7 +424,7 @@ function VendorImportPanel({ onCancel, onDone }: { onCancel: () => void; onDone:
       if (createVendor && data.vendor_name) {
         await fetch('/api/v2/vendors', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: data.vendor_name, phone: data.vendor_phone ?? null, email: data.vendor_email ?? null, trade: data.trade ?? 'general' }),
+          body: JSON.stringify({ name: data.vendor_name, phone: data.vendor_phone ?? null, email: data.vendor_email ?? null, trades: pickedTrades.length ? pickedTrades : ['general'] }),
         });
       }
       onDone();
@@ -438,13 +470,10 @@ function VendorImportPanel({ onCancel, onDone }: { onCancel: () => void; onDone:
               <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">⚠ {data.confidence_notes}</p>
             )}
             <div className="grid grid-cols-2 gap-3">
-              <ImpField label="Vendor Name" value={data.vendor_name ?? ''} onChange={v => patch({ vendor_name: v })} />
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-500">Trade</label>
-                <select value={data.trade ?? 'general'} onChange={e => patch({ trade: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
-                  {TRADES.map(t => <option key={t} value={t}>{tradeLabel(t)}</option>)}
-                </select>
+              <div className="col-span-2"><ImpField label="Vendor Name" value={data.vendor_name ?? ''} onChange={v => patch({ vendor_name: v })} /></div>
+              <div className="col-span-2">
+                <label className="mb-1 block text-xs font-medium text-gray-500">Trades</label>
+                <TradePicker trades={trades} value={pickedTrades} onChange={setPickedTrades} label={tradeLabel} />
               </div>
               <ImpField label="Phone" value={data.vendor_phone ?? ''} onChange={v => patch({ vendor_phone: v })} />
               <ImpField label="Email" value={data.vendor_email ?? ''} onChange={v => patch({ vendor_email: v })} />
@@ -478,8 +507,9 @@ function VendorImportPanel({ onCancel, onDone }: { onCancel: () => void; onDone:
 
 // ── Expandable vendor detail: edit fields, manage projects, delete ────────────────
 function VendorDetail({ vendor, onSaved, onDeleted }: { vendor: Vendor; onSaved: () => void; onDeleted: () => void }) {
+  const { trades, label: tradeLabel } = useTrades();
   const [form, setForm] = useState({
-    name: vendor.name ?? '', trade: vendor.trade ?? 'general',
+    name: vendor.name ?? '', trades: vendorTrades(vendor),
     phone: vendor.phone ?? '', email: vendor.email ?? '',
     manual_notes: vendor.manual_notes ?? '', manual_rating: vendor.manual_rating ?? 0,
   });
@@ -581,12 +611,9 @@ function VendorDetail({ vendor, onSaved, onDeleted }: { vendor: Vendor; onSaved:
             <input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
           </div>
-          <div>
-            <label className="mb-1 block text-xs text-gray-500">Trade</label>
-            <select value={form.trade} onChange={e => setForm(p => ({ ...p, trade: e.target.value }))}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
-              {TRADES.map(t => <option key={t} value={t}>{tradeLabel(t)}</option>)}
-            </select>
+          <div className="col-span-2">
+            <label className="mb-1 block text-xs text-gray-500">Trades <span className="text-gray-400">(pick all that apply)</span></label>
+            <TradePicker trades={trades} value={form.trades} onChange={next => setForm(p => ({ ...p, trades: next }))} label={tradeLabel} />
           </div>
           <div>
             <label className="mb-1 block text-xs text-gray-500">Phone</label>
@@ -613,7 +640,7 @@ function VendorDetail({ vendor, onSaved, onDeleted }: { vendor: Vendor; onSaved:
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
         </div>
         <div className="mt-4 flex gap-2">
-          <button onClick={save} disabled={saving}
+          <button onClick={save} disabled={saving || !form.trades.length}
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
             {saving ? 'Saving…' : 'Save'}
           </button>
@@ -696,7 +723,7 @@ function VendorDetail({ vendor, onSaved, onDeleted }: { vendor: Vendor; onSaved:
                       </td>
                       <td className="px-3 py-2 tabular">{fmt$(q.quoted_cost)}</td>
                       <td className="px-3 py-2 tabular">{fmt$(q.final_cost)}</td>
-                      <td className="px-3 py-2 text-gray-500">{q.status ? tradeLabel(q.status) : '—'}</td>
+                      <td className="px-3 py-2 text-gray-500">{q.status ? capitalize(q.status) : '—'}</td>
                     </tr>
                     {expandedProjectId === q.work_order_id && (
                       <tr className="bg-gray-50">
@@ -810,6 +837,7 @@ interface ProjectQuoteRow {
 }
 
 function ProjectQuotes({ workOrderId, projectLabel, onChanged }: { workOrderId: number; projectLabel: string; onChanged: () => void }) {
+  const { label: tradeLabel } = useTrades();
   const [rows, setRows] = useState<ProjectQuoteRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<number | null>(null);

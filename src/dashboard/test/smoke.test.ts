@@ -137,6 +137,9 @@ test('smoke: every nav/admin page and finance/admin GET endpoint returns 200', {
     const propertyId = unit('1205').property_id;
     const listingId = (await db.query('SELECT id FROM listings ORDER BY id LIMIT 1')).rows[0].id;
     const txnId = (await db.query(`SELECT id FROM transactions ORDER BY id LIMIT 1`)).rows[0].id;
+    const projectId = (
+      await db.query(`INSERT INTO work_orders (property_id, project_name, status) VALUES ($1, 'Smoke project', 'open') RETURNING id`, [propertyId])
+    ).rows[0].id;
     const pages = [
       '/',
       ...GROUPS.flatMap((g) => g.links.map((l) => l.href)),
@@ -159,6 +162,9 @@ test('smoke: every nav/admin page and finance/admin GET endpoint returns 200', {
       '/api/finance/rollups/property/[id]': `/api/finance/rollups/property/${propertyId}?year=2026`,
       '/api/finance/transactions/[id]/rent': `/api/finance/transactions/${rentTxn}/rent`,
       '/api/finance/transactions/[id]/suggestions': `/api/finance/transactions/${txnId}/suggestions`,
+      '/api/finance/projects/[id]/transactions': `/api/finance/projects/${projectId}/transactions`,
+      // Static routes that need a query string.
+      '/api/finance/projects/candidates': `/api/finance/projects/candidates?propertyId=${propertyId}`,
     };
     const apis = [...getRoutes('api/finance'), ...getRoutes('api/admin')];
     assert.ok(apis.length >= 20, `found ${apis.length} GET endpoints`);
@@ -170,7 +176,7 @@ test('smoke: every nav/admin page and finance/admin GET endpoint returns 200', {
         }
         await check(params[r]);
       } else {
-        await check(r);
+        await check(params[r] ?? r);
       }
     }
 

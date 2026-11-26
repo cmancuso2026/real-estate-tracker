@@ -639,3 +639,76 @@ CREATE TABLE IF NOT EXISTS recurring_costs (
 );
 
 CREATE INDEX IF NOT EXISTS idx_recurring_costs_property ON recurring_costs (property_id);
+
+-- ===========================================================================
+-- V2.2: TRADES (configurable in Admin → Trades), multi-trade vendors, project
+-- trades, and recurring costs with a frequency and a date range.
+-- ===========================================================================
+
+-- trades: the shared list behind vendor trades and project categories. `key`
+-- is what vendors / projects store; the label and order are editable.
+CREATE TABLE IF NOT EXISTS trades (
+  key         TEXT PRIMARY KEY,
+  label       TEXT    NOT NULL,
+  sort_order  INTEGER NOT NULL DEFAULT 0,
+  archived    BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at  TEXT    NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')
+);
+
+INSERT INTO trades (key, label, sort_order) VALUES
+  ('electrical',   'Electrical',   1),
+  ('plumbing',     'Plumbing',     2),
+  ('handyman',     'Handyman',     3),
+  ('hvac',         'AC / HVAC',    4),
+  ('roofing',      'Roof',         5),
+  ('appliance',    'Appliance',    6),
+  ('landscaping',  'Landscaping',  7),
+  ('pest_control', 'Pest Control', 8),
+  ('general',      'General',      9),
+  ('other',        'Other',        10)
+ON CONFLICT (key) DO NOTHING;
+
+-- Any trade a vendor already uses that isn't in the list joins it (at the end).
+INSERT INTO trades (key, label, sort_order)
+SELECT DISTINCT v.trade, initcap(replace(v.trade, '_', ' ')), 100
+FROM vendors v
+WHERE v.trade IS NOT NULL AND v.trade <> ''
+ON CONFLICT (key) DO NOTHING;
+
+-- vendor_trades: a vendor can do several trades. vendors.trade stays as the
+-- first one (older code and the Places lookup read it).
+CREATE TABLE IF NOT EXISTS vendor_trades (
+  vendor_id  INTEGER NOT NULL REFERENCES vendors (id) ON DELETE CASCADE,
+  trade      TEXT    NOT NULL REFERENCES trades (key) ON UPDATE CASCADE,
+  PRIMARY KEY (vendor_id, trade)
+);
+INSERT INTO vendor_trades (vendor_id, trade)
+SELECT v.id, v.trade FROM vendors v
+WHERE v.trade IS NOT NULL AND v.trade <> ''
+  AND NOT EXISTS (SELECT 1 FROM vendor_trades vt WHERE vt.vendor_id = v.id)
+ON CONFLICT DO NOTHING;
+
+-- project_trades: the categories a project falls under (plumbing, roof, …).
+CREATE TABLE IF NOT EXISTS project_trades (
+  work_order_id INTEGER NOT NULL REFERENCES work_orders (id) ON DELETE CASCADE,
+  trade         TEXT    NOT NULL REFERENCES trades (key) ON UPDATE CASCADE,
+  PRIMARY KEY (work_order_id, trade)
+);
+CREATE INDEX IF NOT EXISTS idx_project_trades_trade ON project_trades (trade);
+
+-- Recurring costs: monthly or yearly, an amount as billed, an optional date
+-- range, and the project they came from. monthly_amount stays the monthly
+-- equivalent (yearly / 12), which cash flow sums.
+ALTER TABLE recurring_costs ADD COLUMN IF NOT EXISTS frequency     TEXT NOT NULL DEFAULT 'monthly';
+ALTER TABLE recurring_costs ADD COLUMN IF NOT EXISTS amount        NUMERIC(12,2);
+ALTER TABLE recurring_costs ADD COLUMN IF NOT EXISTS start_date    TEXT;   -- YYYY-MM-DD, NULL = open
+ALTER TABLE recurring_costs ADD COLUMN IF NOT EXISTS end_date      TEXT;   -- YYYY-MM-DD, NULL = no end
+ALTER TABLE recurring_costs ADD COLUMN IF NOT EXISTS work_order_id INTEGER REFERENCES work_orders (id) ON DELETE SET NULL;
+UPDATE recurring_costs SET amount = monthly_amount WHERE amount IS NULL;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'recurring_costs_frequency_check') THEN
+    ALTER TABLE recurring_costs ADD CONSTRAINT recurring_costs_frequency_check CHECK (frequency IN ('monthly', 'yearly'));
+  END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS idx_recurring_costs_project ON recurring_costs (work_order_id);
